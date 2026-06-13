@@ -38,11 +38,13 @@ function isAuthorized(request: Request) {
 }
 
 function isMissingTableError(error: unknown) {
+  const text = typeof error === "string" ? error : JSON.stringify(error);
   return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as { code?: string }).code === "PGRST205"
+    text.includes("PGRST205") ||
+    text.includes("42P01") ||
+    text.includes("schema cache") ||
+    text.includes("Could not find the table") ||
+    text.includes("lean_canvas_submissions")
   );
 }
 
@@ -88,6 +90,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ submission: toSubmission(data) });
   } catch (error) {
+    if (isMissingTableError(error)) {
+      return missingTableResponse();
+    }
     const message = error instanceof Error ? error.message : "제출 저장 실패";
     return NextResponse.json({ error: message }, { status: 500 });
   }
@@ -124,6 +129,9 @@ export async function GET(request: Request) {
       submissions: data.map(toSubmission)
     });
   } catch (error) {
+    if (isMissingTableError(error)) {
+      return missingTableResponse();
+    }
     const message = error instanceof Error ? error.message : "제출 목록 조회 실패";
     return NextResponse.json({ error: message }, { status: 500 });
   }

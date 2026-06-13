@@ -19,11 +19,20 @@ function toSubmission(row: SubmissionRow): LeanCanvasSubmission {
 }
 
 function isMissingTableError(error: unknown) {
+  const text = typeof error === "string" ? error : JSON.stringify(error);
   return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as { code?: string }).code === "PGRST205"
+    text.includes("PGRST205") ||
+    text.includes("42P01") ||
+    text.includes("schema cache") ||
+    text.includes("Could not find the table") ||
+    text.includes("lean_canvas_submissions")
+  );
+}
+
+function missingTableResponse() {
+  return NextResponse.json(
+    { code: "SUPABASE_TABLE_NOT_READY", error: "Supabase 테이블이 생성되지 않았습니다." },
+    { status: 503 }
   );
 }
 
@@ -46,16 +55,16 @@ export async function GET(_request: Request, { params }: { params: Promise<unkno
 
     if (error || !data) {
       if (isMissingTableError(error)) {
-        return NextResponse.json(
-          { code: "SUPABASE_TABLE_NOT_READY", error: "Supabase 테이블이 생성되지 않았습니다." },
-          { status: 503 }
-        );
+        return missingTableResponse();
       }
       return NextResponse.json({ error: "제출물을 찾을 수 없습니다." }, { status: 404 });
     }
 
     return NextResponse.json({ submission: toSubmission(data) });
   } catch (error) {
+    if (isMissingTableError(error)) {
+      return missingTableResponse();
+    }
     const message = error instanceof Error ? error.message : "제출물 조회 실패";
     return NextResponse.json({ error: message }, { status: 500 });
   }
