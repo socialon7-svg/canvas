@@ -77,7 +77,7 @@ export default function CanvasEditor() {
         error?: string;
       };
 
-      if (response.status === 503 && data.code === "SUPABASE_NOT_CONFIGURED") {
+      if (response.status === 503 && (data.code === "SUPABASE_NOT_CONFIGURED" || data.code === "SUPABASE_TABLE_NOT_READY")) {
         const fallbackSubmission = saveSubmission(participant, canvas);
         setFallbackNotice("중앙 저장소가 아직 설정되지 않아 이 브라우저에 임시 저장했습니다.");
         router.push(`/preview/${fallbackSubmission.id}`);

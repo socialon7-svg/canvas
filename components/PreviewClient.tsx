@@ -38,7 +38,7 @@ export default function PreviewClient({ id }: { id: string }) {
         const localSubmission = getSubmission(id);
         if (localSubmission) {
           setSubmission(localSubmission);
-          if (response.status === 503 && data.code === "SUPABASE_NOT_CONFIGURED") {
+          if (response.status === 503 && (data.code === "SUPABASE_NOT_CONFIGURED" || data.code === "SUPABASE_TABLE_NOT_READY")) {
             setFallbackNotice("중앙 저장소가 아직 설정되지 않아 이 브라우저의 임시 제출물을 표시합니다.");
           }
           return;

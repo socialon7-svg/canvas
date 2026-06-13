@@ -20,7 +20,7 @@ const loadServerSubmissions = async (adminPassword: string) => {
     error?: string;
   };
 
-  if (response.status === 503 && data.code === "SUPABASE_NOT_CONFIGURED") {
+  if (response.status === 503 && (data.code === "SUPABASE_NOT_CONFIGURED" || data.code === "SUPABASE_TABLE_NOT_READY")) {
     return { submissions: loadSubmissions(), fallback: true };
   }
 

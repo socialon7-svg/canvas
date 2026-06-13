@@ -18,6 +18,15 @@ function toSubmission(row: SubmissionRow): LeanCanvasSubmission {
   };
 }
 
+function isMissingTableError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: string }).code === "PGRST205"
+  );
+}
+
 export async function GET(_request: Request, { params }: { params: Promise<unknown> }) {
   try {
     if (!hasSupabaseServerConfig()) {
@@ -36,6 +45,12 @@ export async function GET(_request: Request, { params }: { params: Promise<unkno
       .single<SubmissionRow>();
 
     if (error || !data) {
+      if (isMissingTableError(error)) {
+        return NextResponse.json(
+          { code: "SUPABASE_TABLE_NOT_READY", error: "Supabase 테이블이 생성되지 않았습니다." },
+          { status: 503 }
+        );
+      }
       return NextResponse.json({ error: "제출물을 찾을 수 없습니다." }, { status: 404 });
     }
 

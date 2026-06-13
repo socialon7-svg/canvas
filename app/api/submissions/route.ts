@@ -37,6 +37,22 @@ function isAuthorized(request: Request) {
   return Boolean(process.env.ADMIN_PASSWORD && adminPassword === process.env.ADMIN_PASSWORD);
 }
 
+function isMissingTableError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: string }).code === "PGRST205"
+  );
+}
+
+function missingTableResponse() {
+  return NextResponse.json(
+    { code: "SUPABASE_TABLE_NOT_READY", error: "Supabase 테이블이 생성되지 않았습니다." },
+    { status: 503 }
+  );
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as SubmissionRequest;
@@ -64,6 +80,9 @@ export async function POST(request: Request) {
       .single<SubmissionRow>();
 
     if (error) {
+      if (isMissingTableError(error)) {
+        return missingTableResponse();
+      }
       throw error;
     }
 
@@ -95,6 +114,9 @@ export async function GET(request: Request) {
       .returns<SubmissionRow[]>();
 
     if (error) {
+      if (isMissingTableError(error)) {
+        return missingTableResponse();
+      }
       throw error;
     }
 
