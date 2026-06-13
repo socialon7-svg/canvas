@@ -28,16 +28,19 @@ AI_MODEL_NAME=meta/llama-3.3-70b-instruct
 AI_MOCK=false
 
 NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_SECRET_KEY=
 
 ADMIN_PASSWORD=
 ```
 
 주의:
 
-- `AI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_PASSWORD`는 서버에서만 사용합니다.
-- `NEXT_PUBLIC_SUPABASE_URL`만 브라우저 노출이 가능한 값입니다.
+- `AI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_SECRET_KEY`, `ADMIN_PASSWORD`는 서버에서만 사용합니다.
+- `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`는 브라우저 노출이 가능한 값입니다.
 - Supabase가 설정되지 않으면 제출은 기존 MVP처럼 해당 브라우저 `localStorage`에 임시 저장됩니다.
+- 서버 기반 중앙 저장을 활성화하려면 `SUPABASE_SERVICE_ROLE_KEY` 또는 `SUPABASE_SECRET_KEY`가 필요합니다.
 
 ## Supabase 테이블
 
@@ -100,4 +103,4 @@ AI_MOCK=false
 
 ## Vercel 배포
 
-Vercel Project Environment Variables에 위 환경변수를 설정하세요. 특히 Supabase 중앙 저장을 사용하려면 `NEXT_PUBLIC_SUPABASE_URL`과 `SUPABASE_SERVICE_ROLE_KEY`가 모두 필요합니다.
+Vercel Project Environment Variables에 위 환경변수를 설정하세요. 특히 Supabase 중앙 저장을 사용하려면 `NEXT_PUBLIC_SUPABASE_URL`과 `SUPABASE_SERVICE_ROLE_KEY` 또는 `SUPABASE_SECRET_KEY`가 필요합니다.
