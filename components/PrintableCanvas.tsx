@@ -6,10 +6,14 @@ const topRow: CanvasFieldKey[] = ["problem", "solution", "uniqueValueProposition
 const bottomRow: CanvasFieldKey[] = ["existingAlternatives", "keyMetrics", "channels", "costStructure", "revenueStreams"];
 
 function BulletList({ items }: { items: string[] }) {
+  const visibleItems = items.slice(0, 3);
+
   return (
     <ul className="print-bullets mt-1 list-disc space-y-1 pl-4">
-      {items.map((item, index) => (
-        <li key={`${item}-${index}`}>{item}</li>
+      {visibleItems.map((item, index) => (
+        <li key={`${item}-${index}`} className="break-keep">
+          {item}
+        </li>
       ))}
     </ul>
   );
@@ -17,7 +21,7 @@ function BulletList({ items }: { items: string[] }) {
 
 function CanvasCell({ submission, field }: { submission: LeanCanvasSubmission; field: CanvasFieldKey }) {
   return (
-    <section className="print-cell print-avoid-break min-h-32 border border-gray-900 p-2">
+    <section className="print-cell print-avoid-break min-h-32 overflow-hidden border border-gray-900 p-2">
       <h3 className="print-cell-title text-[11px] font-extrabold text-gray-950">{canvasLabels[field]}</h3>
       <BulletList items={submission.canvas[field]} />
     </section>
@@ -63,7 +67,7 @@ export default function PrintableCanvas({ submission }: { submission: LeanCanvas
         </div>
       </main>
 
-      <footer className="print-footer mt-3 grid gap-3 border-t border-gray-900 pt-2 text-[10px] sm:grid-cols-[140px_1fr]">
+      <footer className="print-footer mt-3 grid gap-3 overflow-hidden border-t border-gray-900 pt-2 text-[10px] sm:grid-cols-[140px_1fr]">
         <p>
           <span className="font-bold">생성일</span>
           <br />

@@ -34,6 +34,9 @@ export default function CanvasEditor() {
   const [participant, setParticipant] = useState<ParticipantInput>(emptyParticipantInput);
   const [canvas, setCanvas] = useState<LeanCanvasDraft>(emptyCanvasDraft);
   const [loaded, setLoaded] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const [fallbackNotice, setFallbackNotice] = useState("");
 
   useEffect(() => {
     const draft = loadDraftSession();
@@ -52,9 +55,45 @@ export default function CanvasEditor() {
     saveDraftSession({ participant, canvas: nextCanvas });
   };
 
-  const submit = () => {
-    const submission = saveSubmission(participant, canvas);
-    router.push(`/preview/${submission.id}`);
+  const submit = async () => {
+    setSubmitting(true);
+    setSubmitError("");
+    setFallbackNotice("");
+
+    try {
+      const response = await fetch("/api/submissions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          participant,
+          canvas
+        })
+      });
+      const data = (await response.json()) as {
+        submission?: { id: string };
+        code?: string;
+        error?: string;
+      };
+
+      if (response.status === 503 && data.code === "SUPABASE_NOT_CONFIGURED") {
+        const fallbackSubmission = saveSubmission(participant, canvas);
+        setFallbackNotice("중앙 저장소가 아직 설정되지 않아 이 브라우저에 임시 저장했습니다.");
+        router.push(`/preview/${fallbackSubmission.id}`);
+        return;
+      }
+
+      if (!response.ok || !data.submission) {
+        throw new Error(data.error || "제출 저장에 실패했습니다.");
+      }
+
+      router.push(`/preview/${data.submission.id}`);
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "제출 중 오류가 발생했습니다.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (!loaded) {
@@ -75,15 +114,27 @@ export default function CanvasEditor() {
           <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" onClick={() => router.push("/")}>
             입력으로 돌아가기
           </button>
-          <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white" onClick={submit}>
-            최종 제출하기
+          <button
+            className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:bg-gray-400"
+            disabled={submitting}
+            onClick={submit}
+          >
+            {submitting ? "제출 중..." : "수정 완료 및 PDF 생성하기"}
           </button>
         </div>
       </header>
 
       <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        각 항목은 줄바꿈으로 bullet을 나눕니다. 인쇄 품질을 위해 항목당 2~3줄, 줄당 짧은 문장을 권장합니다.
+        AI 초안은 완성본이 아닙니다. 팀 상황에 맞게 문장을 직접 수정한 뒤 제출하세요.
       </div>
+      {submitError ? (
+        <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{submitError}</div>
+      ) : null}
+      {fallbackNotice ? (
+        <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {fallbackNotice}
+        </div>
+      ) : null}
 
       <main className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {editableFields.map((key) => (

@@ -1,6 +1,6 @@
-# 린캔버스 초안 자동화 및 PDF 제출 MVP
+# 린캔버스 초안 자동화 및 PDF 제출 시스템
 
-창업교육 참가자가 아이디어 정보를 입력하고, AI가 생성한 린캔버스 초안을 수정한 뒤 A4 가로형 인쇄/PDF 저장까지 진행하는 Next.js MVP입니다.
+창업교육 참가자가 아이디어 정보를 입력하면 AI가 린캔버스 초안을 생성하고, 참가자가 수정 후 최종 제출하면 A4 가로형 PDF로 산출되는 웹앱입니다.
 
 ## 실행
 
@@ -11,29 +11,93 @@ npm run dev
 
 기본 주소는 `http://localhost:3000`입니다.
 
-현재 `.env.local`은 현장 테스트를 위해 `AI_MOCK=true`로 설정되어 있습니다. 실제 AI API를 사용할 때는 아래처럼 값을 바꾸세요.
+품질 확인:
 
 ```bash
-AI_API_KEY=실제_API_키
+npm run typecheck
+npm run lint
+npm run build
+```
+
+## 환경변수
+
+```bash
+AI_API_KEY=
 AI_BASE_URL=https://integrate.api.nvidia.com/v1
 AI_MODEL_NAME=meta/llama-3.3-70b-instruct
 AI_MOCK=false
-ADMIN_PASSWORD=관리자_암호
+
+NEXT_PUBLIC_SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+
+ADMIN_PASSWORD=
 ```
 
-API Key는 `/api/generate` 서버 Route에서만 읽고 프론트엔드로 노출하지 않습니다.
+주의:
 
-## 화면
+- `AI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_PASSWORD`는 서버에서만 사용합니다.
+- `NEXT_PUBLIC_SUPABASE_URL`만 브라우저 노출이 가능한 값입니다.
+- Supabase가 설정되지 않으면 제출은 기존 MVP처럼 해당 브라우저 `localStorage`에 임시 저장됩니다.
+
+## Supabase 테이블
+
+Supabase SQL Editor에서 아래 SQL을 실행하세요.
+
+```sql
+create table if not exists lean_canvas_submissions (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  participant jsonb not null,
+  canvas jsonb not null
+);
+
+create index if not exists idx_lean_canvas_submissions_created_at
+on lean_canvas_submissions (created_at desc);
+```
+
+운영 초기에는 RLS를 끄거나, 서버 Route에서 service role key로만 접근하게 구성합니다. 클라이언트에서 직접 insert/select하지 않습니다.
+
+## 화면 경로
 
 - `/` 참가자 입력 화면
 - `/editor` AI 생성 결과 수정 화면
-- `/preview/[id]` PDF 미리보기 / 제출 완료 화면
+- `/preview/[id]` 제출 완료 / PDF 미리보기 화면
 - `/admin` 관리자 제출 목록 화면
 
-## 저장 방식
+## 현장 운영 흐름
 
-MVP 저장소는 브라우저 `localStorage`입니다. 제출 데이터 타입은 `lib/types.ts`에 분리되어 있어 추후 Supabase 테이블 구조로 옮기기 쉽도록 구성했습니다.
+1. 참가자가 QR 또는 링크로 접속
+2. 팀 정보와 아이디어 입력
+3. AI 초안 생성
+4. 참가자가 직접 수정
+5. 최종 제출
+6. PDF 다운로드 또는 인쇄
+7. 관리자는 전체 제출 목록 확인
+
+## 관리자
+
+`/admin`에서 관리자 암호를 입력하면 제출 목록을 볼 수 있습니다. 목록에서는 검색, 새로고침, 미리보기, PDF 화면 이동, 삭제가 가능합니다.
+
+운영 배포에서는 Vercel 환경변수 `ADMIN_PASSWORD`를 반드시 설정하세요.
 
 ## PDF / 인쇄
 
-미리보기 화면의 `PDF 다운로드`와 `바로 인쇄`는 브라우저 인쇄 창을 엽니다. 대상에서 `PDF로 저장`을 선택하면 A4 가로형 PDF로 저장할 수 있습니다.
+미리보기 화면의 `PDF 다운로드`는 `html2pdf.js`로 실제 PDF 파일을 생성합니다. `바로 인쇄`는 브라우저 인쇄 창을 열며, A4 가로형 한 페이지 출력에 맞춰 `@page`와 `@media print`를 적용합니다.
+
+## AI 테스트
+
+API 비용 없이 흐름을 점검하려면:
+
+```bash
+AI_MOCK=true
+```
+
+실제 AI API를 사용할 때는:
+
+```bash
+AI_MOCK=false
+```
+
+## Vercel 배포
+
+Vercel Project Environment Variables에 위 환경변수를 설정하세요. 특히 Supabase 중앙 저장을 사용하려면 `NEXT_PUBLIC_SUPABASE_URL`과 `SUPABASE_SERVICE_ROLE_KEY`가 모두 필요합니다.

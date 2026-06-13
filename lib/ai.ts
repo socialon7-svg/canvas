@@ -21,24 +21,52 @@ export function buildLeanCanvasPrompt(input: ParticipantInput) {
   ].join("\n");
 }
 
-export function parseCanvasJson(raw: string): LeanCanvasDraft {
+function extractJsonObject(raw: string) {
   const cleaned = raw
     .trim()
     .replace(/^```(?:json)?/i, "")
     .replace(/```$/i, "")
     .trim();
-  const parsed = JSON.parse(cleaned) as Partial<Record<keyof LeanCanvasDraft, unknown>>;
+
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+    throw new Error("AI 응답에서 JSON 객체를 찾지 못했습니다.");
+  }
+
+  return cleaned.slice(firstBrace, lastBrace + 1);
+}
+
+function normalizeBulletArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item).trim())
+      .filter(Boolean)
+      .map((item) => item.replace(/^[-•]\s*/, ""))
+      .slice(0, 3);
+  }
+
+  if (typeof value === "string") {
+    return value
+      .split(/\n|•|- /)
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map((item) => item.replace(/^[-•]\s*/, ""))
+      .slice(0, 3);
+  }
+
+  return [];
+}
+
+export function parseCanvasJson(raw: string): LeanCanvasDraft {
+  const jsonText = extractJsonObject(raw);
+  const parsed = JSON.parse(jsonText) as Partial<Record<keyof LeanCanvasDraft, unknown>>;
   const result: LeanCanvasDraft = { ...emptyCanvasDraft };
 
   for (const key of requiredKeys) {
-    const value = parsed[key];
-    if (!Array.isArray(value)) {
-      throw new Error(`AI 응답에 ${key} 배열이 없습니다.`);
-    }
-    result[key] = value
-      .map((item) => String(item).trim())
-      .filter(Boolean)
-      .slice(0, 3);
+    const items = normalizeBulletArray(parsed[key]);
+    result[key] = items.length > 0 ? items : ["추가 작성 필요"];
   }
 
   return result;
@@ -62,6 +90,10 @@ export function createMockCanvas(input: ParticipantInput): LeanCanvasDraft {
   };
 }
 
+function isAbortError(error: unknown) {
+  return error instanceof Error && error.name === "AbortError";
+}
+
 export async function generateLeanCanvas(input: ParticipantInput): Promise<LeanCanvasDraft> {
   if (process.env.AI_MOCK === "true") {
     return createMockCanvas(input);
@@ -75,41 +107,55 @@ export async function generateLeanCanvas(input: ParticipantInput): Promise<LeanC
     throw new Error(".env.local에 AI_API_KEY, AI_BASE_URL, AI_MODEL_NAME을 설정하세요.");
   }
 
-  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.4,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content: "너는 JSON만 반환하는 창업교육 린캔버스 작성 도우미다."
-        },
-        {
-          role: "user",
-          content: buildLeanCanvasPrompt(input)
-        }
-      ]
-    })
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 25000);
 
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`AI API 호출 실패: ${response.status} ${detail}`);
+  try {
+    const response = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.3,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content:
+              "너는 JSON만 반환하는 창업교육 린캔버스 작성 도우미다. 설명, 마크다운, 코드블록 없이 JSON만 반환한다."
+          },
+          {
+            role: "user",
+            content: buildLeanCanvasPrompt(input)
+          }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(`AI API 호출 실패: ${response.status} ${detail}`);
+    }
+
+    const data = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) {
+      throw new Error("AI 응답 본문이 비어 있습니다.");
+    }
+
+    return parseCanvasJson(content);
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  const data = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new Error("AI 응답 본문이 비어 있습니다.");
-  }
-
-  return parseCanvasJson(content);
 }

@@ -19,6 +19,36 @@ const fields: Array<{ key: keyof ParticipantInput; label: string; placeholder: s
   { key: "differentiation", label: "차별점", placeholder: "경쟁 서비스와 다른 강점을 적어주세요." }
 ];
 
+const validateInput = (input: ParticipantInput) => {
+  const requiredFields: Array<keyof ParticipantInput> = ["educationName", "teamName", "participantName", "ideaName"];
+  const missing = requiredFields.filter((key) => !input[key]?.trim());
+
+  if (missing.length > 0) {
+    return "교육명, 팀명, 참가자명, 아이디어명은 필수입니다.";
+  }
+
+  const ideaContext = [
+    input.ideaSummary,
+    input.targetCustomer,
+    input.problemToSolve,
+    input.ourSolution,
+    input.revenueModel,
+    input.differentiation
+  ]
+    .join(" ")
+    .trim();
+
+  if (!ideaContext) {
+    return "아이디어 한 줄 설명, 고객, 문제, 해결책, 수익모델, 차별점 중 최소 1개는 작성해야 합니다.";
+  }
+
+  if (ideaContext.length < 15) {
+    return "AI가 초안을 만들 수 있도록 아이디어 내용을 조금 더 구체적으로 작성해주세요.";
+  }
+
+  return "";
+};
+
 export default function InputForm() {
   const router = useRouter();
   const [input, setInput] = useState<ParticipantInput>(emptyParticipantInput);
@@ -30,8 +60,15 @@ export default function InputForm() {
   };
 
   const generate = async () => {
-    setLoading(true);
     setError("");
+    const validationError = validateInput(input);
+
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setLoading(true);
     try {
       const response = await fetch("/api/generate", {
         method: "POST",
@@ -56,8 +93,10 @@ export default function InputForm() {
       <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-semibold text-blue-700">창업교육 MVP</p>
-          <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-950">린캔버스 초안 자동화</h1>
-          <p className="mt-2 text-sm text-gray-600">입력 후 AI 초안을 만들고, 수정한 뒤 A4 가로형으로 제출합니다.</p>
+          <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-950">AI 린캔버스 작성 및 PDF 제출</h1>
+          <p className="mt-2 text-sm text-gray-600">
+            창업 아이디어를 입력하면 AI가 린캔버스 초안을 만들고, 수정 후 PDF로 제출할 수 있습니다.
+          </p>
         </div>
         <a className="text-sm font-semibold text-gray-700 underline" href="/admin">
           관리자 제출 목록
@@ -107,7 +146,7 @@ export default function InputForm() {
             disabled={loading}
             onClick={generate}
           >
-            {loading ? "AI 초안 생성 중..." : "AI 린캔버스 초안 생성"}
+            {loading ? "AI 초안 생성 중... 잠시만 기다려주세요" : "AI 초안 생성하기"}
           </button>
         </div>
       </main>

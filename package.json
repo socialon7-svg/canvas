@@ -6,10 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "next": "latest",
+    "@supabase/supabase-js": "^2.45.4",
+    "html2pdf.js": "^0.14.0",
+    "next": "16.2.9",
     "react": "latest",
     "react-dom": "latest"
   },
@@ -18,6 +21,8 @@
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "16.2.9",
     "tailwindcss": "latest",
     "typescript": "latest"
   }

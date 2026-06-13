@@ -37,6 +37,8 @@ button {
     width: 297mm;
     min-height: 210mm;
     background: #ffffff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
   .no-print {
@@ -46,8 +48,8 @@ button {
   .print-page {
     display: flex !important;
     width: 289mm !important;
-    min-height: 202mm !important;
     height: 202mm !important;
+    max-width: none !important;
     flex-direction: column !important;
     margin: 0 !important;
     padding: 4mm !important;
@@ -66,8 +68,8 @@ button {
   .print-canvas-table {
     flex: 1 1 auto !important;
     margin-top: 3mm !important;
-    font-size: 10.5pt !important;
-    line-height: 1.32 !important;
+    font-size: 9.5pt !important;
+    line-height: 1.28 !important;
   }
 
   .print-canvas-table > div {
@@ -77,12 +79,13 @@ button {
 
   .print-cell {
     min-height: 0 !important;
-    padding: 3mm !important;
+    padding: 2.5mm !important;
+    overflow: hidden !important;
   }
 
   .print-cell-title {
-    font-size: 11pt !important;
-    margin-bottom: 1.5mm !important;
+    font-size: 10.5pt !important;
+    margin-bottom: 1.2mm !important;
   }
 
   .print-bullets {
@@ -90,11 +93,20 @@ button {
     padding-left: 4mm !important;
   }
 
+  .print-bullets li {
+    margin-bottom: 1mm !important;
+    overflow: hidden !important;
+    overflow-wrap: anywhere !important;
+    word-break: keep-all !important;
+  }
+
   .print-footer {
     flex: 0 0 auto !important;
     margin-top: 3mm !important;
     padding-top: 2mm !important;
-    font-size: 9.5pt !important;
+    font-size: 9pt !important;
+    max-height: 25mm !important;
+    overflow: hidden !important;
   }
 
   .print-avoid-break {
