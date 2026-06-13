@@ -88,6 +88,10 @@ export async function POST(request: Request) {
       throw error;
     }
 
+    if (!data) {
+      return missingTableResponse();
+    }
+
     return NextResponse.json({ submission: toSubmission(data) });
   } catch (error) {
     if (isMissingTableError(error)) {
@@ -123,6 +127,10 @@ export async function GET(request: Request) {
         return missingTableResponse();
       }
       throw error;
+    }
+
+    if (!data) {
+      return missingTableResponse();
     }
 
     return NextResponse.json({
