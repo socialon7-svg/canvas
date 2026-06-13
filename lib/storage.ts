@@ -61,3 +61,10 @@ export function saveSubmission(participant: ParticipantInput, canvas: LeanCanvas
 export function getSubmission(id: string) {
   return loadSubmissions().find((submission) => submission.id === id) ?? null;
 }
+
+export function deleteSubmission(id: string) {
+  if (!isBrowser()) return [];
+  const submissions = loadSubmissions().filter((submission) => submission.id !== id);
+  window.localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(submissions));
+  return submissions;
+}

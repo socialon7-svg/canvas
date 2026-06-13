@@ -18,6 +18,7 @@ AI_API_KEY=실제_API_키
 AI_BASE_URL=https://integrate.api.nvidia.com/v1
 AI_MODEL_NAME=meta/llama-3.3-70b-instruct
 AI_MOCK=false
+ADMIN_PASSWORD=관리자_암호
 ```
 
 API Key는 `/api/generate` 서버 Route에서만 읽고 프론트엔드로 노출하지 않습니다.

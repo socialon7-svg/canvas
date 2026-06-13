@@ -28,7 +28,7 @@ button {
 
 @page {
   size: A4 landscape;
-  margin: 8mm;
+  margin: 4mm;
 }
 
 @media print {
@@ -44,12 +44,57 @@ button {
   }
 
   .print-page {
-    width: 281mm !important;
-    min-height: 194mm !important;
+    display: flex !important;
+    width: 289mm !important;
+    min-height: 202mm !important;
+    height: 202mm !important;
+    flex-direction: column !important;
     margin: 0 !important;
-    padding: 0 !important;
+    padding: 4mm !important;
     box-shadow: none !important;
     border: none !important;
+    border-radius: 0 !important;
+    color: #000000 !important;
+    overflow: hidden !important;
+  }
+
+  .print-header {
+    flex: 0 0 auto !important;
+    padding-bottom: 3mm !important;
+  }
+
+  .print-canvas-table {
+    flex: 1 1 auto !important;
+    margin-top: 3mm !important;
+    font-size: 10.5pt !important;
+    line-height: 1.32 !important;
+  }
+
+  .print-canvas-table > div {
+    height: 100% !important;
+    grid-template-rows: 1fr 1fr !important;
+  }
+
+  .print-cell {
+    min-height: 0 !important;
+    padding: 3mm !important;
+  }
+
+  .print-cell-title {
+    font-size: 11pt !important;
+    margin-bottom: 1.5mm !important;
+  }
+
+  .print-bullets {
+    margin-top: 0 !important;
+    padding-left: 4mm !important;
+  }
+
+  .print-footer {
+    flex: 0 0 auto !important;
+    margin-top: 3mm !important;
+    padding-top: 2mm !important;
+    font-size: 9.5pt !important;
   }
 
   .print-avoid-break {

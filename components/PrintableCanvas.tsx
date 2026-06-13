@@ -7,7 +7,7 @@ const bottomRow: CanvasFieldKey[] = ["existingAlternatives", "keyMetrics", "chan
 
 function BulletList({ items }: { items: string[] }) {
   return (
-    <ul className="mt-1 list-disc space-y-1 pl-4">
+    <ul className="print-bullets mt-1 list-disc space-y-1 pl-4">
       {items.map((item, index) => (
         <li key={`${item}-${index}`}>{item}</li>
       ))}
@@ -17,8 +17,8 @@ function BulletList({ items }: { items: string[] }) {
 
 function CanvasCell({ submission, field }: { submission: LeanCanvasSubmission; field: CanvasFieldKey }) {
   return (
-    <section className="print-avoid-break min-h-32 border border-gray-900 p-2">
-      <h3 className="text-[11px] font-extrabold text-gray-950">{canvasLabels[field]}</h3>
+    <section className="print-cell print-avoid-break min-h-32 border border-gray-900 p-2">
+      <h3 className="print-cell-title text-[11px] font-extrabold text-gray-950">{canvasLabels[field]}</h3>
       <BulletList items={submission.canvas[field]} />
     </section>
   );
@@ -32,7 +32,7 @@ export default function PrintableCanvas({ submission }: { submission: LeanCanvas
 
   return (
     <article className="print-page mx-auto w-full max-w-[1120px] rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-      <header className="border-b-2 border-gray-950 pb-3">
+      <header className="print-header border-b-2 border-gray-950 pb-3">
         <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
           <p>
             <span className="font-bold">교육명</span> {submission.participant.educationName || "-"}
@@ -52,7 +52,7 @@ export default function PrintableCanvas({ submission }: { submission: LeanCanvas
         </p>
       </header>
 
-      <main className="mt-3 text-[10px] leading-snug">
+      <main className="print-canvas-table mt-3 text-[10px] leading-snug">
         <div className="grid grid-cols-5">
           {topRow.map((field) => (
             <CanvasCell key={field} field={field} submission={submission} />
@@ -63,7 +63,7 @@ export default function PrintableCanvas({ submission }: { submission: LeanCanvas
         </div>
       </main>
 
-      <footer className="mt-3 grid gap-3 border-t border-gray-900 pt-2 text-[10px] sm:grid-cols-[140px_1fr]">
+      <footer className="print-footer mt-3 grid gap-3 border-t border-gray-900 pt-2 text-[10px] sm:grid-cols-[140px_1fr]">
         <p>
           <span className="font-bold">생성일</span>
           <br />
