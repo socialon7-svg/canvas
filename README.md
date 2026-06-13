@@ -15,8 +15,8 @@ npm run dev
 
 ```bash
 AI_API_KEY=실제_API_키
-AI_BASE_URL=https://api.openai.com/v1
-AI_MODEL_NAME=gpt-4o-mini
+AI_BASE_URL=https://integrate.api.nvidia.com/v1
+AI_MODEL_NAME=meta/llama-3.3-70b-instruct
 AI_MOCK=false
 ```
 
