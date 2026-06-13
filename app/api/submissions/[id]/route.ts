@@ -19,7 +19,7 @@ function toSubmission(row: SubmissionRow): LeanCanvasSubmission {
 }
 
 function isMissingTableError(error: unknown) {
-  const text = typeof error === "string" ? error : JSON.stringify(error);
+  const text = typeof error === "string" ? error : JSON.stringify(error) ?? "";
   return (
     text.includes("PGRST205") ||
     text.includes("42P01") ||
@@ -27,6 +27,12 @@ function isMissingTableError(error: unknown) {
     text.includes("Could not find the table") ||
     text.includes("lean_canvas_submissions")
   );
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  return JSON.stringify(error) || fallback;
 }
 
 function missingTableResponse() {
@@ -65,7 +71,7 @@ export async function GET(_request: Request, { params }: { params: Promise<unkno
     if (isMissingTableError(error)) {
       return missingTableResponse();
     }
-    const message = error instanceof Error ? error.message : "제출물 조회 실패";
+    const message = getErrorMessage(error, "제출물 조회 실패");
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
