@@ -2,8 +2,15 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import StatusBadge from "@/components/StatusBadge";
 import type { FeedbackStatus, HighViewOperationsState, LeanCanvasSubmission } from "@/lib/types";
 import { deleteSubmission, loadSubmissions } from "@/lib/storage";
+import {
+  getFeedbackProgressStatus,
+  getParticipantStatus,
+  getPdfStatus,
+  getSubmissionStatus
+} from "@/lib/status";
 import {
   createParticipant,
   createProgram,
@@ -19,6 +26,17 @@ import {
 } from "@/lib/operationsStorage";
 
 type InternalTab = "dashboard" | "programs" | "participants" | "teams" | "submissions" | "report";
+type SubmissionFilter = "all" | "notEntered" | "submitted" | "notSubmitted" | "feedbackPending" | "feedbackDone" | "pdfFailed";
+
+const submissionFilterLabels: Record<SubmissionFilter, string> = {
+  all: "전체",
+  notEntered: "미입장",
+  submitted: "제출 완료",
+  notSubmitted: "미제출",
+  feedbackPending: "피드백 대기",
+  feedbackDone: "피드백 완료",
+  pdfFailed: "PDF 오류"
+};
 
 const ADMIN_SESSION_KEY = "highviewlab-internal-authorized";
 const ADMIN_PASSWORD_KEY = "highviewlab-internal-password";
@@ -104,6 +122,7 @@ export default function InternalPortal() {
   const [fallbackMode, setFallbackMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [submissionFilter, setSubmissionFilter] = useState<SubmissionFilter>("all");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -177,6 +196,77 @@ export default function InternalPortal() {
       })),
     [state, submissions]
   );
+  const programStatusRows = useMemo(
+    () =>
+      programParticipants.map((participant) => {
+        const submission = programSubmissions.find(
+          (item) =>
+            item.id === participant.latestSubmissionId ||
+            item.participant.operation?.participantId === participant.id ||
+            item.participant.participantName === participant.name
+        );
+        const feedback = submission ? findFeedback(state, submission.id) : undefined;
+        const participantStatus = getParticipantStatus(participant, submission);
+        const submissionStatus = getSubmissionStatus(submission);
+        const feedbackStatus = getFeedbackProgressStatus(feedback);
+        const pdfStatus = getPdfStatus(submission);
+
+        return {
+          participant,
+          submission,
+          feedback,
+          participantStatus,
+          submissionStatus,
+          feedbackStatus,
+          pdfStatus
+        };
+      }),
+    [programParticipants, programSubmissions, state]
+  );
+  const operationalMetrics = useMemo(
+    () => ({
+      totalParticipants: programStatusRows.length,
+      entered: programStatusRows.filter((row) => row.participantStatus !== "invited").length,
+      notEntered: programStatusRows.filter((row) => row.participantStatus === "invited").length,
+      submitted: programStatusRows.filter((row) => row.submission).length,
+      notSubmitted: programStatusRows.filter((row) => !row.submission).length,
+      feedbackPending: programStatusRows.filter((row) => row.submission && row.feedbackStatus !== "published").length,
+      feedbackDone: programStatusRows.filter((row) => row.feedbackStatus === "published").length,
+      pdfSuccess: programStatusRows.filter((row) => row.pdfStatus === "success").length,
+      pdfFailed: programStatusRows.filter((row) => row.pdfStatus === "failed").length
+    }),
+    [programStatusRows]
+  );
+  const filterCounts = useMemo<Record<SubmissionFilter, number>>(
+    () => ({
+      all: programStatusRows.length,
+      notEntered: programStatusRows.filter((row) => row.participantStatus === "invited").length,
+      submitted: programStatusRows.filter((row) => row.submission).length,
+      notSubmitted: programStatusRows.filter((row) => !row.submission).length,
+      feedbackPending: programStatusRows.filter((row) => row.submission && row.feedbackStatus !== "published").length,
+      feedbackDone: programStatusRows.filter((row) => row.feedbackStatus === "published").length,
+      pdfFailed: programStatusRows.filter((row) => row.pdfStatus === "failed").length
+    }),
+    [programStatusRows]
+  );
+  const filteredStatusRows = useMemo(() => {
+    switch (submissionFilter) {
+      case "notEntered":
+        return programStatusRows.filter((row) => row.participantStatus === "invited");
+      case "submitted":
+        return programStatusRows.filter((row) => row.submission);
+      case "notSubmitted":
+        return programStatusRows.filter((row) => !row.submission);
+      case "feedbackPending":
+        return programStatusRows.filter((row) => row.submission && row.feedbackStatus !== "published");
+      case "feedbackDone":
+        return programStatusRows.filter((row) => row.feedbackStatus === "published");
+      case "pdfFailed":
+        return programStatusRows.filter((row) => row.pdfStatus === "failed");
+      default:
+        return programStatusRows;
+    }
+  }, [programStatusRows, submissionFilter]);
 
   const persistState = (nextState: HighViewOperationsState) => {
     saveOperationsState(nextState);
@@ -226,18 +316,21 @@ export default function InternalPortal() {
   const downloadSubmissionsCsv = () => {
     if (!currentProgram) return;
     const rows = [
-      ["프로그램", "팀", "참가자", "아이디어", "제출일", "피드백상태", "멘토코멘트", "다음액션"],
-      ...programSubmissions.map((submission) => {
-        const feedback = findFeedback(state, submission.id);
+      ["프로그램", "팀", "참가자", "참여자코드", "입장상태", "제출상태", "아이디어", "제출일", "피드백상태", "PDF상태", "멘토코멘트", "다음액션"],
+      ...programStatusRows.map((row) => {
         return [
           currentProgram.name,
-          submission.participant.teamName,
-          submission.participant.participantName,
-          submission.participant.ideaName,
-          new Date(submission.createdAt).toLocaleString("ko-KR"),
-          feedback?.status || "",
-          feedback?.comment || "",
-          feedback?.nextAction || ""
+          row.submission?.participant.teamName || programTeams.find((team) => team.id === row.participant.teamId)?.name || "",
+          row.participant.name || row.submission?.participant.participantName || "",
+          row.participant.code,
+          row.participantStatus,
+          row.submissionStatus,
+          row.submission?.participant.ideaName || "",
+          row.submission ? new Date(row.submission.createdAt).toLocaleString("ko-KR") : "",
+          row.feedbackStatus,
+          row.pdfStatus,
+          row.feedback?.comment || "",
+          row.feedback?.nextAction || ""
         ];
       })
     ];
@@ -253,10 +346,13 @@ export default function InternalPortal() {
         "팀",
         "참가자",
         "참여자코드",
+        "입장상태",
+        "제출상태",
         "아이디어",
         "한줄설명",
         "제출일",
         "피드백상태",
+        "PDF상태",
         "멘토코멘트",
         "다음액션",
         "열람URL"
@@ -269,6 +365,10 @@ export default function InternalPortal() {
           (item) => item.id === submission.participant.operation?.participantId
         );
         const feedback = findFeedback(state, submission.id);
+        const participantStatus = participant ? getParticipantStatus(participant, submission) : "submitted";
+        const submissionStatus = getSubmissionStatus(submission);
+        const feedbackStatus = getFeedbackProgressStatus(feedback);
+        const pdfStatus = getPdfStatus(submission);
         const previewUrl =
           typeof window === "undefined" ? `/preview/${submission.id}` : `${window.location.origin}/preview/${submission.id}`;
 
@@ -279,10 +379,13 @@ export default function InternalPortal() {
           submission.participant.teamName,
           submission.participant.participantName,
           participant?.code || submission.participant.operation?.participantCode || "",
+          participantStatus,
+          submissionStatus,
           submission.participant.ideaName,
           submission.participant.ideaSummary,
           new Date(submission.createdAt).toLocaleString("ko-KR"),
-          feedback?.status || "미작성",
+          feedbackStatus,
+          pdfStatus,
           feedback?.comment || "",
           feedback?.nextAction || "",
           previewUrl
@@ -551,6 +654,14 @@ export default function InternalPortal() {
             <MetricCard label="전체 피드백" value={overallStats.feedbacks} hint="저장된 코멘트" />
             <MetricCard label="현재 선택" value={stats.submitRate + "%"} hint={`${currentProgram.name} 제출률`} />
           </section>
+          <section className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
+            <MetricCard label="현재 참여자" value={operationalMetrics.totalParticipants} hint="선택 프로그램 기준" />
+            <MetricCard label="입장 완료" value={operationalMetrics.entered} hint={`미입장 ${operationalMetrics.notEntered}명`} />
+            <MetricCard label="제출 완료" value={operationalMetrics.submitted} hint={`미제출 ${operationalMetrics.notSubmitted}명`} />
+            <MetricCard label="피드백 대기" value={operationalMetrics.feedbackPending} hint={`완료 ${operationalMetrics.feedbackDone}건`} />
+            <MetricCard label="PDF 완료" value={operationalMetrics.pdfSuccess} hint="생성 가능 상태" />
+            <MetricCard label="PDF 오류" value={operationalMetrics.pdfFailed} hint="복구 확인 필요" />
+          </section>
           <section className="grid gap-3 lg:grid-cols-3">
             {programOverview.map(({ program, stats: programStats }) => (
               <article key={program.id} className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
@@ -746,54 +857,89 @@ export default function InternalPortal() {
 
       {tab === "submissions" ? (
         <main className="grid gap-4">
-          {programSubmissions.length === 0 ? (
+          <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="mb-3">
+              <h2 className="text-lg font-bold text-gray-950">제출물 상태 필터</h2>
+              <p className="mt-1 text-sm text-gray-600">미입장, 미제출, 피드백 대기, PDF 오류를 빠르게 좁혀 봅니다.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(Object.keys(submissionFilterLabels) as SubmissionFilter[]).map((filter) => (
+                <button
+                  key={filter}
+                  className={`rounded-full border px-3 py-1.5 text-sm font-semibold ${
+                    submissionFilter === filter ? "border-blue-700 bg-blue-700 text-white" : "border-gray-300 bg-white text-gray-700"
+                  }`}
+                  onClick={() => setSubmissionFilter(filter)}
+                  type="button"
+                >
+                  {submissionFilterLabels[filter]} {filterCounts[filter]}
+                </button>
+              ))}
+            </div>
+          </section>
+          {filteredStatusRows.length === 0 ? (
             <section className="rounded-lg border border-gray-200 bg-white p-8 text-center text-sm text-gray-600 shadow-sm">
-              이 프로그램에 연결된 린캔버스 제출물이 없습니다.
+              현재 필터에 해당하는 참여자 또는 제출물이 없습니다.
             </section>
           ) : (
-            programSubmissions.map((submission) => {
-              const feedback = state ? findFeedback(state, submission.id) : undefined;
+            filteredStatusRows.map((row) => {
+              const { participant, submission, feedback } = row;
+              const teamName = submission?.participant.teamName || programTeams.find((team) => team.id === participant.teamId)?.name || "팀명 없음";
               return (
-                <article key={submission.id} className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+                <article key={participant.id} className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div>
-                      <h2 className="text-lg font-bold text-gray-950">{submission.participant.ideaName || "아이디어명 없음"}</h2>
-                      <p className="mt-1 text-sm text-gray-600">
-                        {submission.participant.teamName || "팀명 없음"} · {submission.participant.participantName || "참가자 없음"} ·{" "}
-                        {new Date(submission.createdAt).toLocaleString("ko-KR")}
-                      </p>
+                      <h2 className="text-lg font-bold text-gray-950">{submission?.participant.ideaName || "아직 제출 전"}</h2>
+                      <p className="mt-1 text-sm text-gray-600">{teamName} · {participant.name || participant.code}</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <StatusBadge type="participant" value={row.participantStatus} />
+                        <StatusBadge type="submission" value={row.submissionStatus} />
+                        <StatusBadge type="feedback" value={row.feedbackStatus} />
+                        <StatusBadge type="pdf" value={row.pdfStatus} />
+                      </div>
+                      {submission ? (
+                        <p className="mt-2 text-xs text-gray-500">제출 시간: {new Date(submission.createdAt).toLocaleString("ko-KR")}</p>
+                      ) : (
+                        <p className="mt-2 text-xs text-red-600">운영 확인 필요: 아직 연결된 제출물이 없습니다.</p>
+                      )}
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <Link className="rounded-md border border-gray-300 px-3 py-2 text-sm font-semibold" href={`/preview/${submission.id}`}>
-                        미리보기
-                      </Link>
-                      <button className="rounded-md border border-red-200 px-3 py-2 text-sm font-semibold text-red-700" onClick={() => removeSubmission(submission)}>
-                        삭제
-                      </button>
+                      {submission ? (
+                        <>
+                          <Link className="rounded-md border border-gray-300 px-3 py-2 text-sm font-semibold" href={`/preview/${submission.id}`}>
+                            미리보기
+                          </Link>
+                          <button className="rounded-md border border-red-200 px-3 py-2 text-sm font-semibold text-red-700" onClick={() => removeSubmission(submission)}>
+                            삭제
+                          </button>
+                        </>
+                      ) : null}
                     </div>
                   </div>
-                  <form className="mt-4 grid gap-3" data-submission-id={submission.id} onSubmit={handleFeedback}>
-                    <textarea
-                      name="comment"
-                      className="min-h-24 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                      defaultValue={feedback?.comment || ""}
-                      placeholder="참여자가 다음 수정에 바로 쓸 수 있는 구체적 피드백"
-                    />
-                    <div className="grid gap-3 md:grid-cols-[1fr_180px_auto]">
-                      <input
-                        name="nextAction"
-                        className="rounded-md border border-gray-300 px-3 py-2 text-sm"
-                        defaultValue={feedback?.nextAction || ""}
-                        placeholder="다음 액션"
+                  {submission ? (
+                    <form className="mt-4 grid gap-3" data-submission-id={submission.id} onSubmit={handleFeedback}>
+                      <textarea
+                        name="comment"
+                        className="min-h-24 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                        defaultValue={feedback?.comment || ""}
+                        placeholder="참여자가 다음 수정에 바로 쓸 수 있는 구체적 피드백"
                       />
-                      <select name="status" className="rounded-md border border-gray-300 px-3 py-2 text-sm" defaultValue={feedback?.status || "needs_revision"}>
-                        <option value="needs_revision">수정 필요</option>
-                        <option value="good">양호</option>
-                        <option value="excellent">우수</option>
-                      </select>
-                      <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white">피드백 저장</button>
-                    </div>
-                  </form>
+                      <div className="grid gap-3 md:grid-cols-[1fr_180px_auto]">
+                        <input
+                          name="nextAction"
+                          className="rounded-md border border-gray-300 px-3 py-2 text-sm"
+                          defaultValue={feedback?.nextAction || ""}
+                          placeholder="다음 액션"
+                        />
+                        <select name="status" className="rounded-md border border-gray-300 px-3 py-2 text-sm" defaultValue={feedback?.status || "needs_revision"}>
+                          <option value="needs_revision">수정 필요</option>
+                          <option value="good">양호</option>
+                          <option value="excellent">우수</option>
+                        </select>
+                        <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white">피드백 저장</button>
+                      </div>
+                    </form>
+                  ) : null}
                 </article>
               );
             })

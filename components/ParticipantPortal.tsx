@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { HighViewOperationsState, HighViewParticipant, LeanCanvasSubmission } from "@/lib/types";
 import { getSubmission, saveParticipantPrefill } from "@/lib/storage";
+import { normalizeAccessCode, validateAccessCodeInput } from "@/lib/normalize";
 import {
   defaultOperationsState,
   findFeedback,
@@ -112,23 +113,30 @@ export default function ParticipantPortal() {
   const login = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
-    const submittedProgramCode = String(formData.get("programCode") || programCode).trim().toUpperCase();
-    const submittedParticipantCode = String(formData.get("participantCode") || participantCode).trim().toUpperCase();
+    const validation = validateAccessCodeInput({
+      programCode: String(formData.get("programCode") || programCode),
+      participantCode: String(formData.get("participantCode") || participantCode)
+    });
+    if (!validation.ok) {
+      setError(validation.message);
+      return;
+    }
+    const { programCode: submittedProgramCode, participantCode: submittedParticipantCode } = validation.value;
     const matchedProgram = state.programs.find(
-      (item) => item.programCode.toUpperCase() === submittedProgramCode
+      (item) => normalizeAccessCode(item.programCode) === submittedProgramCode
     );
     if (!matchedProgram) {
-      setError("프로그램 코드를 확인해주세요.");
+      setError("입장 정보를 찾을 수 없습니다. 프로그램 코드와 참여자 코드를 다시 확인해주세요.");
       return;
     }
 
     const matchedParticipant = state.participants.find(
       (item) =>
         item.programId === matchedProgram.id &&
-        item.code.toUpperCase() === submittedParticipantCode
+        normalizeAccessCode(item.code) === submittedParticipantCode
     );
     if (!matchedParticipant) {
-      setError("참여자 코드를 확인해주세요.");
+      setError("입장 정보를 찾을 수 없습니다. 프로그램 코드와 참여자 코드를 다시 확인해주세요.");
       return;
     }
 
@@ -194,7 +202,7 @@ export default function ParticipantPortal() {
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                 placeholder="예: HV-DEMO"
                 value={programCode}
-                onChange={(event) => setProgramCode(event.target.value)}
+                onChange={(event) => setProgramCode(normalizeAccessCode(event.target.value))}
               />
             </label>
             <label>
@@ -204,12 +212,12 @@ export default function ParticipantPortal() {
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                 placeholder="예: P-DEMO1"
                 value={participantCode}
-                onChange={(event) => setParticipantCode(event.target.value)}
+                onChange={(event) => setParticipantCode(normalizeAccessCode(event.target.value))}
               />
             </label>
             {error ? (
               <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
-                프로그램 코드 또는 참여자 코드가 올바르지 않습니다. 다시 확인해주세요.
+                {error} 공백과 소문자는 자동으로 보정됩니다. 예: HV-DEMO / P-DEMO1
               </p>
             ) : null}
             <button

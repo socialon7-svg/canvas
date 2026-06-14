@@ -120,7 +120,9 @@ export function saveSubmission(participant: ParticipantInput, canvas: LeanCanvas
     id: crypto.randomUUID(),
     createdAt: new Date().toISOString(),
     participant,
-    canvas
+    canvas,
+    submissionStatus: "submitted",
+    pdfStatus: "success"
   };
   const submissions = [submission, ...loadSubmissions()];
   writeLocalStorage(SUBMISSIONS_KEY, JSON.stringify(submissions));

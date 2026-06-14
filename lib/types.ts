@@ -43,6 +43,10 @@ export interface LeanCanvasSubmission {
   createdAt: string;
   participant: ParticipantInput;
   canvas: LeanCanvasDraft;
+  submissionStatus?: SubmissionStatus;
+  pdfStatus?: PdfStatus;
+  pdfErrorMessage?: string;
+  adminCheckedAt?: string;
 }
 
 export type CanvasFieldKey = keyof LeanCanvasDraft;
@@ -90,6 +94,8 @@ export const emptyCanvasDraft: LeanCanvasDraft = {
 };
 
 export type ProgramStatus = "active" | "closed";
+export type SubmissionStatus = "draft" | "submitted" | "reviewed" | "returned";
+export type PdfStatus = "idle" | "generating" | "success" | "failed";
 
 export interface HighViewProgram {
   id: string;

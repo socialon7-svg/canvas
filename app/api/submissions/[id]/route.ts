@@ -14,7 +14,9 @@ function toSubmission(row: SubmissionRow): LeanCanvasSubmission {
     id: row.id,
     createdAt: row.created_at,
     participant: row.participant,
-    canvas: row.canvas
+    canvas: row.canvas,
+    submissionStatus: "submitted",
+    pdfStatus: "success"
   };
 }
 
