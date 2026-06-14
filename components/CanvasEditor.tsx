@@ -38,6 +38,7 @@ export default function CanvasEditor() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [fallbackNotice, setFallbackNotice] = useState("");
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
 
   useEffect(() => {
     const draft = loadDraftSession();
@@ -54,6 +55,7 @@ export default function CanvasEditor() {
     const nextCanvas = { ...canvas, [key]: toItems(value.split("\n")) };
     setCanvas(nextCanvas);
     saveDraftSession({ participant, canvas: nextCanvas });
+    setLastSavedAt(new Date());
   };
 
   const submit = async () => {
@@ -132,6 +134,9 @@ export default function CanvasEditor() {
 
       <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
         AI 초안은 완성본이 아닙니다. 팀 상황에 맞게 문장을 직접 수정한 뒤 제출하세요.
+        <span className="mt-1 block text-xs">
+          {lastSavedAt ? `마지막 임시저장: ${lastSavedAt.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}` : "수정 내용은 입력 즉시 이 브라우저에 임시저장됩니다."}
+        </span>
       </div>
       {submitError ? (
         <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{submitError}</div>

@@ -123,6 +123,7 @@ export default function InternalPortal() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [submissionFilter, setSubmissionFilter] = useState<SubmissionFilter>("all");
+  const [selectedParticipantId, setSelectedParticipantId] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -267,6 +268,12 @@ export default function InternalPortal() {
         return programStatusRows;
     }
   }, [programStatusRows, submissionFilter]);
+  const selectedStatusRow =
+    filteredStatusRows.find((row) => row.participant.id === selectedParticipantId) || filteredStatusRows[0];
+  const reportSummary = useMemo(() => {
+    if (!currentProgram) return "";
+    return `${currentProgram.name} 운영 현황: 참여자 ${operationalMetrics.totalParticipants}명 중 ${operationalMetrics.entered}명이 입장했고, ${operationalMetrics.submitted}명이 제출했습니다. 미제출 ${operationalMetrics.notSubmitted}명, 피드백 대기 ${operationalMetrics.feedbackPending}건, PDF 오류 ${operationalMetrics.pdfFailed}건입니다.`;
+  }, [currentProgram, operationalMetrics]);
 
   const persistState = (nextState: HighViewOperationsState) => {
     saveOperationsState(nextState);
@@ -393,6 +400,31 @@ export default function InternalPortal() {
       })
     ];
     downloadCsv(`highviewlab-report-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+  };
+
+  const copyUnsubmittedList = async () => {
+    const lines = programStatusRows
+      .filter((row) => !row.submission)
+      .map((row) => {
+        const team = programTeams.find((item) => item.id === row.participant.teamId);
+        return `${team?.name || "미배정"} / ${row.participant.name || "미등록"} / ${row.participant.code}`;
+      });
+    const text = lines.length ? lines.join("\n") : "미제출자가 없습니다.";
+    try {
+      await navigator.clipboard.writeText(text);
+      setNotice("미제출자 목록을 클립보드에 복사했습니다.");
+    } catch {
+      setNotice(text);
+    }
+  };
+
+  const copyReportSummary = async () => {
+    try {
+      await navigator.clipboard.writeText(reportSummary);
+      setNotice("결과보고 요약을 클립보드에 복사했습니다.");
+    } catch {
+      setNotice(reportSummary);
+    }
   };
 
   const login = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -858,9 +890,18 @@ export default function InternalPortal() {
       {tab === "submissions" ? (
         <main className="grid gap-4">
           <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-            <div className="mb-3">
-              <h2 className="text-lg font-bold text-gray-950">제출물 상태 필터</h2>
-              <p className="mt-1 text-sm text-gray-600">미입장, 미제출, 피드백 대기, PDF 오류를 빠르게 좁혀 봅니다.</p>
+            <div className="mb-3 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-gray-950">제출물 상태 필터</h2>
+                <p className="mt-1 text-sm text-gray-600">미입장, 미제출, 피드백 대기, PDF 오류를 빠르게 좁혀 봅니다.</p>
+              </div>
+              <button
+                className="rounded-md border border-gray-300 px-3 py-2 text-sm font-semibold transition-colors hover:bg-gray-50"
+                onClick={copyUnsubmittedList}
+                type="button"
+              >
+                미제출자 목록 복사
+              </button>
             </div>
             <div className="flex flex-wrap gap-2">
               {(Object.keys(submissionFilterLabels) as SubmissionFilter[]).map((filter) => (
@@ -877,73 +918,133 @@ export default function InternalPortal() {
               ))}
             </div>
           </section>
-          {filteredStatusRows.length === 0 ? (
-            <section className="rounded-lg border border-gray-200 bg-white p-8 text-center text-sm text-gray-600 shadow-sm">
-              현재 필터에 해당하는 참여자 또는 제출물이 없습니다.
-            </section>
-          ) : (
-            filteredStatusRows.map((row) => {
-              const { participant, submission, feedback } = row;
-              const teamName = submission?.participant.teamName || programTeams.find((team) => team.id === participant.teamId)?.name || "팀명 없음";
-              return (
-                <article key={participant.id} className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div>
-                      <h2 className="text-lg font-bold text-gray-950">{submission?.participant.ideaName || "아직 제출 전"}</h2>
-                      <p className="mt-1 text-sm text-gray-600">{teamName} · {participant.name || participant.code}</p>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <StatusBadge type="participant" value={row.participantStatus} />
-                        <StatusBadge type="submission" value={row.submissionStatus} />
-                        <StatusBadge type="feedback" value={row.feedbackStatus} />
-                        <StatusBadge type="pdf" value={row.pdfStatus} />
+          <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="grid gap-4">
+              {filteredStatusRows.length === 0 ? (
+                <section className="rounded-lg border border-gray-200 bg-white p-8 text-center text-sm text-gray-600 shadow-sm">
+                  현재 필터에 해당하는 참여자 또는 제출물이 없습니다.
+                </section>
+              ) : (
+                filteredStatusRows.map((row) => {
+                  const { participant, submission, feedback } = row;
+                  const teamName = submission?.participant.teamName || programTeams.find((team) => team.id === participant.teamId)?.name || "팀명 없음";
+                  const active = selectedStatusRow?.participant.id === participant.id;
+                  return (
+                    <article
+                      key={participant.id}
+                      className={`rounded-lg border bg-white p-5 shadow-sm ${active ? "border-blue-300 ring-2 ring-blue-100" : "border-gray-200"}`}
+                    >
+                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <button className="text-left" onClick={() => setSelectedParticipantId(participant.id)} type="button">
+                          <h2 className="text-lg font-bold text-gray-950">{submission?.participant.ideaName || "아직 제출 전"}</h2>
+                          <p className="mt-1 text-sm text-gray-600">{teamName} · {participant.name || participant.code}</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <StatusBadge type="participant" value={row.participantStatus} />
+                            <StatusBadge type="submission" value={row.submissionStatus} />
+                            <StatusBadge type="feedback" value={row.feedbackStatus} />
+                            <StatusBadge type="pdf" value={row.pdfStatus} />
+                          </div>
+                          {submission ? (
+                            <p className="mt-2 text-xs text-gray-500">제출 시간: {new Date(submission.createdAt).toLocaleString("ko-KR")}</p>
+                          ) : (
+                            <p className="mt-2 text-xs text-red-600">운영 확인 필요: 아직 연결된 제출물이 없습니다.</p>
+                          )}
+                        </button>
+                        <div className="flex flex-wrap gap-2">
+                          {submission ? (
+                            <>
+                              <Link className="rounded-md border border-gray-300 px-3 py-2 text-sm font-semibold" href={`/preview/${submission.id}`}>
+                                미리보기
+                              </Link>
+                              <button className="rounded-md border border-red-200 px-3 py-2 text-sm font-semibold text-red-700" onClick={() => removeSubmission(submission)}>
+                                삭제
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
                       </div>
                       {submission ? (
-                        <p className="mt-2 text-xs text-gray-500">제출 시간: {new Date(submission.createdAt).toLocaleString("ko-KR")}</p>
-                      ) : (
-                        <p className="mt-2 text-xs text-red-600">운영 확인 필요: 아직 연결된 제출물이 없습니다.</p>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {submission ? (
-                        <>
-                          <Link className="rounded-md border border-gray-300 px-3 py-2 text-sm font-semibold" href={`/preview/${submission.id}`}>
-                            미리보기
-                          </Link>
-                          <button className="rounded-md border border-red-200 px-3 py-2 text-sm font-semibold text-red-700" onClick={() => removeSubmission(submission)}>
-                            삭제
-                          </button>
-                        </>
+                        <form className="mt-4 grid gap-3" data-submission-id={submission.id} onSubmit={handleFeedback}>
+                          <textarea
+                            name="comment"
+                            className="min-h-24 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                            defaultValue={feedback?.comment || ""}
+                            placeholder="참여자가 다음 수정에 바로 쓸 수 있는 구체적 피드백"
+                          />
+                          <div className="grid gap-3 md:grid-cols-[1fr_180px_auto]">
+                            <input
+                              name="nextAction"
+                              className="rounded-md border border-gray-300 px-3 py-2 text-sm"
+                              defaultValue={feedback?.nextAction || ""}
+                              placeholder="다음 액션"
+                            />
+                            <select name="status" className="rounded-md border border-gray-300 px-3 py-2 text-sm" defaultValue={feedback?.status || "needs_revision"}>
+                              <option value="needs_revision">수정 필요</option>
+                              <option value="good">양호</option>
+                              <option value="excellent">우수</option>
+                            </select>
+                            <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white">피드백 저장</button>
+                          </div>
+                        </form>
                       ) : null}
-                    </div>
+                    </article>
+                  );
+                })
+              )}
+            </div>
+            <aside className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm lg:sticky lg:top-4 lg:self-start">
+              <p className="text-sm font-semibold text-blue-700">선택 상세</p>
+              {selectedStatusRow ? (
+                <div className="mt-3 space-y-4 text-sm">
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-950">
+                      {selectedStatusRow.submission?.participant.ideaName || "제출 전 참여자"}
+                    </h3>
+                    <p className="mt-1 text-gray-600">
+                      {selectedStatusRow.participant.name || "미등록"} · {selectedStatusRow.participant.code}
+                    </p>
                   </div>
-                  {submission ? (
-                    <form className="mt-4 grid gap-3" data-submission-id={submission.id} onSubmit={handleFeedback}>
-                      <textarea
-                        name="comment"
-                        className="min-h-24 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                        defaultValue={feedback?.comment || ""}
-                        placeholder="참여자가 다음 수정에 바로 쓸 수 있는 구체적 피드백"
-                      />
-                      <div className="grid gap-3 md:grid-cols-[1fr_180px_auto]">
-                        <input
-                          name="nextAction"
-                          className="rounded-md border border-gray-300 px-3 py-2 text-sm"
-                          defaultValue={feedback?.nextAction || ""}
-                          placeholder="다음 액션"
-                        />
-                        <select name="status" className="rounded-md border border-gray-300 px-3 py-2 text-sm" defaultValue={feedback?.status || "needs_revision"}>
-                          <option value="needs_revision">수정 필요</option>
-                          <option value="good">양호</option>
-                          <option value="excellent">우수</option>
-                        </select>
-                        <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white">피드백 저장</button>
-                      </div>
-                    </form>
-                  ) : null}
-                </article>
-              );
-            })
-          )}
+                  <div className="flex flex-wrap gap-2">
+                    <StatusBadge type="participant" value={selectedStatusRow.participantStatus} />
+                    <StatusBadge type="submission" value={selectedStatusRow.submissionStatus} />
+                    <StatusBadge type="feedback" value={selectedStatusRow.feedbackStatus} />
+                    <StatusBadge type="pdf" value={selectedStatusRow.pdfStatus} />
+                  </div>
+                  <dl className="grid gap-2 rounded-md bg-gray-50 p-3">
+                    <div>
+                      <dt className="text-gray-500">팀</dt>
+                      <dd className="font-semibold text-gray-950">
+                        {selectedStatusRow.submission?.participant.teamName ||
+                          programTeams.find((team) => team.id === selectedStatusRow.participant.teamId)?.name ||
+                          "미배정"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-gray-500">제출 시간</dt>
+                      <dd className="font-semibold text-gray-950">
+                        {selectedStatusRow.submission ? new Date(selectedStatusRow.submission.createdAt).toLocaleString("ko-KR") : "미제출"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-gray-500">다음 액션</dt>
+                      <dd className="font-semibold text-gray-950">{selectedStatusRow.feedback?.nextAction || "운영진 확인 대기"}</dd>
+                    </div>
+                  </dl>
+                  {selectedStatusRow.submission ? (
+                    <Link className="inline-flex rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white" href={`/preview/${selectedStatusRow.submission.id}`}>
+                      제출물 열람
+                    </Link>
+                  ) : (
+                    <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                      미제출 참여자입니다. 필요하면 미제출자 목록 복사 버튼으로 운영 메시지를 준비하세요.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-gray-600">왼쪽 목록에서 참여자를 선택하세요.</p>
+              )}
+            </aside>
+          </section>
         </main>
       ) : null}
 
@@ -964,6 +1065,17 @@ export default function InternalPortal() {
               </button>
             </div>
           </div>
+          <section className="mt-5 rounded-lg border border-blue-100 bg-blue-50 p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-sm font-bold text-blue-800">자동 요약</p>
+                <p className="mt-2 text-sm leading-6 text-blue-950">{reportSummary}</p>
+              </div>
+              <button className="no-print rounded-md border border-blue-200 bg-white px-3 py-2 text-sm font-bold text-blue-800" onClick={copyReportSummary}>
+                요약 복사
+              </button>
+            </div>
+          </section>
           <div className="mt-5 overflow-x-auto">
             <table className="w-full min-w-[760px] text-left text-sm">
               <thead className="bg-gray-100 text-gray-700">
