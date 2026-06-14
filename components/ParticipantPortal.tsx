@@ -66,6 +66,8 @@ export default function ParticipantPortal() {
   const participant = state.participants.find((item) => item.id === participantId);
   const team = state.teams.find((item) => item.id === participant?.teamId);
   const feedback = findFeedback(state, participant?.latestSubmissionId);
+  const latestPdfStatus = latestSubmission?.pdfStatus ?? "success";
+  const latestSubmissionCode = latestSubmission?.id.slice(0, 8).toUpperCase();
   const progressSteps = [
     { label: "입장", done: Boolean(program && participant) },
     { label: "내 정보", done: Boolean(participant?.name?.trim()) },
@@ -194,6 +196,9 @@ export default function ParticipantPortal() {
           <p className="mt-2 text-sm text-gray-600">
             내부직원이 발급한 프로그램 코드와 참여자 코드를 입력하세요.
           </p>
+          <p className="mt-2 rounded-md bg-gray-50 px-3 py-2 text-xs leading-5 text-gray-600">
+            공백, 하이픈, 대소문자는 자동으로 보정됩니다. 입장이 안 되면 화면의 코드와 안내받은 코드를 다시 비교하세요.
+          </p>
           <form className="mt-6 space-y-4" onSubmit={login}>
             <label>
               <span className="mb-1 block text-sm font-semibold text-gray-800">프로그램 코드</span>
@@ -292,16 +297,47 @@ export default function ParticipantPortal() {
                 <p className="text-sm font-semibold text-blue-700">오늘의 과제</p>
                 <h2 className="mt-1 text-xl font-bold text-gray-950">린캔버스 초안 작성 및 제출</h2>
                 <p className="mt-2 text-sm leading-6 text-gray-700">
-                  아이디어 정보를 입력하면 AI 초안이 생성되고, 수정 후 PDF 산출물로 제출됩니다.
+                  {latestSubmission
+                    ? "이미 제출된 산출물이 있습니다. 필요하면 제출물을 다시 열어 PDF와 피드백 상태를 확인하세요."
+                    : "아이디어 정보를 입력하면 AI 초안이 생성되고, 수정 후 PDF 산출물로 제출됩니다."}
                 </p>
               </div>
               <button
                 className="rounded-md bg-blue-700 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-blue-800 active:bg-blue-900"
-                onClick={startCanvas}
+                onClick={() => (latestSubmission ? router.push(`/preview/${latestSubmission.id}`) : startCanvas())}
                 type="button"
               >
-                과제 작성 시작
+                {latestSubmission ? "제출물 확인하기" : "과제 작성 시작"}
               </button>
+            </div>
+          </section>
+          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm md:col-span-3">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-gray-500">내 배정 확인</p>
+                <h2 className="mt-1 text-xl font-bold text-gray-950">{participant.name || participant.code}</h2>
+                <p className="mt-2 text-sm leading-6 text-gray-600">
+                  아래 정보가 다르면 과제 작성 전에 운영진에게 알려주세요.
+                </p>
+              </div>
+              <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:min-w-[520px]">
+                <div className="rounded-md bg-gray-50 p-3">
+                  <dt className="text-gray-500">프로그램</dt>
+                  <dd className="mt-1 font-semibold text-gray-950">{program.name}</dd>
+                </div>
+                <div className="rounded-md bg-gray-50 p-3">
+                  <dt className="text-gray-500">팀</dt>
+                  <dd className="mt-1 font-semibold text-gray-950">{team?.name || "미배정"}</dd>
+                </div>
+                <div className="rounded-md bg-gray-50 p-3">
+                  <dt className="text-gray-500">참여자 코드</dt>
+                  <dd className="mt-1 font-mono font-semibold text-gray-950">{participant.code}</dd>
+                </div>
+                <div className="rounded-md bg-gray-50 p-3">
+                  <dt className="text-gray-500">소속</dt>
+                  <dd className="mt-1 font-semibold text-gray-950">{participant.school || "미입력"}</dd>
+                </div>
+              </dl>
             </div>
           </section>
           <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm md:col-span-3">
@@ -338,6 +374,9 @@ export default function ParticipantPortal() {
                   <h2 className="mt-1 text-xl font-bold text-gray-950">
                     {latestSubmission.participant.ideaName || "린캔버스 제출물"}
                   </h2>
+                  <p className="mt-2 text-sm leading-6 text-green-900">
+                    운영진 제출 목록에 접수된 상태입니다. 제출번호 {latestSubmissionCode}
+                  </p>
                   <div className="mt-3 grid gap-2 text-sm text-gray-700 sm:grid-cols-3">
                     <p>
                       <span className="font-semibold">제출 시간</span>
@@ -347,7 +386,9 @@ export default function ParticipantPortal() {
                     <p>
                       <span className="font-semibold">PDF 상태</span>
                       <br />
-                      {(latestSubmission.pdfStatus ?? "success") === "failed" ? "PDF 오류" : "PDF 정상"}
+                      <span className={latestPdfStatus === "failed" ? "font-bold text-red-700" : "font-bold text-green-700"}>
+                        {latestPdfStatus === "failed" ? "PDF 오류" : "PDF 정상"}
+                      </span>
                     </p>
                     <p>
                       <span className="font-semibold">피드백</span>
@@ -357,7 +398,7 @@ export default function ParticipantPortal() {
                   </div>
                 </div>
                 <button
-                  className="rounded-md bg-green-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-green-800"
+                  className="w-full rounded-md bg-green-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-green-800 sm:w-auto"
                   onClick={() => router.push(`/preview/${latestSubmission.id}`)}
                   type="button"
                 >
@@ -365,7 +406,14 @@ export default function ParticipantPortal() {
                 </button>
               </div>
             </section>
-          ) : null}
+          ) : (
+            <section className="rounded-lg border border-amber-200 bg-amber-50 p-5 shadow-sm md:col-span-3">
+              <p className="text-sm font-semibold text-amber-800">아직 제출 전입니다</p>
+              <p className="mt-2 text-sm leading-6 text-amber-900">
+                최종 제출이 완료되면 이 자리에 제출 시간, PDF 상태, 제출물 열람 버튼이 표시됩니다.
+              </p>
+            </section>
+          )}
           <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
             <p className="text-sm text-gray-500">내 상태</p>
             <strong className="mt-2 block text-2xl text-gray-950">{participant.name ? "등록" : "미등록"}</strong>
@@ -379,7 +427,7 @@ export default function ParticipantPortal() {
           <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
             <p className="text-sm text-gray-500">제출</p>
             <strong className="mt-2 block text-2xl text-gray-950">{participant.latestSubmissionId ? "완료" : "대기"}</strong>
-            <p className="mt-2 text-sm text-gray-600">피드백: {feedback ? "도착" : "없음"}</p>
+            <p className="mt-2 text-sm text-gray-600">피드백: {feedback ? "도착" : "대기 중"}</p>
           </section>
           <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm md:col-span-3">
             <h2 className="text-lg font-bold text-gray-950">사용 순서</h2>
@@ -455,7 +503,7 @@ export default function ParticipantPortal() {
                 </button>
               </div>
             ) : (
-              <p className="mt-3 text-sm text-gray-600">아직 연결된 제출물이 없습니다.</p>
+              <p className="mt-3 text-sm text-gray-600">아직 연결된 제출물이 없습니다. 최종 제출 후 다시 확인하세요.</p>
             )}
           </section>
           <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
@@ -475,7 +523,7 @@ export default function ParticipantPortal() {
                 </div>
               </div>
             ) : (
-              <p className="mt-3 text-sm text-gray-600">아직 피드백이 없습니다.</p>
+              <p className="mt-3 text-sm text-gray-600">아직 피드백이 없습니다. 운영진 검토가 끝나면 이곳에 코멘트와 다음 액션이 표시됩니다.</p>
             )}
           </section>
         </main>

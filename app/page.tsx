@@ -15,17 +15,24 @@ const roleCards = [
   },
   {
     href: "/internal",
-    eyebrow: "내부직원",
-    title: "내부직원 로그인",
+    eyebrow: "운영진",
+    title: "운영 포털",
     description: "프로그램, 참여자 코드, 팀, 제출물, 피드백, 결과보고를 관리합니다.",
-    action: "직원 로그인"
+    action: "운영 포털 열기"
+  },
+  {
+    href: "/admin",
+    eyebrow: "관리자",
+    title: "제출 목록 빠른 확인",
+    description: "제출물, PDF 상태, 검색·필터, CSV 다운로드를 빠르게 확인합니다.",
+    action: "제출 목록 보기"
   }
 ];
 
 export default function Home() {
   return (
     <main className="flex min-h-screen items-center px-5 py-10">
-      <section className="mx-auto w-full max-w-3xl">
+      <section className="mx-auto w-full max-w-5xl">
         <div className="text-center">
           <p className="text-sm font-semibold text-blue-700">창업교육·캠프 운영 MVP</p>
           <h1 className="mt-3 text-3xl font-bold tracking-tight text-gray-950 sm:text-4xl">
@@ -36,7 +43,7 @@ export default function Home() {
           </p>
         </div>
 
-        <div className="mt-8 grid gap-4 md:grid-cols-2">
+        <div className="mt-8 grid gap-4 md:grid-cols-3">
           {roleCards.map((card) => (
             <Link
               key={card.href}

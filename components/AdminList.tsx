@@ -228,7 +228,7 @@ export default function AdminList() {
 
   const removeSubmission = async (submission: LeanCanvasSubmission) => {
     const label = submission.participant.teamName || submission.participant.ideaName || "선택한 제출물";
-    if (!window.confirm(`${label} 제출물을 삭제할까요?`)) return;
+    if (!window.confirm(`${label} 제출물을 삭제할까요?\n삭제 후에는 목록에서 바로 사라지며, 복구가 어려울 수 있습니다.`)) return;
     const adminPassword = readSessionValue(ADMIN_PASSWORD_KEY);
 
     if (fallbackMode) {
@@ -268,6 +268,7 @@ export default function AdminList() {
     : submissions;
   const filteredSubmissions = filterByAdminStatus(searchedSubmissions, filter);
   const metrics = calculateAdminMetrics(submissions);
+  const hasActiveListFilter = Boolean(normalizedQuery) || filter !== "all";
 
   if (!authorized) {
     return (
@@ -309,7 +310,13 @@ export default function AdminList() {
         <div>
           <p className="text-sm font-semibold text-blue-700">관리자</p>
           <h1 className="mt-1 text-3xl font-bold text-gray-950">참가자 제출 목록</h1>
-          <p className="mt-1 text-sm text-gray-600">총 {submissions.length}건 제출</p>
+          <p className="mt-1 text-sm text-gray-600">
+            제출된 산출물 기준 화면입니다. 미제출자 현황은{" "}
+            <Link className="font-semibold text-blue-700 underline" href="/internal">
+              운영 포털
+            </Link>
+            에서 확인하세요.
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -387,6 +394,7 @@ export default function AdminList() {
           CSV 다운로드
         </button>
       </div>
+      <p className="mb-3 text-xs text-gray-500">모바일에서는 표를 좌우로 스크롤해 열람, PDF, 삭제 버튼을 확인할 수 있습니다.</p>
       {error ? <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
       {notice ? (
         <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{notice}</div>
@@ -394,7 +402,28 @@ export default function AdminList() {
 
       <main className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
         {filteredSubmissions.length === 0 ? (
-          <div className="p-8 text-center text-sm text-gray-600">아직 제출된 린캔버스가 없습니다.</div>
+          <div className="p-8 text-center text-sm text-gray-600">
+            <p className="font-semibold text-gray-800">
+              {hasActiveListFilter ? "현재 조건에 맞는 제출물이 없습니다." : "아직 제출된 산출물이 없습니다."}
+            </p>
+            <p className="mt-2">
+              {hasActiveListFilter
+                ? "검색어 또는 상태 필터를 초기화하면 전체 제출 목록을 다시 볼 수 있습니다."
+                : "교육생이 최종 제출하면 이 목록에 제출 시간과 PDF 상태가 표시됩니다."}
+            </p>
+            {hasActiveListFilter ? (
+              <button
+                className="mt-4 rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                onClick={() => {
+                  setQuery("");
+                  setFilter("all");
+                }}
+                type="button"
+              >
+                검색/필터 초기화
+              </button>
+            ) : null}
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[960px] border-collapse text-left text-sm">
