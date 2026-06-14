@@ -11,6 +11,7 @@ import {
   type ParticipantInput
 } from "@/lib/types";
 import { loadDraftSession, saveDraftSession, saveSubmission } from "@/lib/storage";
+import { recordParticipantSubmission } from "@/lib/operationsStorage";
 
 const editableFields: CanvasFieldKey[] = [
   "problem",
@@ -79,6 +80,7 @@ export default function CanvasEditor() {
 
       if (response.status === 503 && (data.code === "SUPABASE_NOT_CONFIGURED" || data.code === "SUPABASE_TABLE_NOT_READY")) {
         const fallbackSubmission = saveSubmission(participant, canvas);
+        recordParticipantSubmission(participant, fallbackSubmission.id);
         setFallbackNotice("중앙 저장소가 아직 설정되지 않아 이 브라우저에 임시 저장했습니다.");
         router.push(`/preview/${fallbackSubmission.id}`);
         return;
@@ -88,6 +90,7 @@ export default function CanvasEditor() {
         throw new Error(data.error || "제출 저장에 실패했습니다.");
       }
 
+      recordParticipantSubmission(participant, data.submission.id);
       router.push(`/preview/${data.submission.id}`);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "제출 중 오류가 발생했습니다.");

@@ -1,0 +1,372 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import type { HighViewOperationsState, HighViewParticipant, LeanCanvasSubmission } from "@/lib/types";
+import { getSubmission, saveParticipantPrefill } from "@/lib/storage";
+import {
+  defaultOperationsState,
+  findFeedback,
+  loadOperationsState,
+  saveOperationsState,
+  toParticipantInput
+} from "@/lib/operationsStorage";
+
+type ParticipantTab = "home" | "profile" | "write" | "feedback";
+
+const PROGRAM_SESSION_KEY = "highviewlab-participant-program-id";
+const PARTICIPANT_SESSION_KEY = "highviewlab-participant-id";
+
+function readSessionValue(key: string) {
+  try {
+    return window.sessionStorage?.getItem(key) || "";
+  } catch {
+    return "";
+  }
+}
+
+function writeSessionValue(key: string, value: string) {
+  try {
+    window.sessionStorage?.setItem(key, value);
+  } catch {
+    // Session storage can be blocked in embedded browser contexts.
+  }
+}
+
+function removeSessionValue(key: string) {
+  try {
+    window.sessionStorage?.removeItem(key);
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+export default function ParticipantPortal() {
+  const router = useRouter();
+  const [state, setState] = useState<HighViewOperationsState>(() => defaultOperationsState());
+  const [programId, setProgramId] = useState("");
+  const [participantId, setParticipantId] = useState("");
+  const [tab, setTab] = useState<ParticipantTab>("home");
+  const [programCode, setProgramCode] = useState("");
+  const [participantCode, setParticipantCode] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [latestSubmission, setLatestSubmission] = useState<LeanCanvasSubmission | null>(null);
+
+  useEffect(() => {
+    const loaded = loadOperationsState();
+    setState(loaded);
+    setProgramId(readSessionValue(PROGRAM_SESSION_KEY));
+    setParticipantId(readSessionValue(PARTICIPANT_SESSION_KEY));
+  }, []);
+
+  const program = state.programs.find((item) => item.id === programId);
+  const participant = state.participants.find((item) => item.id === participantId);
+  const team = state.teams.find((item) => item.id === participant?.teamId);
+  const feedback = findFeedback(state, participant?.latestSubmissionId);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLatestSubmission() {
+      if (!participant?.latestSubmissionId) {
+        setLatestSubmission(null);
+        return;
+      }
+
+      const local = getSubmission(participant.latestSubmissionId);
+      if (local) {
+        setLatestSubmission(local);
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/submissions/${participant.latestSubmissionId}`);
+        const data = (await response.json()) as { submission?: LeanCanvasSubmission };
+        if (!cancelled) setLatestSubmission(response.ok && data.submission ? data.submission : null);
+      } catch {
+        if (!cancelled) setLatestSubmission(null);
+      }
+    }
+
+    loadLatestSubmission();
+    return () => {
+      cancelled = true;
+    };
+  }, [participant?.latestSubmissionId]);
+
+  const persistState = (nextState: HighViewOperationsState) => {
+    saveOperationsState(nextState);
+    setState({ ...nextState });
+  };
+
+  const login = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const submittedProgramCode = String(formData.get("programCode") || programCode).trim().toUpperCase();
+    const submittedParticipantCode = String(formData.get("participantCode") || participantCode).trim().toUpperCase();
+    const matchedProgram = state.programs.find(
+      (item) => item.programCode.toUpperCase() === submittedProgramCode
+    );
+    if (!matchedProgram) {
+      setError("프로그램 코드를 확인해주세요.");
+      return;
+    }
+
+    const matchedParticipant = state.participants.find(
+      (item) =>
+        item.programId === matchedProgram.id &&
+        item.code.toUpperCase() === submittedParticipantCode
+    );
+    if (!matchedParticipant) {
+      setError("참여자 코드를 확인해주세요.");
+      return;
+    }
+
+    matchedParticipant.joinedAt ||= new Date().toISOString();
+    matchedParticipant.lastSeenAt = new Date().toISOString();
+    persistState(state);
+    writeSessionValue(PROGRAM_SESSION_KEY, matchedProgram.id);
+    writeSessionValue(PARTICIPANT_SESSION_KEY, matchedParticipant.id);
+    setProgramId(matchedProgram.id);
+    setParticipantId(matchedParticipant.id);
+    setError("");
+    setNotice("입장했습니다. 내 정보를 확인한 뒤 린캔버스를 작성하세요.");
+  };
+
+  const logout = () => {
+    removeSessionValue(PROGRAM_SESSION_KEY);
+    removeSessionValue(PARTICIPANT_SESSION_KEY);
+    setProgramId("");
+    setParticipantId("");
+    setProgramCode("");
+    setParticipantCode("");
+    setTab("home");
+    setNotice("");
+  };
+
+  const updateProfile = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!participant) return;
+    const formData = new FormData(event.currentTarget);
+    Object.assign(participant, {
+      name: String(formData.get("name") || "").trim(),
+      email: String(formData.get("email") || "").trim(),
+      phone: String(formData.get("phone") || "").trim(),
+      school: String(formData.get("school") || "").trim(),
+      major: String(formData.get("major") || "").trim(),
+      role: String(formData.get("role") || "").trim(),
+      lastSeenAt: new Date().toISOString()
+    } satisfies Partial<HighViewParticipant>);
+    persistState(state);
+    setNotice("내 정보를 저장했습니다.");
+  };
+
+  const startCanvas = () => {
+    if (!program || !participant) return;
+    saveParticipantPrefill(toParticipantInput(program, participant, team));
+    router.push("/");
+  };
+
+  if (!program || !participant) {
+    return (
+      <div className="mx-auto flex min-h-screen max-w-md items-center px-5 py-10">
+        <main className="w-full rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+          <p className="text-sm font-semibold text-blue-700">Participant Portal</p>
+          <h1 className="mt-1 text-2xl font-bold text-gray-950">참여자 입장</h1>
+          <p className="mt-2 text-sm text-gray-600">
+            내부직원이 발급한 프로그램 코드와 참여자 코드를 입력하세요.
+          </p>
+          <form className="mt-6 space-y-4" onSubmit={login}>
+            <label>
+              <span className="mb-1 block text-sm font-semibold text-gray-800">프로그램 코드</span>
+              <input
+                name="programCode"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                placeholder="예: HV-DEMO"
+                value={programCode}
+                onChange={(event) => setProgramCode(event.target.value)}
+              />
+            </label>
+            <label>
+              <span className="mb-1 block text-sm font-semibold text-gray-800">참여자 코드</span>
+              <input
+                name="participantCode"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                placeholder="예: P-DEMO1"
+                value={participantCode}
+                onChange={(event) => setParticipantCode(event.target.value)}
+              />
+            </label>
+            {error ? <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
+            <button className="w-full rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white" type="submit">
+              입장하기
+            </button>
+          </form>
+          <p className="mt-4 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+            데모: <span className="font-bold">HV-DEMO</span> / <span className="font-bold">P-DEMO1</span>
+          </p>
+        </main>
+      </div>
+    );
+  }
+
+  const tabs: Array<{ key: ParticipantTab; label: string }> = [
+    { key: "home", label: "홈" },
+    { key: "profile", label: "내 정보" },
+    { key: "write", label: "작성하기" },
+    { key: "feedback", label: "피드백" }
+  ];
+
+  return (
+    <div className="mx-auto max-w-6xl px-5 py-8">
+      <header className="mb-6 flex flex-col gap-4 rounded-lg border border-gray-200 bg-white p-5 shadow-sm lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-blue-700">{program.programCode}</p>
+          <h1 className="mt-1 text-3xl font-bold text-gray-950">{program.name}</h1>
+          <p className="mt-2 text-sm text-gray-600">
+            {participant.name || participant.code} · {team?.name || "미배정"} · {program.clientName}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {tabs.map((item) => (
+            <button
+              key={item.key}
+              className={`rounded-md px-4 py-2 text-sm font-semibold ${
+                tab === item.key ? "bg-blue-700 text-white" : "border border-gray-300 bg-white text-gray-800"
+              }`}
+              onClick={() => setTab(item.key)}
+              type="button"
+            >
+              {item.label}
+            </button>
+          ))}
+          <button className="rounded-md border border-red-200 px-4 py-2 text-sm font-semibold text-red-700" onClick={logout}>
+            나가기
+          </button>
+        </div>
+      </header>
+
+      {notice ? (
+        <p className="mb-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">{notice}</p>
+      ) : null}
+
+      {tab === "home" ? (
+        <main className="grid gap-4 md:grid-cols-3">
+          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+            <p className="text-sm text-gray-500">내 상태</p>
+            <strong className="mt-2 block text-2xl text-gray-950">{participant.name ? "등록" : "미등록"}</strong>
+            <p className="mt-2 text-sm text-gray-600">내 정보를 먼저 저장하면 결과보고서 품질이 좋아집니다.</p>
+          </section>
+          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+            <p className="text-sm text-gray-500">팀</p>
+            <strong className="mt-2 block text-2xl text-gray-950">{team?.name || "미배정"}</strong>
+            <p className="mt-2 text-sm text-gray-600">{team?.memo || "내부직원이 팀을 배정합니다."}</p>
+          </section>
+          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+            <p className="text-sm text-gray-500">제출</p>
+            <strong className="mt-2 block text-2xl text-gray-950">{participant.latestSubmissionId ? "완료" : "대기"}</strong>
+            <p className="mt-2 text-sm text-gray-600">피드백: {feedback ? "도착" : "없음"}</p>
+          </section>
+          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm md:col-span-3">
+            <h2 className="text-lg font-bold text-gray-950">사용 순서</h2>
+            <p className="mt-2 text-sm leading-6 text-gray-600">
+              내 정보 입력 → AI 린캔버스 작성 → 수정 후 제출 → 피드백 확인 → 필요하면 다시 작성
+            </p>
+          </section>
+        </main>
+      ) : null}
+
+      {tab === "profile" ? (
+        <form className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm" onSubmit={updateProfile}>
+          <h2 className="text-lg font-bold text-gray-950">참여자 정보</h2>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <label>
+              <span className="mb-1 block text-sm font-semibold text-gray-800">이름</span>
+              <input name="name" defaultValue={participant.name} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+            </label>
+            <label>
+              <span className="mb-1 block text-sm font-semibold text-gray-800">이메일</span>
+              <input name="email" defaultValue={participant.email} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+            </label>
+            <label>
+              <span className="mb-1 block text-sm font-semibold text-gray-800">연락처</span>
+              <input name="phone" defaultValue={participant.phone} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+            </label>
+            <label>
+              <span className="mb-1 block text-sm font-semibold text-gray-800">소속/학교</span>
+              <input name="school" defaultValue={participant.school} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+            </label>
+            <label>
+              <span className="mb-1 block text-sm font-semibold text-gray-800">학과/부서</span>
+              <input name="major" defaultValue={participant.major} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+            </label>
+            <label>
+              <span className="mb-1 block text-sm font-semibold text-gray-800">팀 내 역할</span>
+              <input name="role" defaultValue={participant.role} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
+            </label>
+          </div>
+          <div className="mt-5 flex justify-end">
+            <button className="rounded-md bg-blue-700 px-5 py-2 text-sm font-bold text-white" type="submit">
+              저장하기
+            </button>
+          </div>
+        </form>
+      ) : null}
+
+      {tab === "write" ? (
+        <main className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-bold text-gray-950">AI 린캔버스 작성</h2>
+          <p className="mt-2 text-sm leading-6 text-gray-600">
+            기존 린캔버스 입력 화면으로 이동합니다. 교육명, 팀명, 참가자명은 자동으로 채워집니다.
+          </p>
+          <button className="mt-5 rounded-md bg-blue-700 px-5 py-3 text-sm font-bold text-white" onClick={startCanvas}>
+            AI 린캔버스 작성 시작
+          </button>
+        </main>
+      ) : null}
+
+      {tab === "feedback" ? (
+        <main className="grid gap-4">
+          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-bold text-gray-950">내 제출물</h2>
+            {latestSubmission ? (
+              <div className="mt-3 text-sm text-gray-700">
+                <p className="font-semibold">{latestSubmission.participant.ideaName || "아이디어명 없음"}</p>
+                <p className="mt-1 text-gray-600">{new Date(latestSubmission.createdAt).toLocaleString("ko-KR")} 제출</p>
+                <button
+                  className="mt-3 rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold"
+                  onClick={() => router.push(`/preview/${latestSubmission.id}`)}
+                >
+                  제출물 열람
+                </button>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-gray-600">아직 연결된 제출물이 없습니다.</p>
+            )}
+          </section>
+          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-bold text-gray-950">피드백</h2>
+            {feedback ? (
+              <div className="mt-3 space-y-3 text-sm">
+                <p>
+                  <span className="rounded-full bg-blue-50 px-3 py-1 font-bold text-blue-700">{feedback.status}</span>
+                </p>
+                <div className="rounded-md bg-gray-50 p-3">
+                  <p className="font-bold text-gray-900">코멘트</p>
+                  <p className="mt-1 whitespace-pre-wrap text-gray-700">{feedback.comment || "-"}</p>
+                </div>
+                <div className="rounded-md bg-gray-50 p-3">
+                  <p className="font-bold text-gray-900">다음 액션</p>
+                  <p className="mt-1 whitespace-pre-wrap text-gray-700">{feedback.nextAction || "-"}</p>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-gray-600">아직 피드백이 없습니다.</p>
+            )}
+          </section>
+        </main>
+      ) : null}
+    </div>
+  );
+}

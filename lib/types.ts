@@ -10,6 +10,18 @@ export interface ParticipantInput {
   ourSolution: string;
   revenueModel: string;
   differentiation: string;
+  operation?: ParticipantOperationContext;
+}
+
+export interface ParticipantOperationContext {
+  programId?: string;
+  programCode?: string;
+  programName?: string;
+  participantId?: string;
+  participantCode?: string;
+  teamId?: string;
+  teamName?: string;
+  role?: string;
 }
 
 export interface LeanCanvasDraft {
@@ -76,3 +88,64 @@ export const emptyCanvasDraft: LeanCanvasDraft = {
   unfairAdvantage: [],
   mentorComment: []
 };
+
+export type ProgramStatus = "active" | "closed";
+
+export interface HighViewProgram {
+  id: string;
+  name: string;
+  clientName: string;
+  startDate: string;
+  endDate: string;
+  programCode: string;
+  status: ProgramStatus;
+  createdAt: string;
+  brief: string;
+}
+
+export interface HighViewParticipant {
+  id: string;
+  programId: string;
+  code: string;
+  name: string;
+  email: string;
+  phone: string;
+  school: string;
+  major: string;
+  teamId: string;
+  role: string;
+  joinedAt: string;
+  lastSeenAt: string;
+  latestSubmissionId?: string;
+  submittedAt?: string;
+}
+
+export interface HighViewTeam {
+  id: string;
+  programId: string;
+  name: string;
+  memo: string;
+  createdAt: string;
+}
+
+export type FeedbackStatus = "needs_revision" | "good" | "excellent";
+
+export interface HighViewFeedback {
+  id: string;
+  programId: string;
+  participantId: string;
+  submissionId: string;
+  comment: string;
+  nextAction: string;
+  status: FeedbackStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HighViewOperationsState {
+  version: number;
+  programs: HighViewProgram[];
+  participants: HighViewParticipant[];
+  teams: HighViewTeam[];
+  feedbacks: HighViewFeedback[];
+}

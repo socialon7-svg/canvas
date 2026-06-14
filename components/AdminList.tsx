@@ -173,6 +173,9 @@ export default function AdminList() {
           <Link className="mt-4 inline-block text-sm font-semibold text-gray-700 underline" href="/">
             입력 화면으로 이동
           </Link>
+          <Link className="ml-4 mt-4 inline-block text-sm font-semibold text-gray-700 underline" href="/internal">
+            내부직원 포털
+          </Link>
         </main>
       </div>
     );
@@ -199,6 +202,9 @@ export default function AdminList() {
           </button>
           <Link className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" href="/">
             입력 화면
+          </Link>
+          <Link className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" href="/internal">
+            운영 포털
           </Link>
         </div>
       </header>

@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { emptyParticipantInput, type LeanCanvasDraft, type ParticipantInput } from "@/lib/types";
-import { saveDraftSession } from "@/lib/storage";
+import { clearParticipantPrefill, loadParticipantPrefill, saveDraftSession } from "@/lib/storage";
 
-const fields: Array<{ key: keyof ParticipantInput; label: string; placeholder: string; required?: boolean }> = [
+type ParticipantTextFieldKey = Exclude<keyof ParticipantInput, "operation">;
+
+const fields: Array<{ key: ParticipantTextFieldKey; label: string; placeholder: string; required?: boolean }> = [
   { key: "educationName", label: "교육명", placeholder: "예: 2026 청년 창업 부트캠프", required: true },
   { key: "teamName", label: "팀명", placeholder: "예: 팀 캔버스", required: true },
   { key: "participantName", label: "참가자명", placeholder: "예: 김민지", required: true },
@@ -20,7 +23,7 @@ const fields: Array<{ key: keyof ParticipantInput; label: string; placeholder: s
 ];
 
 const validateInput = (input: ParticipantInput) => {
-  const requiredFields: Array<keyof ParticipantInput> = ["educationName", "teamName", "participantName", "ideaName"];
+  const requiredFields: ParticipantTextFieldKey[] = ["educationName", "teamName", "participantName", "ideaName"];
   const missing = requiredFields.filter((key) => !input[key]?.trim());
 
   if (missing.length > 0) {
@@ -55,7 +58,14 @@ export default function InputForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const updateValue = (key: keyof ParticipantInput, value: string) => {
+  useEffect(() => {
+    const prefill = loadParticipantPrefill();
+    if (prefill) {
+      setInput({ ...emptyParticipantInput, ...prefill });
+    }
+  }, []);
+
+  const updateValue = (key: ParticipantTextFieldKey, value: string) => {
     setInput((current) => ({ ...current, [key]: value }));
   };
 
@@ -80,6 +90,7 @@ export default function InputForm() {
         throw new Error(data.error || "AI 초안 생성에 실패했습니다.");
       }
       saveDraftSession({ participant: input, canvas: data.canvas });
+      clearParticipantPrefill();
       router.push("/editor");
     } catch (err) {
       setError(err instanceof Error ? err.message : "AI 응답을 처리하지 못했습니다.");
@@ -98,10 +109,26 @@ export default function InputForm() {
             창업 아이디어를 입력하면 AI가 린캔버스 초안을 만들고, 수정 후 PDF로 제출할 수 있습니다.
           </p>
         </div>
-        <a className="text-sm font-semibold text-gray-700 underline" href="/admin">
-          관리자 제출 목록
-        </a>
+        <div className="flex flex-wrap gap-3 text-sm font-semibold text-gray-700">
+          <Link className="underline" href="/participant">
+            참여자 포털
+          </Link>
+          <Link className="underline" href="/internal">
+            내부직원 포털
+          </Link>
+          <Link className="underline" href="/admin">
+            제출 목록
+          </Link>
+        </div>
       </header>
+
+      {input.operation?.participantCode ? (
+        <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          참여자 포털에서 불러온 정보입니다. 참여자 코드{" "}
+          <span className="font-bold">{input.operation.participantCode}</span>, 프로그램 코드{" "}
+          <span className="font-bold">{input.operation.programCode}</span>
+        </div>
+      ) : null}
 
       <main className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
         <div className="grid gap-4 md:grid-cols-2">
