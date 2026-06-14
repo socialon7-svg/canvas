@@ -67,7 +67,7 @@ export function defaultOperationsState(): HighViewOperationsState {
         programCode: "HV-DEMO",
         status: "active",
         createdAt: new Date().toISOString(),
-        brief: "참여자가 AI 린캔버스를 작성하고 내부직원이 제출 현황과 피드백을 관리하는 데모 프로그램입니다."
+        brief: "참여자가 린캔버스 과제를 제출하고 내부직원이 운영 현황과 피드백을 관리하는 데모 프로그램입니다."
       }
     ],
     participants: [

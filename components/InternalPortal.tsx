@@ -78,6 +78,22 @@ function MetricCard({ label, value, hint }: { label: string; value: string | num
   );
 }
 
+function csvEscape(value: unknown) {
+  const text = String(value ?? "");
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function downloadCsv(filename: string, rows: Array<Array<unknown>>) {
+  const csv = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
+  const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function InternalPortal() {
   const [state, setState] = useState<HighViewOperationsState>(() => defaultOperationsState());
   const [currentProgramId, setCurrentProgramId] = useState("");
@@ -134,6 +150,33 @@ export default function InternalPortal() {
     [currentProgram, submissions]
   );
   const stats = currentProgram ? getProgramStats(state, currentProgram.id, submissions) : null;
+  const overallStats = useMemo(() => {
+    const submittedParticipantIds = new Set(
+      submissions
+        .map((submission) => submission.participant.operation?.participantId)
+        .filter((participantId): participantId is string => Boolean(participantId))
+    );
+    state.participants.forEach((participant) => {
+      if (participant.latestSubmissionId) submittedParticipantIds.add(participant.id);
+    });
+
+    return {
+      programs: state.programs.length,
+      activePrograms: state.programs.filter((program) => program.status === "active").length,
+      participants: state.participants.length,
+      submitted: submittedParticipantIds.size,
+      missing: Math.max(state.participants.length - submittedParticipantIds.size, 0),
+      feedbacks: state.feedbacks.length
+    };
+  }, [state, submissions]);
+  const programOverview = useMemo(
+    () =>
+      state.programs.map((program) => ({
+        program,
+        stats: getProgramStats(state, program.id, submissions)
+      })),
+    [state, submissions]
+  );
 
   const persistState = (nextState: HighViewOperationsState) => {
     saveOperationsState(nextState);
@@ -154,6 +197,51 @@ export default function InternalPortal() {
     } finally {
       setRefreshing(false);
     }
+  };
+
+  const downloadParticipantsCsv = () => {
+    if (!currentProgram) return;
+    const rows = [
+      ["프로그램", "프로그램코드", "참여자코드", "이름", "이메일", "연락처", "소속", "역할", "팀", "접속여부", "제출여부"],
+      ...programParticipants.map((participant) => {
+        const assignedTeam = programTeams.find((team) => team.id === participant.teamId);
+        return [
+          currentProgram.name,
+          currentProgram.programCode,
+          participant.code,
+          participant.name,
+          participant.email,
+          participant.phone,
+          participant.school,
+          participant.role,
+          assignedTeam?.name || "",
+          participant.joinedAt ? "접속" : "초대",
+          participant.latestSubmissionId ? "완료" : "대기"
+        ];
+      })
+    ];
+    downloadCsv(`${currentProgram.programCode}-participants.csv`, rows);
+  };
+
+  const downloadSubmissionsCsv = () => {
+    if (!currentProgram) return;
+    const rows = [
+      ["프로그램", "팀", "참가자", "아이디어", "제출일", "피드백상태", "멘토코멘트", "다음액션"],
+      ...programSubmissions.map((submission) => {
+        const feedback = findFeedback(state, submission.id);
+        return [
+          currentProgram.name,
+          submission.participant.teamName,
+          submission.participant.participantName,
+          submission.participant.ideaName,
+          new Date(submission.createdAt).toLocaleString("ko-KR"),
+          feedback?.status || "",
+          feedback?.comment || "",
+          feedback?.nextAction || ""
+        ];
+      })
+    ];
+    downloadCsv(`${currentProgram.programCode}-submissions.csv`, rows);
   };
 
   const login = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -350,8 +438,8 @@ export default function InternalPortal() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-sm font-semibold text-blue-700">내부직원 포털</p>
-            <h1 className="mt-1 text-3xl font-bold text-gray-950">교육/캠프 운영 포털</h1>
-            <p className="mt-2 text-sm text-gray-600">프로그램, 참여자, 팀, 린캔버스 제출, 피드백을 한 흐름으로 관리합니다.</p>
+            <h1 className="mt-1 text-3xl font-bold text-gray-950">하이뷰랩 프로그램 운영 포털</h1>
+            <p className="mt-2 text-sm text-gray-600">프로그램, 참여자, 팀, 산출물 제출, 피드백, 결과보고를 한 흐름으로 관리합니다.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <select
@@ -370,6 +458,12 @@ export default function InternalPortal() {
             </button>
             <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" onClick={() => exportOperationsState(state)}>
               운영 데이터 백업
+            </button>
+            <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" onClick={downloadParticipantsCsv}>
+              참여자 CSV
+            </button>
+            <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" onClick={downloadSubmissionsCsv}>
+              제출 CSV
             </button>
             <button className="rounded-md border border-red-200 px-4 py-2 text-sm font-semibold text-red-700" onClick={handleReset}>
               데모 초기화
@@ -399,6 +493,51 @@ export default function InternalPortal() {
 
       {tab === "dashboard" && currentProgram && stats ? (
         <main className="grid gap-4">
+          <section className="grid gap-4 md:grid-cols-5">
+            <MetricCard label="전체 프로그램" value={overallStats.programs} hint={`운영중 ${overallStats.activePrograms}개`} />
+            <MetricCard label="전체 참여자" value={overallStats.participants} hint="발급된 참여자 코드" />
+            <MetricCard label="제출 완료" value={overallStats.submitted} hint={`미제출 ${overallStats.missing}명`} />
+            <MetricCard label="전체 피드백" value={overallStats.feedbacks} hint="저장된 코멘트" />
+            <MetricCard label="현재 선택" value={stats.submitRate + "%"} hint={`${currentProgram.name} 제출률`} />
+          </section>
+          <section className="grid gap-3 lg:grid-cols-3">
+            {programOverview.map(({ program, stats: programStats }) => (
+              <article key={program.id} className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold text-blue-700">{program.programCode}</p>
+                    <h2 className="mt-1 font-bold text-gray-950">{program.name}</h2>
+                    <p className="mt-1 text-xs text-gray-500">{program.clientName}</p>
+                  </div>
+                  <button
+                    className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold"
+                    onClick={() => setCurrentProgramId(program.id)}
+                    type="button"
+                  >
+                    관리하기
+                  </button>
+                </div>
+                <div className="mt-4 grid grid-cols-4 gap-2 text-center text-xs">
+                  <div className="rounded-md bg-gray-50 p-2">
+                    <strong className="block text-base text-gray-950">{programStats.participants}</strong>
+                    참여자
+                  </div>
+                  <div className="rounded-md bg-gray-50 p-2">
+                    <strong className="block text-base text-gray-950">{programStats.teams}</strong>
+                    팀
+                  </div>
+                  <div className="rounded-md bg-gray-50 p-2">
+                    <strong className="block text-base text-gray-950">{programStats.submitRate}%</strong>
+                    제출률
+                  </div>
+                  <div className="rounded-md bg-gray-50 p-2">
+                    <strong className="block text-base text-gray-950">{programStats.feedbacks}</strong>
+                    피드백
+                  </div>
+                </div>
+              </article>
+            ))}
+          </section>
           <section className="grid gap-4 md:grid-cols-4">
             <MetricCard label="참여자" value={stats.participants} hint={`접속/등록 ${stats.joined}명`} />
             <MetricCard label="팀" value={stats.teams} hint="프로그램별 팀 구성" />

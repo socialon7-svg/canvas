@@ -277,10 +277,10 @@ export default function InputForm({ requireParticipantSession = false }: { requi
     <div className="mx-auto max-w-5xl px-5 py-8">
       <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm font-semibold text-blue-700">창업교육 MVP</p>
-          <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-950">AI 린캔버스 작성 및 PDF 제출</h1>
+          <p className="text-sm font-semibold text-blue-700">하이뷰랩 프로그램 과제</p>
+          <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-950">린캔버스 과제 작성 및 PDF 제출</h1>
           <p className="mt-2 text-sm text-gray-600">
-            창업 아이디어를 입력하면 AI가 린캔버스 초안을 만들고, 수정 후 PDF로 제출할 수 있습니다.
+            창업 아이디어를 입력하면 AI가 린캔버스 초안을 만들고, 수정 후 프로그램 산출물로 제출할 수 있습니다.
           </p>
         </div>
         <Link className="text-sm font-semibold text-gray-700 underline" href="/participant">

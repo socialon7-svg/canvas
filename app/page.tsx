@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "AI 린캔버스 - 창업교육용 린캔버스 초안 자동화"
+  title: "하이뷰랩 프로그램 운영 MVP"
 };
 
 const roleCards = [
@@ -10,14 +10,14 @@ const roleCards = [
     href: "/participant",
     eyebrow: "참여자",
     title: "참여자 입장",
-    description: "내부직원이 발급한 프로그램 코드와 참여자 코드로 입장합니다.",
+    description: "프로그램 코드와 참여자 코드로 내 정보, 팀, 과제, 피드백을 확인합니다.",
     action: "참여자로 입장하기"
   },
   {
     href: "/internal",
     eyebrow: "내부직원",
     title: "내부직원 로그인",
-    description: "운영 포털에서 프로그램, 참여자, 팀, 제출물과 피드백을 관리합니다.",
+    description: "프로그램, 참여자 코드, 팀, 제출물, 피드백, 결과보고를 관리합니다.",
     action: "직원 로그인"
   }
 ];
@@ -27,12 +27,12 @@ export default function Home() {
     <main className="flex min-h-screen items-center px-5 py-10">
       <section className="mx-auto w-full max-w-3xl">
         <div className="text-center">
-          <p className="text-sm font-semibold text-blue-700">창업교육 MVP</p>
+          <p className="text-sm font-semibold text-blue-700">창업교육·캠프 운영 MVP</p>
           <h1 className="mt-3 text-3xl font-bold tracking-tight text-gray-950 sm:text-4xl">
-            AI 린캔버스 작성 및 PDF 제출
+            하이뷰랩 프로그램 운영 MVP
           </h1>
           <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-gray-600 sm:text-base">
-            창업 아이디어를 입력하면 AI가 린캔버스 초안을 만들고, 수정 후 PDF로 제출할 수 있습니다.
+            참여자는 과제를 작성·제출하고, 내부직원은 프로그램 운영과 제출물 피드백을 한 흐름으로 관리합니다.
           </p>
         </div>
 
@@ -53,7 +53,7 @@ export default function Home() {
           ))}
         </div>
 
-        <p className="mt-8 text-center text-xs text-gray-500">© 2026 린캔버스 초안 자동화</p>
+        <p className="mt-8 text-center text-xs text-gray-500">© 2026 하이뷰랩 프로그램 운영 MVP</p>
       </section>
     </main>
   );

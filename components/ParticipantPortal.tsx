@@ -239,7 +239,7 @@ export default function ParticipantPortal() {
     <div className="mx-auto max-w-6xl px-5 py-8">
       <header className="mb-6 flex flex-col gap-4 rounded-lg border border-gray-200 bg-white p-5 shadow-sm lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="text-sm font-semibold text-blue-700">{program.programCode}</p>
+          <p className="text-sm font-semibold text-blue-700">참여자 워크스페이스 · {program.programCode}</p>
           <h1 className="mt-1 text-3xl font-bold text-gray-950">{program.name}</h1>
           <p className="mt-2 text-sm text-gray-600">
             {participant.name || participant.code} · {team?.name || "미배정"} · {program.clientName}
@@ -270,6 +270,24 @@ export default function ParticipantPortal() {
 
       {tab === "home" ? (
         <main className="grid gap-4 md:grid-cols-3">
+          <section className="rounded-lg border border-blue-200 bg-blue-50 p-5 shadow-sm md:col-span-3">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-blue-700">오늘의 과제</p>
+                <h2 className="mt-1 text-xl font-bold text-gray-950">린캔버스 초안 작성 및 제출</h2>
+                <p className="mt-2 text-sm leading-6 text-gray-700">
+                  아이디어 정보를 입력하면 AI 초안이 생성되고, 수정 후 PDF 산출물로 제출됩니다.
+                </p>
+              </div>
+              <button
+                className="rounded-md bg-blue-700 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-blue-800 active:bg-blue-900"
+                onClick={startCanvas}
+                type="button"
+              >
+                과제 작성 시작
+              </button>
+            </div>
+          </section>
           <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
             <p className="text-sm text-gray-500">내 상태</p>
             <strong className="mt-2 block text-2xl text-gray-950">{participant.name ? "등록" : "미등록"}</strong>
@@ -288,7 +306,7 @@ export default function ParticipantPortal() {
           <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm md:col-span-3">
             <h2 className="text-lg font-bold text-gray-950">사용 순서</h2>
             <p className="mt-2 text-sm leading-6 text-gray-600">
-              내 정보 입력 → AI 린캔버스 작성 → 수정 후 제출 → 피드백 확인 → 필요하면 다시 작성
+              내 정보 입력 → 린캔버스 과제 작성 → 수정 후 제출 → 피드백 확인 → 필요하면 다시 작성
             </p>
           </section>
         </main>
@@ -333,12 +351,12 @@ export default function ParticipantPortal() {
 
       {tab === "write" ? (
         <main className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-bold text-gray-950">AI 린캔버스 작성</h2>
+          <h2 className="text-lg font-bold text-gray-950">오늘의 과제: 린캔버스 작성</h2>
           <p className="mt-2 text-sm leading-6 text-gray-600">
             기존 린캔버스 입력 화면으로 이동합니다. 교육명, 팀명, 참가자명은 자동으로 채워집니다.
           </p>
           <button className="mt-5 rounded-md bg-blue-700 px-5 py-3 text-sm font-bold text-white" onClick={startCanvas}>
-            AI 린캔버스 작성 시작
+            린캔버스 과제 작성 시작
           </button>
         </main>
       ) : null}

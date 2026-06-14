@@ -3,10 +3,10 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "AI 린캔버스 - 창업교육용 린캔버스 초안 자동화",
+    default: "하이뷰랩 프로그램 운영 MVP",
     template: "%s"
   },
-  description: "창업교육용 린캔버스 초안 생성 및 PDF 제출 MVP"
+  description: "창업교육·캠프 참여자 과제 제출과 내부 운영 관리를 위한 MVP"
 };
 
 export default function RootLayout({
