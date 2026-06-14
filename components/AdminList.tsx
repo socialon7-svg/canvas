@@ -2,11 +2,108 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import type { LeanCanvasSubmission } from "@/lib/types";
+import type { LeanCanvasSubmission, PdfStatus, SubmissionStatus } from "@/lib/types";
 import { deleteSubmission, loadSubmissions } from "@/lib/storage";
 
 const ADMIN_SESSION_KEY = "lean-canvas-admin-authorized";
 const ADMIN_PASSWORD_KEY = "lean-canvas-admin-password";
+type AdminFilter = "all" | "submitted" | "pdfSuccess" | "pdfFailed" | "hasFeedback";
+
+const ADMIN_FILTER_LABELS: Record<AdminFilter, string> = {
+  all: "전체",
+  submitted: "제출 완료",
+  pdfSuccess: "PDF 정상",
+  pdfFailed: "PDF 오류",
+  hasFeedback: "피드백 있음"
+};
+
+function getAdminSubmissionStatus(submission: LeanCanvasSubmission): SubmissionStatus {
+  return submission.submissionStatus ?? "submitted";
+}
+
+function getAdminPdfStatus(submission: LeanCanvasSubmission): PdfStatus {
+  return submission.pdfStatus ?? "success";
+}
+
+function formatSubmissionStatus(status: SubmissionStatus) {
+  const labels: Record<SubmissionStatus, string> = {
+    draft: "작성 중",
+    submitted: "제출 완료",
+    reviewed: "검토 완료",
+    returned: "수정 요청"
+  };
+  return labels[status];
+}
+
+function formatPdfStatus(status: PdfStatus) {
+  const labels: Record<PdfStatus, string> = {
+    idle: "PDF 대기",
+    generating: "PDF 생성 중",
+    success: "PDF 정상",
+    failed: "PDF 오류"
+  };
+  return labels[status];
+}
+
+function hasMentorFeedback(submission: LeanCanvasSubmission) {
+  return Boolean(submission.canvas.mentorComment?.some((item) => item.trim()));
+}
+
+function filterByAdminStatus(submissions: LeanCanvasSubmission[], filter: AdminFilter) {
+  switch (filter) {
+    case "submitted":
+      return submissions.filter((submission) => getAdminSubmissionStatus(submission) === "submitted");
+    case "pdfSuccess":
+      return submissions.filter((submission) => getAdminPdfStatus(submission) === "success");
+    case "pdfFailed":
+      return submissions.filter((submission) => getAdminPdfStatus(submission) === "failed");
+    case "hasFeedback":
+      return submissions.filter(hasMentorFeedback);
+    case "all":
+    default:
+      return submissions;
+  }
+}
+
+function calculateAdminMetrics(submissions: LeanCanvasSubmission[]) {
+  return {
+    total: submissions.length,
+    submitted: submissions.filter((submission) => getAdminSubmissionStatus(submission) === "submitted").length,
+    pdfSuccess: submissions.filter((submission) => getAdminPdfStatus(submission) === "success").length,
+    pdfFailed: submissions.filter((submission) => getAdminPdfStatus(submission) === "failed").length,
+    feedback: submissions.filter(hasMentorFeedback).length
+  };
+}
+
+function escapeCsv(value: unknown) {
+  const text = value == null ? "" : String(value);
+  const escaped = text.replace(/"/g, '""');
+  return /[",\n\r]/.test(escaped) ? `"${escaped}"` : escaped;
+}
+
+function downloadAdminCsv(submissions: LeanCanvasSubmission[]) {
+  const headers = ["제출일", "교육명", "팀명", "참가자명", "아이디어명", "제출상태", "PDF상태", "미리보기경로"];
+  const rows = submissions.map((submission) => [
+    new Date(submission.createdAt).toLocaleString("ko-KR"),
+    submission.participant.educationName || "",
+    submission.participant.teamName || "",
+    submission.participant.participantName || "",
+    submission.participant.ideaName || "",
+    formatSubmissionStatus(getAdminSubmissionStatus(submission)),
+    formatPdfStatus(getAdminPdfStatus(submission)),
+    `/preview/${submission.id}`
+  ]);
+  const csv = [headers, ...rows].map((row) => row.map(escapeCsv).join(",")).join("\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `highviewlab-submissions-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
 
 function readSessionValue(key: string) {
   try {
@@ -64,6 +161,7 @@ export default function AdminList() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<AdminFilter>("all");
   const [fallbackMode, setFallbackMode] = useState(false);
 
   async function refreshList(adminPassword = readSessionValue(ADMIN_PASSWORD_KEY)) {
@@ -125,6 +223,7 @@ export default function AdminList() {
     setAuthorized(false);
     setSubmissions([]);
     setQuery("");
+    setFilter("all");
   };
 
   const removeSubmission = async (submission: LeanCanvasSubmission) => {
@@ -154,7 +253,7 @@ export default function AdminList() {
   };
 
   const normalizedQuery = query.trim().toLowerCase();
-  const filteredSubmissions = normalizedQuery
+  const searchedSubmissions = normalizedQuery
     ? submissions.filter((submission) =>
         [
           submission.participant.educationName,
@@ -167,6 +266,8 @@ export default function AdminList() {
           .includes(normalizedQuery)
       )
     : submissions;
+  const filteredSubmissions = filterByAdminStatus(searchedSubmissions, filter);
+  const metrics = calculateAdminMetrics(submissions);
 
   if (!authorized) {
     return (
@@ -204,13 +305,13 @@ export default function AdminList() {
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-8">
-      <header className="mb-6 flex items-end justify-between gap-4">
+      <header className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="text-sm font-semibold text-blue-700">관리자</p>
           <h1 className="mt-1 text-3xl font-bold text-gray-950">참가자 제출 목록</h1>
           <p className="mt-1 text-sm text-gray-600">총 {submissions.length}건 제출</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold disabled:bg-gray-100"
             disabled={refreshing}
@@ -226,6 +327,34 @@ export default function AdminList() {
           </Link>
         </div>
       </header>
+
+      <section className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-semibold text-gray-500">총 제출</p>
+          <p className="mt-1 text-2xl font-bold text-gray-950">{metrics.total}</p>
+        </div>
+        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-semibold text-gray-500">제출 완료</p>
+          <p className="mt-1 text-2xl font-bold text-gray-950">{metrics.submitted}</p>
+        </div>
+        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-semibold text-gray-500">PDF 정상</p>
+          <p className="mt-1 text-2xl font-bold text-gray-950">{metrics.pdfSuccess}</p>
+        </div>
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 shadow-sm">
+          <p className="text-xs font-semibold text-red-700">PDF 오류</p>
+          <p className="mt-1 text-2xl font-bold text-red-700">{metrics.pdfFailed}</p>
+        </div>
+        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-semibold text-gray-500">피드백 있음</p>
+          <p className="mt-1 text-2xl font-bold text-gray-950">{metrics.feedback}</p>
+        </div>
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 shadow-sm">
+          <p className="text-xs font-semibold text-blue-700">현재 표시</p>
+          <p className="mt-1 text-2xl font-bold text-blue-800">{filteredSubmissions.length}</p>
+        </div>
+      </section>
+
       <div className="mb-4 grid gap-3 md:grid-cols-[1fr_auto]">
         <input
           className="rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
@@ -234,6 +363,29 @@ export default function AdminList() {
           onChange={(event) => setQuery(event.target.value)}
         />
         <div className="self-center text-sm text-gray-600">표시 {filteredSubmissions.length}건</div>
+      </div>
+      <div className="mb-4 flex flex-wrap gap-2">
+        {(Object.keys(ADMIN_FILTER_LABELS) as AdminFilter[]).map((item) => (
+          <button
+            key={item}
+            type="button"
+            onClick={() => setFilter(item)}
+            className={`rounded-full border px-3 py-1.5 text-sm font-semibold transition-colors ${
+              filter === item
+                ? "border-blue-700 bg-blue-700 text-white"
+                : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+            }`}
+          >
+            {ADMIN_FILTER_LABELS[item]}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => downloadAdminCsv(filteredSubmissions)}
+          className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+        >
+          CSV 다운로드
+        </button>
       </div>
       {error ? <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
       {notice ? (
@@ -245,7 +397,7 @@ export default function AdminList() {
           <div className="p-8 text-center text-sm text-gray-600">아직 제출된 린캔버스가 없습니다.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+            <table className="w-full min-w-[960px] border-collapse text-left text-sm">
               <thead className="bg-gray-100 text-gray-700">
                 <tr>
                   <th className="px-4 py-3">제출일</th>
@@ -253,6 +405,8 @@ export default function AdminList() {
                   <th className="px-4 py-3">팀명</th>
                   <th className="px-4 py-3">참가자</th>
                   <th className="px-4 py-3">아이디어명</th>
+                  <th className="px-4 py-3">제출상태</th>
+                  <th className="px-4 py-3">PDF상태</th>
                   <th className="px-4 py-3">열람</th>
                   <th className="px-4 py-3">PDF</th>
                   <th className="px-4 py-3">삭제</th>
@@ -266,6 +420,20 @@ export default function AdminList() {
                     <td className="px-4 py-3 font-semibold">{submission.participant.teamName || "-"}</td>
                     <td className="px-4 py-3">{submission.participant.participantName || "-"}</td>
                     <td className="px-4 py-3">{submission.participant.ideaName || "-"}</td>
+                    <td className="px-4 py-3">
+                      <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700">
+                        {formatSubmissionStatus(getAdminSubmissionStatus(submission))}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`rounded-full px-2 py-1 text-xs font-bold ${
+                          getAdminPdfStatus(submission) === "failed" ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"
+                        }`}
+                      >
+                        {formatPdfStatus(getAdminPdfStatus(submission))}
+                      </span>
+                    </td>
                     <td className="px-4 py-3">
                       <Link className="font-semibold text-blue-700 underline" href={`/preview/${submission.id}`}>
                         미리보기

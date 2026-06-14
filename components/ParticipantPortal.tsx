@@ -330,6 +330,42 @@ export default function ParticipantPortal() {
               ))}
             </div>
           </section>
+          {latestSubmission ? (
+            <section className="rounded-lg border border-green-200 bg-green-50 p-5 shadow-sm md:col-span-3">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-green-700">제출 완료 확인</p>
+                  <h2 className="mt-1 text-xl font-bold text-gray-950">
+                    {latestSubmission.participant.ideaName || "린캔버스 제출물"}
+                  </h2>
+                  <div className="mt-3 grid gap-2 text-sm text-gray-700 sm:grid-cols-3">
+                    <p>
+                      <span className="font-semibold">제출 시간</span>
+                      <br />
+                      {new Date(latestSubmission.createdAt).toLocaleString("ko-KR")}
+                    </p>
+                    <p>
+                      <span className="font-semibold">PDF 상태</span>
+                      <br />
+                      {(latestSubmission.pdfStatus ?? "success") === "failed" ? "PDF 오류" : "PDF 정상"}
+                    </p>
+                    <p>
+                      <span className="font-semibold">피드백</span>
+                      <br />
+                      {feedback ? "도착" : "대기 중"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  className="rounded-md bg-green-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-green-800"
+                  onClick={() => router.push(`/preview/${latestSubmission.id}`)}
+                  type="button"
+                >
+                  제출물 열람
+                </button>
+              </div>
+            </section>
+          ) : null}
           <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
             <p className="text-sm text-gray-500">내 상태</p>
             <strong className="mt-2 block text-2xl text-gray-950">{participant.name ? "등록" : "미등록"}</strong>
