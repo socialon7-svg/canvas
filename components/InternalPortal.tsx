@@ -244,6 +244,54 @@ export default function InternalPortal() {
     downloadCsv(`${currentProgram.programCode}-submissions.csv`, rows);
   };
 
+  const downloadReportCsv = () => {
+    const rows = [
+      [
+        "프로그램",
+        "프로그램코드",
+        "기관",
+        "팀",
+        "참가자",
+        "참여자코드",
+        "아이디어",
+        "한줄설명",
+        "제출일",
+        "피드백상태",
+        "멘토코멘트",
+        "다음액션",
+        "열람URL"
+      ],
+      ...submissions.map((submission) => {
+        const program =
+          state.programs.find((item) => item.id === submission.participant.operation?.programId) ||
+          state.programs.find((item) => item.name === submission.participant.educationName);
+        const participant = state.participants.find(
+          (item) => item.id === submission.participant.operation?.participantId
+        );
+        const feedback = findFeedback(state, submission.id);
+        const previewUrl =
+          typeof window === "undefined" ? `/preview/${submission.id}` : `${window.location.origin}/preview/${submission.id}`;
+
+        return [
+          program?.name || submission.participant.educationName,
+          program?.programCode || submission.participant.operation?.programCode || "",
+          program?.clientName || "",
+          submission.participant.teamName,
+          submission.participant.participantName,
+          participant?.code || submission.participant.operation?.participantCode || "",
+          submission.participant.ideaName,
+          submission.participant.ideaSummary,
+          new Date(submission.createdAt).toLocaleString("ko-KR"),
+          feedback?.status || "미작성",
+          feedback?.comment || "",
+          feedback?.nextAction || "",
+          previewUrl
+        ];
+      })
+    ];
+    downloadCsv(`highviewlab-report-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+  };
+
   const login = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setLoading(true);
@@ -464,6 +512,9 @@ export default function InternalPortal() {
             </button>
             <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" onClick={downloadSubmissionsCsv}>
               제출 CSV
+            </button>
+            <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" onClick={downloadReportCsv}>
+              전체 결과 CSV
             </button>
             <button className="rounded-md border border-red-200 px-4 py-2 text-sm font-semibold text-red-700" onClick={handleReset}>
               데모 초기화
@@ -758,9 +809,14 @@ export default function InternalPortal() {
               <h2 className="mt-1 text-2xl font-bold text-gray-950">{currentProgram?.name}</h2>
               <p className="mt-1 text-sm text-gray-600">제출 {stats.submissions}건 · 참여자 {stats.participants}명 · 제출률 {stats.submitRate}%</p>
             </div>
-            <button className="no-print rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white" onClick={() => window.print()}>
-              결과보고 인쇄
-            </button>
+            <div className="no-print flex flex-wrap gap-2">
+              <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-bold" onClick={downloadReportCsv}>
+                결과 CSV 다운로드
+              </button>
+              <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white" onClick={() => window.print()}>
+                결과보고 인쇄
+              </button>
+            </div>
           </div>
           <div className="mt-5 overflow-x-auto">
             <table className="w-full min-w-[760px] text-left text-sm">

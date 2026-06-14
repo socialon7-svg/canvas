@@ -65,6 +65,14 @@ export default function ParticipantPortal() {
   const participant = state.participants.find((item) => item.id === participantId);
   const team = state.teams.find((item) => item.id === participant?.teamId);
   const feedback = findFeedback(state, participant?.latestSubmissionId);
+  const progressSteps = [
+    { label: "입장", done: Boolean(program && participant) },
+    { label: "내 정보", done: Boolean(participant?.name?.trim()) },
+    { label: "과제 제출", done: Boolean(participant?.latestSubmissionId || latestSubmission) },
+    { label: "피드백", done: Boolean(feedback) }
+  ];
+  const completedSteps = progressSteps.filter((step) => step.done).length;
+  const progressPercent = Math.round((completedSteps / progressSteps.length) * 100);
 
   useEffect(() => {
     let cancelled = false;
@@ -286,6 +294,32 @@ export default function ParticipantPortal() {
               >
                 과제 작성 시작
               </button>
+            </div>
+          </section>
+          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm md:col-span-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-gray-500">진행률</p>
+                <h2 className="mt-1 text-2xl font-bold text-gray-950">{progressPercent}% 완료</h2>
+              </div>
+              <p className="text-sm text-gray-600">
+                {completedSteps}/{progressSteps.length}단계 완료
+              </p>
+            </div>
+            <div className="mt-4 h-3 overflow-hidden rounded-full bg-gray-100">
+              <div className="h-full rounded-full bg-blue-700 transition-all" style={{ width: `${progressPercent}%` }} />
+            </div>
+            <div className="mt-4 grid gap-2 sm:grid-cols-4">
+              {progressSteps.map((step) => (
+                <div
+                  key={step.label}
+                  className={`rounded-md border px-3 py-2 text-sm font-semibold ${
+                    step.done ? "border-blue-200 bg-blue-50 text-blue-800" : "border-gray-200 bg-gray-50 text-gray-500"
+                  }`}
+                >
+                  {step.done ? "완료" : "대기"} · {step.label}
+                </div>
+              ))}
             </div>
           </section>
           <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
