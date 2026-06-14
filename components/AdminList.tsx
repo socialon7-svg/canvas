@@ -8,6 +8,30 @@ import { deleteSubmission, loadSubmissions } from "@/lib/storage";
 const ADMIN_SESSION_KEY = "lean-canvas-admin-authorized";
 const ADMIN_PASSWORD_KEY = "lean-canvas-admin-password";
 
+function readSessionValue(key: string) {
+  try {
+    return window.sessionStorage?.getItem(key) || "";
+  } catch {
+    return "";
+  }
+}
+
+function writeSessionValue(key: string, value: string) {
+  try {
+    window.sessionStorage?.setItem(key, value);
+  } catch {
+    // Session storage can be blocked in embedded browser contexts.
+  }
+}
+
+function removeSessionValue(key: string) {
+  try {
+    window.sessionStorage?.removeItem(key);
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
 const loadServerSubmissions = async (adminPassword: string) => {
   const response = await fetch("/api/submissions", {
     headers: {
@@ -42,7 +66,7 @@ export default function AdminList() {
   const [query, setQuery] = useState("");
   const [fallbackMode, setFallbackMode] = useState(false);
 
-  async function refreshList(adminPassword = window.sessionStorage.getItem(ADMIN_PASSWORD_KEY) || "") {
+  async function refreshList(adminPassword = readSessionValue(ADMIN_PASSWORD_KEY)) {
     setRefreshing(true);
     setError("");
     setNotice("");
@@ -61,8 +85,8 @@ export default function AdminList() {
   }
 
   useEffect(() => {
-    const storedPassword = window.sessionStorage.getItem(ADMIN_PASSWORD_KEY) || "";
-    if (window.sessionStorage.getItem(ADMIN_SESSION_KEY) === "true" && storedPassword) {
+    const storedPassword = readSessionValue(ADMIN_PASSWORD_KEY);
+    if (readSessionValue(ADMIN_SESSION_KEY) === "true" && storedPassword) {
       setAuthorized(true);
       refreshList(storedPassword);
     }
@@ -83,8 +107,8 @@ export default function AdminList() {
         throw new Error("암호가 올바르지 않습니다.");
       }
       // TODO: 운영 배포에서는 sessionStorage 대신 httpOnly cookie 기반 관리자 세션으로 교체하세요.
-      window.sessionStorage.setItem(ADMIN_SESSION_KEY, "true");
-      window.sessionStorage.setItem(ADMIN_PASSWORD_KEY, password);
+      writeSessionValue(ADMIN_SESSION_KEY, "true");
+      writeSessionValue(ADMIN_PASSWORD_KEY, password);
       setAuthorized(true);
       await refreshList(password);
       setPassword("");
@@ -96,8 +120,8 @@ export default function AdminList() {
   };
 
   const logout = () => {
-    window.sessionStorage.removeItem(ADMIN_SESSION_KEY);
-    window.sessionStorage.removeItem(ADMIN_PASSWORD_KEY);
+    removeSessionValue(ADMIN_SESSION_KEY);
+    removeSessionValue(ADMIN_PASSWORD_KEY);
     setAuthorized(false);
     setSubmissions([]);
     setQuery("");
@@ -106,7 +130,7 @@ export default function AdminList() {
   const removeSubmission = async (submission: LeanCanvasSubmission) => {
     const label = submission.participant.teamName || submission.participant.ideaName || "선택한 제출물";
     if (!window.confirm(`${label} 제출물을 삭제할까요?`)) return;
-    const adminPassword = window.sessionStorage.getItem(ADMIN_PASSWORD_KEY) || "";
+    const adminPassword = readSessionValue(ADMIN_PASSWORD_KEY);
 
     if (fallbackMode) {
       setSubmissions(deleteSubmission(submission.id));
@@ -154,16 +178,16 @@ export default function AdminList() {
             <label>
               <span className="mb-1 block text-sm font-semibold text-gray-800">암호</span>
               <input
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                 type="password"
                 autoComplete="current-password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
               />
             </label>
-            {error ? <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
+            {error ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
             <button
-              className="w-full rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:bg-gray-400"
+              className="w-full rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-800 active:bg-blue-900 disabled:bg-gray-400"
               disabled={loading}
               type="submit"
             >
@@ -171,10 +195,7 @@ export default function AdminList() {
             </button>
           </form>
           <Link className="mt-4 inline-block text-sm font-semibold text-gray-700 underline" href="/">
-            입력 화면으로 이동
-          </Link>
-          <Link className="ml-4 mt-4 inline-block text-sm font-semibold text-gray-700 underline" href="/internal">
-            내부직원 포털
+            메인으로 돌아가기
           </Link>
         </main>
       </div>
@@ -201,16 +222,13 @@ export default function AdminList() {
             로그아웃
           </button>
           <Link className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" href="/">
-            입력 화면
-          </Link>
-          <Link className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" href="/internal">
-            운영 포털
+            메인
           </Link>
         </div>
       </header>
       <div className="mb-4 grid gap-3 md:grid-cols-[1fr_auto]">
         <input
-          className="rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+          className="rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
           placeholder="교육명, 팀명, 참가자명, 아이디어명으로 검색"
           value={query}
           onChange={(event) => setQuery(event.target.value)}

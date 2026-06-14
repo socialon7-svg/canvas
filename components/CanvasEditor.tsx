@@ -42,7 +42,7 @@ export default function CanvasEditor() {
   useEffect(() => {
     const draft = loadDraftSession();
     if (!draft) {
-      router.replace("/");
+      router.replace("/participant");
       return;
     }
     setParticipant(draft.participant);
@@ -114,11 +114,14 @@ export default function CanvasEditor() {
           </p>
         </div>
         <div className="flex gap-2">
-          <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" onClick={() => router.push("/")}>
+          <button
+            className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            onClick={() => router.push("/participant/canvas")}
+          >
             입력으로 돌아가기
           </button>
           <button
-            className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:bg-gray-400"
+            className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-800 active:bg-blue-900 disabled:bg-gray-400"
             disabled={submitting}
             onClick={submit}
           >
@@ -144,7 +147,7 @@ export default function CanvasEditor() {
           <label key={key} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
             <span className="mb-2 block text-sm font-bold text-gray-900">{canvasLabels[key]}</span>
             <textarea
-              className="min-h-36 w-full resize-y rounded-md border border-gray-300 px-3 py-2 text-sm leading-6 outline-none focus:border-blue-500"
+              className="min-h-36 w-full resize-y rounded-md border border-gray-300 px-3 py-2 text-sm leading-6 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
               value={toText(canvas[key])}
               onChange={(event) => updateField(key, event.target.value)}
             />

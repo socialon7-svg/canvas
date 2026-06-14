@@ -71,7 +71,7 @@ export default function PreviewClient({ id }: { id: string }) {
         <div className="rounded-lg border border-red-200 bg-white p-6 text-sm text-red-700">
           {error || "제출물을 찾을 수 없습니다."}
         </div>
-        <Link className="mt-4 inline-block rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white" href="/">
+        <Link className="mt-4 inline-block rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-800 active:bg-blue-900" href="/participant">
           새로 작성하기
         </Link>
       </div>
@@ -134,19 +134,19 @@ export default function PreviewClient({ id }: { id: string }) {
         </div>
         <div className="flex flex-wrap gap-2">
           <button
-            className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:bg-gray-400"
+            className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-800 active:bg-blue-900 disabled:bg-gray-400"
             disabled={pdfLoading}
             onClick={downloadPdf}
           >
             {pdfLoading ? "PDF 생성 중..." : "PDF 다운로드"}
           </button>
-          <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" onClick={print}>
+          <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold transition-colors hover:bg-gray-50" onClick={print}>
             바로 인쇄
           </button>
-          <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" onClick={() => router.push("/admin")}>
+          <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold transition-colors hover:bg-gray-50" onClick={() => router.push("/admin")}>
             관리자 목록
           </button>
-          <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" onClick={() => router.push("/")}>
+          <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold transition-colors hover:bg-gray-50" onClick={() => router.push("/participant")}>
             새로 작성하기
           </button>
         </div>

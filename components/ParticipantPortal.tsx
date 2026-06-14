@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { HighViewOperationsState, HighViewParticipant, LeanCanvasSubmission } from "@/lib/types";
@@ -165,14 +166,14 @@ export default function ParticipantPortal() {
   const startCanvas = () => {
     if (!program || !participant) return;
     saveParticipantPrefill(toParticipantInput(program, participant, team));
-    router.push("/");
+    router.push("/participant/canvas");
   };
 
   if (!program || !participant) {
     return (
       <div className="mx-auto flex min-h-screen max-w-md items-center px-5 py-10">
         <main className="w-full rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-          <p className="text-sm font-semibold text-blue-700">Participant Portal</p>
+          <p className="text-sm font-semibold text-blue-700">참여자 포털</p>
           <h1 className="mt-1 text-2xl font-bold text-gray-950">참여자 입장</h1>
           <p className="mt-2 text-sm text-gray-600">
             내부직원이 발급한 프로그램 코드와 참여자 코드를 입력하세요.
@@ -182,7 +183,7 @@ export default function ParticipantPortal() {
               <span className="mb-1 block text-sm font-semibold text-gray-800">프로그램 코드</span>
               <input
                 name="programCode"
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                 placeholder="예: HV-DEMO"
                 value={programCode}
                 onChange={(event) => setProgramCode(event.target.value)}
@@ -192,20 +193,36 @@ export default function ParticipantPortal() {
               <span className="mb-1 block text-sm font-semibold text-gray-800">참여자 코드</span>
               <input
                 name="participantCode"
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                 placeholder="예: P-DEMO1"
                 value={participantCode}
                 onChange={(event) => setParticipantCode(event.target.value)}
               />
             </label>
-            {error ? <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
-            <button className="w-full rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white" type="submit">
+            {error ? (
+              <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                프로그램 코드 또는 참여자 코드가 올바르지 않습니다. 다시 확인해주세요.
+              </p>
+            ) : null}
+            <button
+              className="w-full rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-800 active:bg-blue-900"
+              type="submit"
+            >
               입장하기
             </button>
           </form>
-          <p className="mt-4 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
-            데모: <span className="font-bold">HV-DEMO</span> / <span className="font-bold">P-DEMO1</span>
-          </p>
+          <div className="mt-4 rounded-md border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-800">
+            <p className="mb-1 font-bold">데모 체험하기</p>
+            <p>
+              프로그램 코드: <code className="rounded bg-blue-100 px-1 py-0.5 font-mono font-bold">HV-DEMO</code>
+            </p>
+            <p>
+              참여자 코드: <code className="rounded bg-blue-100 px-1 py-0.5 font-mono font-bold">P-DEMO1</code>
+            </p>
+          </div>
+          <Link className="mt-4 inline-block text-sm font-semibold text-gray-500 hover:text-gray-700" href="/">
+            역할 선택으로 돌아가기
+          </Link>
         </main>
       </div>
     );
