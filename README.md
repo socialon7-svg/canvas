@@ -1,17 +1,203 @@
-# 린캔버스 초안 자동화 및 PDF 제출 시스템
+# 창업교육·캠프 운영 MVP / 하이뷰랩 프로그램 운영 MVP
 
-창업교육 참가자가 아이디어 정보를 입력하면 AI가 린캔버스 초안을 생성하고, 참가자가 수정 후 최종 제출하면 A4 가로형 PDF로 산출되는 웹앱입니다.
+하이뷰랩의 창업교육·캠프 현장에서 참여자 과제 작성, AI 초안 생성, 제출, PDF/인쇄, 운영진 확인, 피드백, 결과보고용 데이터 정리까지 한 흐름으로 관리하기 위한 운영 MVP입니다.
 
-## 실행
+초기 버전은 린캔버스 초안 자동화와 PDF 제출 시스템으로 시작했지만, 현재는 모두의창업 초안 생성, 참여자 포털, 관리자 제출 목록, 운영 상태판, CSV 다운로드 기능까지 포함하는 창업교육 현장 운영 OS의 1차 버전을 목표로 합니다.
+
+## 1. 제품 개요
+
+이 웹앱은 창업교육 참여자가 자신의 아이디어를 입력하면 AI가 산출물 초안을 생성하고, 참여자가 수정한 뒤 운영 시스템에 제출할 수 있도록 돕습니다.
+
+운영진은 관리자 화면에서 제출 현황, PDF 상태, 피드백 여부, CSV 데이터를 확인하여 현장 운영과 결과보고 업무를 효율화할 수 있습니다.
+
+핵심 목표는 다음과 같습니다.
+
+- 교육생은 무엇을 작성해야 하는지 쉽게 이해한다.
+- 교육생은 제출 완료 여부를 명확히 확인한다.
+- 운영진은 제출, PDF, 피드백 상태를 한눈에 파악한다.
+- 하이뷰랩은 캠프 종료 후 결과보고용 데이터를 빠르게 정리한다.
+- 향후 린캔버스, 모두의창업, PSST, IR, 멘토링 리포트 등 다양한 교육 산출물을 모듈형으로 확장한다.
+
+## 2. 핵심 사용자
+
+### 교육생 / 참여자
+
+- 프로그램 코드와 참여자 코드로 입장
+- 내 정보와 팀 정보 확인
+- 린캔버스 작성 및 제출
+- 모두의창업 신청서 초안 생성 및 제출
+- 제출 완료 여부 확인
+- PDF/인쇄 또는 복사용 텍스트 활용
+- 운영진 피드백 확인
+
+### 내부직원 / 운영진 / 관리자
+
+- 참여자 제출 목록 확인
+- 제출 상태, PDF 상태, 피드백 여부 확인
+- 검색 및 상태 필터 활용
+- 결과보고용 CSV 다운로드
+- 미제출자, PDF 오류, 피드백 대기 항목 확인
+- 프로그램별 운영 현황 관리
+
+## 3. 핵심 기능
+
+### 3.1 참여자 코드 기반 입장
+
+참여자는 내부직원이 발급한 프로그램 코드와 참여자 코드를 입력해 자신의 프로그램 워크스페이스로 입장합니다.
+
+입장 후 참여자는 다음 흐름을 확인합니다.
+
+1. 입장
+2. 내 정보 확인
+3. 린캔버스 제출
+4. 모두의창업 초안 제출
+5. 피드백 확인
+
+### 3.2 린캔버스 초안 생성 및 PDF 제출
+
+참여자가 아이디어 정보를 입력하면 AI가 린캔버스 초안을 생성합니다. 참여자는 생성된 내용을 수정한 뒤 최종 제출하고, A4 가로형 PDF 또는 인쇄 산출물로 활용할 수 있습니다.
+
+주요 기능:
+
+- 아이디어 정보 입력
+- AI 린캔버스 초안 생성
+- 참여자 직접 수정
+- 최종 제출
+- PDF 다운로드
+- 브라우저 인쇄
+- 관리자 제출 목록 연동
+
+### 3.3 모두의창업 초안 생성 및 제출
+
+모두의창업 신청을 준비하는 참여자를 위해 Q1~Q8 기반 신청서 초안을 자동 생성합니다.
+
+주요 입력 항목:
+
+- 교육명
+- 팀명
+- 참가자명
+- 아이디어명
+- Q1. 한 줄 소개
+- Q2. 배경 이야기
+- Q3. 고객과 문제
+- Q4. 실행 계획과 증거
+- Q5. 분야
+- Q6. 창업 여부
+- Q7. 팀원
+- Q8. 영상 링크
+
+AI 생성 결과:
+
+- 첫 문장 훅
+- Q1~Q8 신청서 초안
+- 핵심 페르소나
+- 차별점
+- 증거 한 줄
+- 정책 키워드
+- 사회적 임팩트 마무리
+- 최종 제출 전 체크리스트
+- 보완 코멘트
+
+### 3.4 관리자 제출 목록
+
+관리자는 `/admin`에서 제출된 린캔버스 목록을 확인할 수 있습니다.
+
+현재 제공 기능:
+
+- 제출 목록 조회
+- 검색
+- 상태 필터
+- PDF 상태 확인
+- 제출상태 확인
+- 미리보기
+- PDF 화면 이동
+- 삭제
+- CSV 다운로드
+- Supabase 미설정 시 localStorage fallback 안내
+
+### 3.5 운영 상태판
+
+내부 운영 포털과 관리자 화면 상단에서 현재 제출 상태를 숫자로 확인할 수 있습니다.
+
+예시 지표:
+
+- 총 제출
+- 제출 완료
+- PDF 정상
+- PDF 오류
+- 피드백 있음
+- 현재 표시 건수
+
+### 3.6 CSV 다운로드
+
+관리자는 현재 필터링된 제출 목록을 CSV로 다운로드할 수 있습니다.
+
+CSV 포함 항목:
+
+- 제출일
+- 교육명
+- 팀명
+- 참가자명
+- 아이디어명
+- 제출상태
+- PDF상태
+- 미리보기경로
+
+### 3.7 PDF / 인쇄
+
+린캔버스 미리보기 화면에서 PDF 다운로드와 브라우저 인쇄를 지원합니다.
+
+- PDF 생성: `html2pdf.js`
+- 인쇄: 브라우저 인쇄
+- 출력 기준: A4 가로형
+
+### 3.8 Supabase 중앙 저장 및 localStorage fallback
+
+운영 배포에서는 Supabase 중앙 저장을 사용합니다. Supabase 설정이 없거나 테이블이 준비되지 않은 경우, MVP 흐름 유지를 위해 해당 브라우저의 localStorage에 임시 저장합니다.
+
+## 4. 화면 경로
+
+| 경로 | 설명 |
+| --- | --- |
+| `/` | 역할 선택 및 메인 화면 |
+| `/participant` | 참여자 포털 |
+| `/participant/canvas` | 참여자 린캔버스 작성 화면 |
+| `/editor` | 린캔버스 AI 생성 결과 수정 화면 |
+| `/preview/[id]` | 린캔버스 제출 완료 / PDF 미리보기 화면 |
+| `/modu-startup` | 모두의창업 초안 생성 화면 |
+| `/modu-startup/preview/[id]` | 모두의창업 제출물 미리보기 화면 |
+| `/admin` | 관리자 린캔버스 제출 목록 |
+| `/admin/modu-startup` | 관리자 모두의창업 제출 목록 |
+| `/internal` | 내부 운영 포털 |
+
+## 5. 현장 운영 흐름
+
+1. 운영진이 프로그램과 참여자 코드를 준비합니다.
+2. 참여자는 QR 또는 링크로 접속합니다.
+3. 참여자는 프로그램 코드와 참여자 코드로 입장합니다.
+4. 참여자는 내 정보와 팀 정보를 확인합니다.
+5. 참여자는 린캔버스 또는 모두의창업 초안을 작성합니다.
+6. AI가 초안을 생성합니다.
+7. 참여자는 결과물을 직접 수정합니다.
+8. 참여자는 최종 제출합니다.
+9. 운영진은 관리자 화면에서 제출 현황을 확인합니다.
+10. 운영진은 PDF 오류, 미제출, 피드백 대기 항목을 확인합니다.
+11. 운영진은 CSV를 내려받아 결과보고 자료로 활용합니다.
+
+## 6. 실행
 
 ```bash
 npm install
 npm run dev
 ```
 
-기본 주소는 `http://localhost:3000`입니다.
+기본 주소는 다음과 같습니다.
 
-품질 확인:
+```bash
+http://localhost:3000
+```
+
+## 7. 품질 확인
 
 ```bash
 npm run typecheck
@@ -19,7 +205,7 @@ npm run lint
 npm run build
 ```
 
-## 환경변수
+## 8. 환경변수
 
 ```bash
 AI_API_KEY=
@@ -39,12 +225,12 @@ ADMIN_PASSWORD=
 
 - `AI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_SECRET_KEY`, `ADMIN_PASSWORD`는 서버에서만 사용합니다.
 - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`는 브라우저 노출이 가능한 값입니다.
-- Supabase가 설정되지 않으면 제출은 기존 MVP처럼 해당 브라우저 `localStorage`에 임시 저장됩니다.
-- 서버 기반 중앙 저장을 활성화하려면 `SUPABASE_SERVICE_ROLE_KEY` 또는 `SUPABASE_SECRET_KEY`가 필요합니다.
+- 운영 배포에서는 Vercel Project Environment Variables에 위 환경변수를 설정해야 합니다.
+- Supabase 중앙 저장을 사용하려면 `NEXT_PUBLIC_SUPABASE_URL`과 `SUPABASE_SERVICE_ROLE_KEY` 또는 `SUPABASE_SECRET_KEY`가 필요합니다.
 
-## Supabase 테이블
+## 9. Supabase 테이블
 
-Supabase SQL Editor에서 아래 SQL을 실행하세요.
+### 9.1 린캔버스 제출 테이블
 
 ```sql
 create table if not exists lean_canvas_submissions (
@@ -58,49 +244,104 @@ create index if not exists idx_lean_canvas_submissions_created_at
 on lean_canvas_submissions (created_at desc);
 ```
 
+### 9.2 모두의창업 제출 테이블
+
+```sql
+create table if not exists modu_startup_submissions (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  input jsonb not null,
+  draft jsonb not null
+);
+
+create index if not exists idx_modu_startup_submissions_created_at
+on modu_startup_submissions (created_at desc);
+```
+
 운영 초기에는 RLS를 끄거나, 서버 Route에서 service role key로만 접근하게 구성합니다. 클라이언트에서 직접 insert/select하지 않습니다.
 
-## 화면 경로
+## 10. 현재 MVP의 한계
 
-- `/` 참가자 입력 화면
-- `/editor` AI 생성 결과 수정 화면
-- `/preview/[id]` 제출 완료 / PDF 미리보기 화면
-- `/admin` 관리자 제출 목록 화면
+현재 MVP는 빠른 현장 검증을 위해 일부 데이터를 jsonb와 localStorage fallback 중심으로 처리합니다.
 
-## 현장 운영 흐름
+현재 한계:
 
-1. 참가자가 QR 또는 링크로 접속
-2. 팀 정보와 아이디어 입력
-3. AI 초안 생성
-4. 참가자가 직접 수정
-5. 최종 제출
-6. PDF 다운로드 또는 인쇄
-7. 관리자는 전체 제출 목록 확인
+- 모듈별 제출 테이블이 분리되어 있음
+- 작성 중 draft의 서버 자동저장이 아직 제한적임
+- 관리자 필터 상태의 URL 동기화가 일부 화면에만 적용되어 있음
+- Supabase Realtime 기반 실시간 관제는 아직 미적용
+- Schema-driven Form Renderer는 아직 미적용
+- 기관용 대시보드, 멘토/강사 권한은 아직 미구현
 
-## 관리자
+## 11. 향후 로드맵
 
-`/admin`에서 관리자 암호를 입력하면 제출 목록을 볼 수 있습니다. 목록에서는 검색, 새로고침, 미리보기, PDF 화면 이동, 삭제가 가능합니다.
+### V1.1 현장 투입 안정화
 
-운영 배포에서는 Vercel 환경변수 `ADMIN_PASSWORD`를 반드시 설정하세요.
+- 관리자 운영 상태판 고도화
+- 관리자 URL 필터 동기화
+- 교육생 제출 완료 확인 UX 강화
+- PDF 오류 복구 흐름 추가
+- CSV 다운로드 항목 확대
 
-## PDF / 인쇄
+### V1.2 모두의창업 사용성 개선
 
-미리보기 화면의 `PDF 다운로드`는 `html2pdf.js`로 실제 PDF 파일을 생성합니다. `바로 인쇄`는 브라우저 인쇄 창을 열며, A4 가로형 한 페이지 출력에 맞춰 `@page`와 `@media print`를 적용합니다.
+- 모두의창업 단계형 입력 UI
+- Q1~Q8 입력 stepper
+- 진행률 표시
+- 자동저장 / 이어쓰기
+- 모바일 입력 피로도 개선
 
-## AI 테스트
+### V1.3 모듈 확장 구조
 
-API 비용 없이 흐름을 점검하려면:
+- Module Registry 도입
+- 린캔버스, 모두의창업, PSST, IR, 멘토링 리포트 모듈 공통 관리
+- 참여자 포털에서 모듈 카드형 표시
+- 관리자 통합 관제표
 
-```bash
-AI_MOCK=true
+### V1.4 서버 draft 저장
+
+- Supabase draft 저장
+- debounce 자동저장
+- localStorage fallback 유지
+- 마지막 저장 시간 표시
+- 이어쓰기 안내
+
+### V1.5 통합 제출 데이터 구조
+
+- 공통 `module_submissions` 테이블 설계
+- `program_id`, `participant_id`, `team_id`, `module_id`, `status`, `current_step`, `submitted_at` 정규 컬럼화
+- 결과보고 및 BI 연동 기반 마련
+
+### V1.6 실시간 운영 관제
+
+- Supabase Realtime
+- 팀별 진행 상황 표시
+- 미입장, 작성 중, 제출 완료, 피드백 대기 실시간 보드
+- 강사/운영진 현장 개입 포인트 표시
+
+### V1.7 Schema-driven Form Renderer
+
+- 입력 모듈을 JSON schema 기반으로 정의
+- 신규 교육 산출물 추가 시 프론트엔드 수정 최소화
+- PSST, IR, 멘토링 리포트, 결과보고서 자동화 확장
+
+## 12. 제품 방향
+
+이 프로젝트의 최종 방향은 단순한 린캔버스 작성기가 아닙니다.
+
+하이뷰랩의 창업교육·캠프 운영에서 다음 흐름을 자동화하는 창업교육 현장 운영 OS를 목표로 합니다.
+
+```text
+참여자 입장
+→ 정보 확인
+→ 아이디어 입력
+→ AI 초안 생성
+→ 참여자 수정
+→ 제출
+→ PDF/인쇄
+→ 관리자 확인
+→ 피드백
+→ 결과보고 데이터 정리
 ```
 
-실제 AI API를 사용할 때는:
-
-```bash
-AI_MOCK=false
-```
-
-## Vercel 배포
-
-Vercel Project Environment Variables에 위 환경변수를 설정하세요. 특히 Supabase 중앙 저장을 사용하려면 `NEXT_PUBLIC_SUPABASE_URL`과 `SUPABASE_SERVICE_ROLE_KEY` 또는 `SUPABASE_SECRET_KEY`가 필요합니다.
+장기적으로는 린캔버스, 모두의창업, PSST, IR, 멘토링 리포트, 결과보고서까지 하나의 운영 플랫폼에서 관리하는 구조로 확장합니다.

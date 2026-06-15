@@ -25,6 +25,43 @@ const initialInput: ModuStartupInput = {
   videoUrl: ""
 };
 
+const MODU_STARTUP_DRAFT_KEY = "modu-startup-current-draft";
+
+const moduStartupSteps = [
+  {
+    id: "basic",
+    title: "기본 정보",
+    description: "교육명, 팀명, 참가자명, 아이디어명을 확인합니다."
+  },
+  {
+    id: "intro",
+    title: "한 줄 소개",
+    description: "무엇을, 누구를 위해, 어떻게 제공하는지 적습니다."
+  },
+  {
+    id: "problem",
+    title: "배경과 문제",
+    description: "직접 겪은 장면과 고객 문제를 적습니다."
+  },
+  {
+    id: "execution",
+    title: "실행 계획",
+    description: "베타 유저, 인터뷰, 매출, MOU 등 증거를 적습니다."
+  },
+  {
+    id: "team",
+    title: "분야와 팀",
+    description: "분야, 창업 여부, 팀원, 영상 링크를 정리합니다."
+  },
+  {
+    id: "generate",
+    title: "초안 생성",
+    description: "입력값을 바탕으로 AI 초안을 생성합니다."
+  }
+] as const;
+
+type ModuStartupStepId = (typeof moduStartupSteps)[number]["id"];
+
 type DraftTextKey = Exclude<keyof ModuStartupDraft, "evidenceLines" | "policyKeywords" | "finalChecklist">;
 type DraftArrayKey = "evidenceLines" | "policyKeywords" | "finalChecklist";
 
@@ -190,8 +227,63 @@ function formatDraft(input: ModuStartupInput, draft: ModuStartupDraft) {
   return lines.join("\n");
 }
 
+function hasMeaningfulInput(input: ModuStartupInput) {
+  return [
+    input.programName,
+    input.teamName,
+    input.participantName,
+    input.ideaTitle,
+    input.ideaOneLine,
+    input.backgroundStory,
+    input.customerProblem,
+    input.executionPlan,
+    input.category,
+    input.teamMembers,
+    input.videoUrl
+  ].some((value) => value.trim());
+}
+
+function saveModuStartupDraftToLocal(input: ModuStartupInput) {
+  try {
+    const savedAt = new Date().toISOString();
+    window.localStorage.setItem(
+      MODU_STARTUP_DRAFT_KEY,
+      JSON.stringify({
+        input,
+        savedAt
+      })
+    );
+    return savedAt;
+  } catch {
+    return "";
+  }
+}
+
+function loadModuStartupDraftFromLocal(): { input: ModuStartupInput; savedAt: string } | null {
+  try {
+    const raw = window.localStorage.getItem(MODU_STARTUP_DRAFT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { input?: ModuStartupInput; savedAt?: string };
+    if (!parsed.input || !parsed.savedAt) return null;
+    return { input: parsed.input, savedAt: parsed.savedAt };
+  } catch {
+    return null;
+  }
+}
+
+function clearModuStartupDraftFromLocal() {
+  try {
+    window.localStorage.removeItem(MODU_STARTUP_DRAFT_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 export default function ModuStartupGenerator() {
   const [input, setInput] = useState<ModuStartupInput>(initialInput);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [lastSavedAt, setLastSavedAt] = useState("");
+  const [draftReady, setDraftReady] = useState(false);
   const [draft, setDraft] = useState<ModuStartupDraft | null>(null);
   const [submittedSubmission, setSubmittedSubmission] = useState<ModuStartupSubmission | null>(null);
   const [loading, setLoading] = useState(false);
@@ -200,12 +292,44 @@ export default function ModuStartupGenerator() {
   const [notice, setNotice] = useState("");
 
   const printableText = useMemo(() => (draft ? formatDraft(input, draft) : ""), [draft, input]);
+  const currentStepMeta = moduStartupSteps[currentStep];
+  const currentStepId: ModuStartupStepId = currentStepMeta.id;
+  const progressPercent = Math.round(((currentStep + 1) / moduStartupSteps.length) * 100);
 
   useEffect(() => {
     const prefill = loadModuStartupPrefill();
-    if (!prefill) return;
-    setInput((current) => ({ ...current, ...prefill }));
+    const savedDraft = loadModuStartupDraftFromLocal();
+
+    if (savedDraft) {
+      const resume = window.confirm(
+        `이전에 작성하던 모두의창업 내용이 있습니다.\n저장 시각: ${new Date(savedDraft.savedAt).toLocaleString("ko-KR")}\n이어 쓰시겠습니까?`
+      );
+
+      if (resume) {
+        setInput((current) => ({ ...current, ...savedDraft.input }));
+        setLastSavedAt(savedDraft.savedAt);
+        setNotice("이전에 작성하던 내용을 불러왔습니다.");
+      } else {
+        clearModuStartupDraftFromLocal();
+        if (prefill) setInput((current) => ({ ...current, ...prefill }));
+      }
+    } else if (prefill) {
+      setInput((current) => ({ ...current, ...prefill }));
+    }
+
+    setDraftReady(true);
   }, []);
+
+  useEffect(() => {
+    if (!draftReady || submittedSubmission || !hasMeaningfulInput(input)) return;
+
+    const timer = window.setTimeout(() => {
+      const savedAt = saveModuStartupDraftToLocal(input);
+      if (savedAt) setLastSavedAt(savedAt);
+    }, 800);
+
+    return () => window.clearTimeout(timer);
+  }, [draftReady, input, submittedSubmission]);
 
   const updateInput = <K extends keyof ModuStartupInput>(key: K, value: ModuStartupInput[K]) => {
     setInput((current) => ({ ...current, [key]: value }));
@@ -279,6 +403,8 @@ export default function ModuStartupGenerator() {
         const fallbackSubmission = saveModuStartupSubmission(input, draft);
         recordModuStartupSubmission(input, fallbackSubmission.id);
         clearModuStartupPrefill();
+        clearModuStartupDraftFromLocal();
+        setLastSavedAt("");
         setSubmittedSubmission(fallbackSubmission);
         setNotice("중앙 저장소가 아직 준비되지 않아 이 브라우저에 임시 제출 저장했습니다.");
         return;
@@ -290,6 +416,8 @@ export default function ModuStartupGenerator() {
 
       recordModuStartupSubmission(input, data.submission.id);
       clearModuStartupPrefill();
+      clearModuStartupDraftFromLocal();
+      setLastSavedAt("");
       setSubmittedSubmission(data.submission);
       setNotice("모두의창업 초안이 운영 시스템에 제출되었습니다.");
     } catch (caught) {
@@ -300,11 +428,194 @@ export default function ModuStartupGenerator() {
   };
 
   const resetAll = () => {
+    if ((hasMeaningfulInput(input) || draft) && !window.confirm("작성 중인 내용을 지우고 새로 작성할까요?")) return;
     setInput(initialInput);
+    setCurrentStep(0);
     setDraft(null);
     setSubmittedSubmission(null);
     setError("");
     setNotice("");
+    setLastSavedAt("");
+    clearModuStartupPrefill();
+    clearModuStartupDraftFromLocal();
+  };
+
+  const moveStep = (nextStep: number) => {
+    setCurrentStep(Math.max(0, Math.min(moduStartupSteps.length - 1, nextStep)));
+  };
+
+  const renderStepFields = () => {
+    switch (currentStepId) {
+      case "basic":
+        return (
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label>
+                <span className="mb-1 block text-sm font-semibold text-gray-800">교육명</span>
+                <input
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  value={input.programName}
+                  onChange={(event) => updateInput("programName", event.target.value)}
+                  placeholder="예: 모두의창업 캠프"
+                />
+              </label>
+              <label>
+                <span className="mb-1 block text-sm font-semibold text-gray-800">팀명</span>
+                <input
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  value={input.teamName}
+                  onChange={(event) => updateInput("teamName", event.target.value)}
+                  placeholder="예: 하이팀"
+                />
+              </label>
+            </div>
+            <label>
+              <span className="mb-1 block text-sm font-semibold text-gray-800">참가자명</span>
+              <input
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                value={input.participantName}
+                onChange={(event) => updateInput("participantName", event.target.value)}
+                placeholder="예: 김하이"
+              />
+            </label>
+            <label>
+              <span className="mb-1 block text-sm font-semibold text-gray-800">아이디어명</span>
+              <input
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                value={input.ideaTitle}
+                onChange={(event) => updateInput("ideaTitle", event.target.value)}
+                placeholder="예: 1인 브런치 카페 운영 도우미"
+              />
+            </label>
+          </div>
+        );
+      case "intro":
+        return (
+          <label className="block">
+            <span className="mb-1 block text-sm font-semibold text-gray-800">Q1. 한 줄 소개</span>
+            <input
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              maxLength={120}
+              value={input.ideaOneLine}
+              onChange={(event) => updateInput("ideaOneLine", event.target.value)}
+              placeholder="무엇을, 누구를 위해, 어떻게"
+            />
+            <span className="mt-1 block text-right text-xs text-gray-400">{input.ideaOneLine.length} / 120자</span>
+          </label>
+        );
+      case "problem":
+        return (
+          <div className="space-y-4">
+            <label className="block">
+              <span className="mb-1 block text-sm font-semibold text-gray-800">Q2. 배경 이야기</span>
+              <textarea
+                className="min-h-32 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                value={input.backgroundStory}
+                onChange={(event) => updateInput("backgroundStory", event.target.value)}
+                placeholder="직접 겪은 장면, 관찰한 순간, 왜 시작했는지"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-sm font-semibold text-gray-800">Q3. 고객과 문제</span>
+              <textarea
+                className="min-h-32 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                value={input.customerProblem}
+                onChange={(event) => updateInput("customerProblem", event.target.value)}
+                placeholder="좁은 고객군, 해결하려는 문제, 현재 대안"
+              />
+            </label>
+          </div>
+        );
+      case "execution":
+        return (
+          <label className="block">
+            <span className="mb-1 block text-sm font-semibold text-gray-800">Q4. 실행 계획과 증거</span>
+            <textarea
+              className="min-h-40 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              value={input.executionPlan}
+              onChange={(event) => updateInput("executionPlan", event.target.value)}
+              placeholder="베타 유저, 인터뷰, 매출, MOU, 수상, 특허 등"
+            />
+          </label>
+        );
+      case "team":
+        return (
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label>
+                <span className="mb-1 block text-sm font-semibold text-gray-800">Q5. 분야</span>
+                <select
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  value={input.category}
+                  onChange={(event) => updateInput("category", event.target.value)}
+                >
+                  <option value="">분야 선택</option>
+                  {categoryOptions.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="mb-1 block text-sm font-semibold text-gray-800">Q6. 창업 여부</span>
+                <select
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  value={input.businessStatus}
+                  onChange={(event) => updateInput("businessStatus", event.target.value)}
+                >
+                  {businessStatusOptions.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <label className="block">
+              <span className="mb-1 block text-sm font-semibold text-gray-800">Q7. 팀원</span>
+              <input
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                value={input.teamMembers}
+                onChange={(event) => updateInput("teamMembers", event.target.value)}
+                placeholder="예: 김하이-기획, 박뷰-개발"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-sm font-semibold text-gray-800">Q8. 영상 링크</span>
+              <input
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                value={input.videoUrl}
+                onChange={(event) => updateInput("videoUrl", event.target.value)}
+                placeholder="https://"
+              />
+            </label>
+          </div>
+        );
+      case "generate":
+      default:
+        return (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-blue-950">
+              <p className="font-bold">생성 전 빠른 확인</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5">
+                <li>아이디어: {input.ideaTitle || input.ideaOneLine || "아직 미입력"}</li>
+                <li>고객/문제: {input.customerProblem ? "입력됨" : "비어 있음"}</li>
+                <li>실행 증거: {input.executionPlan ? "입력됨" : "비어 있음"}</li>
+                <li>분야/창업 여부: {input.category || "분야 미선택"} · {input.businessStatus}</li>
+              </ul>
+            </div>
+            <button
+              className="w-full rounded-md bg-blue-700 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-gray-400"
+              disabled={loading}
+              onClick={generateDraft}
+              type="button"
+            >
+              {loading ? "AI 초안 생성 중..." : "AI 모두의창업 초안 생성"}
+            </button>
+          </div>
+        );
+    }
   };
 
   return (
@@ -390,150 +701,69 @@ export default function ModuStartupGenerator() {
             </div>
           )}
 
-          <div className="mt-5 space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label>
-                <span className="mb-1 block text-sm font-semibold text-gray-800">교육명</span>
-                <input
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                  value={input.programName}
-                  onChange={(event) => updateInput("programName", event.target.value)}
-                  placeholder="예: 모두의창업 캠프"
-                />
-              </label>
-              <label>
-                <span className="mb-1 block text-sm font-semibold text-gray-800">팀명</span>
-                <input
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                  value={input.teamName}
-                  onChange={(event) => updateInput("teamName", event.target.value)}
-                  placeholder="예: 하이팀"
-                />
-              </label>
+          <div className="mt-5">
+            <div className="mb-4">
+              <div className="flex items-center justify-between text-xs font-semibold text-gray-500">
+                <span>
+                  {currentStep + 1} / {moduStartupSteps.length} · {currentStepMeta.title}
+                </span>
+                <span>{progressPercent}%</span>
+              </div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-100">
+                <div className="h-full rounded-full bg-blue-700 transition-all" style={{ width: `${progressPercent}%` }} />
+              </div>
             </div>
 
-            <label>
-              <span className="mb-1 block text-sm font-semibold text-gray-800">참가자명</span>
-              <input
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                value={input.participantName}
-                onChange={(event) => updateInput("participantName", event.target.value)}
-                placeholder="예: 김하이"
-              />
-            </label>
-
-            <label>
-              <span className="mb-1 block text-sm font-semibold text-gray-800">아이디어명</span>
-              <input
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                value={input.ideaTitle}
-                onChange={(event) => updateInput("ideaTitle", event.target.value)}
-                placeholder="예: 1인 브런치 카페 운영 도우미"
-              />
-            </label>
-
-            <label>
-              <span className="mb-1 block text-sm font-semibold text-gray-800">Q1. 한 줄 소개</span>
-              <input
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                maxLength={120}
-                value={input.ideaOneLine}
-                onChange={(event) => updateInput("ideaOneLine", event.target.value)}
-                placeholder="무엇을, 누구를 위해, 어떻게"
-              />
-              <span className="mt-1 block text-right text-xs text-gray-400">{input.ideaOneLine.length} / 120자</span>
-            </label>
-
-            <label>
-              <span className="mb-1 block text-sm font-semibold text-gray-800">Q2. 배경 이야기</span>
-              <textarea
-                className="min-h-28 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                value={input.backgroundStory}
-                onChange={(event) => updateInput("backgroundStory", event.target.value)}
-                placeholder="직접 겪은 장면, 관찰한 순간, 왜 시작했는지"
-              />
-            </label>
-
-            <label>
-              <span className="mb-1 block text-sm font-semibold text-gray-800">Q3. 고객과 문제</span>
-              <textarea
-                className="min-h-28 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                value={input.customerProblem}
-                onChange={(event) => updateInput("customerProblem", event.target.value)}
-                placeholder="좁은 고객군, 해결하려는 문제, 현재 대안"
-              />
-            </label>
-
-            <label>
-              <span className="mb-1 block text-sm font-semibold text-gray-800">Q4. 실행 계획과 증거</span>
-              <textarea
-                className="min-h-28 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                value={input.executionPlan}
-                onChange={(event) => updateInput("executionPlan", event.target.value)}
-                placeholder="베타 유저, 인터뷰, 매출, MOU, 수상, 특허 등"
-              />
-            </label>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label>
-                <span className="mb-1 block text-sm font-semibold text-gray-800">Q5. 분야</span>
-                <select
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                  value={input.category}
-                  onChange={(event) => updateInput("category", event.target.value)}
+            <div className="mb-4 grid gap-2 sm:grid-cols-2">
+              {moduStartupSteps.map((step, index) => (
+                <button
+                  key={step.id}
+                  className={`rounded-md border px-3 py-2 text-left text-xs font-semibold transition-colors ${
+                    currentStep === index
+                      ? "border-blue-700 bg-blue-700 text-white"
+                      : index < currentStep
+                        ? "border-green-200 bg-green-50 text-green-800"
+                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                  }`}
+                  onClick={() => moveStep(index)}
+                  type="button"
                 >
-                  <option value="">분야 선택</option>
-                  {categoryOptions.map((item) => (
-                    <option key={item} value={item}>
-                      {item}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span className="mb-1 block text-sm font-semibold text-gray-800">Q6. 창업 여부</span>
-                <select
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                  value={input.businessStatus}
-                  onChange={(event) => updateInput("businessStatus", event.target.value)}
-                >
-                  {businessStatusOptions.map((item) => (
-                    <option key={item} value={item}>
-                      {item}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  {index + 1}. {step.title}
+                </button>
+              ))}
             </div>
 
-            <label>
-              <span className="mb-1 block text-sm font-semibold text-gray-800">Q7. 팀원</span>
-              <input
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                value={input.teamMembers}
-                onChange={(event) => updateInput("teamMembers", event.target.value)}
-                placeholder="예: 김하이-기획, 박뷰-개발"
-              />
-            </label>
+            <section className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <p className="text-sm font-bold text-gray-950">{currentStepMeta.title}</p>
+              <p className="mt-1 text-sm leading-6 text-gray-600">{currentStepMeta.description}</p>
+              <div className="mt-4">{renderStepFields()}</div>
+            </section>
 
-            <label>
-              <span className="mb-1 block text-sm font-semibold text-gray-800">Q8. 영상 링크</span>
-              <input
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                value={input.videoUrl}
-                onChange={(event) => updateInput("videoUrl", event.target.value)}
-                placeholder="https://"
-              />
-            </label>
-
-            <button
-              className="w-full rounded-md bg-blue-700 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-gray-400"
-              disabled={loading}
-              onClick={generateDraft}
-              type="button"
-            >
-              {loading ? "AI 초안 생성 중..." : "AI 모두의창업 초안 생성"}
-            </button>
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-gray-500">
+                {lastSavedAt
+                  ? `임시저장됨 · ${new Date(lastSavedAt).toLocaleTimeString("ko-KR")}`
+                  : "작성 내용은 이 브라우저에 임시저장됩니다."}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 disabled:cursor-not-allowed disabled:text-gray-400"
+                  disabled={currentStep === 0}
+                  onClick={() => moveStep(currentStep - 1)}
+                  type="button"
+                >
+                  이전
+                </button>
+                <button
+                  className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-400"
+                  disabled={currentStep === moduStartupSteps.length - 1}
+                  onClick={() => moveStep(currentStep + 1)}
+                  type="button"
+                >
+                  다음
+                </button>
+              </div>
+            </div>
           </div>
         </section>
 

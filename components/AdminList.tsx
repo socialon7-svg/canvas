@@ -17,6 +17,10 @@ const ADMIN_FILTER_LABELS: Record<AdminFilter, string> = {
   hasFeedback: "피드백 있음"
 };
 
+function isAdminFilter(value: string | null): value is AdminFilter {
+  return Boolean(value && value in ADMIN_FILTER_LABELS);
+}
+
 function getAdminSubmissionStatus(submission: LeanCanvasSubmission): SubmissionStatus {
   return submission.submissionStatus ?? "submitted";
 }
@@ -162,6 +166,7 @@ export default function AdminList() {
   const [notice, setNotice] = useState("");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<AdminFilter>("all");
+  const [urlReady, setUrlReady] = useState(false);
   const [fallbackMode, setFallbackMode] = useState(false);
 
   async function refreshList(adminPassword = readSessionValue(ADMIN_PASSWORD_KEY)) {
@@ -183,12 +188,47 @@ export default function AdminList() {
   }
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlQuery = params.get("q") || "";
+    const urlFilter = params.get("filter");
+
+    if (urlQuery) setQuery(urlQuery);
+    if (isAdminFilter(urlFilter)) setFilter(urlFilter);
+    setUrlReady(true);
+
     const storedPassword = readSessionValue(ADMIN_PASSWORD_KEY);
     if (readSessionValue(ADMIN_SESSION_KEY) === "true" && storedPassword) {
       setAuthorized(true);
       refreshList(storedPassword);
     }
   }, []);
+
+  useEffect(() => {
+    if (!urlReady) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const trimmedQuery = query.trim();
+
+    if (trimmedQuery) {
+      params.set("q", trimmedQuery);
+    } else {
+      params.delete("q");
+    }
+
+    if (filter !== "all") {
+      params.set("filter", filter);
+    } else {
+      params.delete("filter");
+    }
+
+    const nextSearch = params.toString();
+    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}`;
+    const currentUrl = `${window.location.pathname}${window.location.search}`;
+
+    if (nextUrl !== currentUrl) {
+      window.history.replaceState(null, "", nextUrl);
+    }
+  }, [filter, query, urlReady]);
 
   const login = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
