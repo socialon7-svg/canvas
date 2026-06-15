@@ -207,6 +207,8 @@ export default function InternalPortal() {
       currentProgram ? state.participants.filter((participant) => participant.programId === currentProgram.id) : [],
     [state, currentProgram]
   );
+  const selectedParticipantForEdit =
+    programParticipants.find((participant) => participant.id === selectedParticipantId) || programParticipants[0];
   const programSubmissions = useMemo(
     () =>
       currentProgram
@@ -530,6 +532,45 @@ export default function InternalPortal() {
     downloadCsv(`${currentProgram.programCode}-submissions.csv`, rows);
   };
 
+  const downloadModuleProgressCsv = () => {
+    if (!currentProgram) return;
+    const rows = [
+      [
+        "프로그램",
+        "프로그램코드",
+        "참여자코드",
+        "참여자",
+        "팀",
+        "모듈번호",
+        "모듈명",
+        "상태",
+        "입력메모",
+        "결과메모",
+        "업데이트"
+      ],
+      ...programParticipants.flatMap((participant) => {
+        const team = programTeams.find((item) => item.id === participant.teamId);
+        return currentProgramVisibleModules.map((module) => {
+          const progress = participant.moduleProgress?.[module.slug];
+          return [
+            currentProgram.name,
+            currentProgram.programCode,
+            participant.code,
+            participant.name || "",
+            team?.name || "",
+            module.order,
+            module.title,
+            progress?.status || "not_started",
+            progress?.inputData || "",
+            progress?.outputData || "",
+            progress?.updatedAt ? new Date(progress.updatedAt).toLocaleString("ko-KR") : ""
+          ];
+        });
+      })
+    ];
+    downloadCsv(`${currentProgram.programCode}-module-progress.csv`, rows);
+  };
+
   const downloadReportCsv = () => {
     const rows = [
       [
@@ -742,6 +783,46 @@ export default function InternalPortal() {
     setNotice(`${count}개의 참여자 코드를 생성했습니다.`);
   };
 
+  const updateParticipantInfo = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedParticipantForEdit) return;
+    const formData = new FormData(event.currentTarget);
+    const nextState = {
+      ...state,
+      participants: state.participants.map((participant) =>
+        participant.id === selectedParticipantForEdit.id
+          ? {
+              ...participant,
+              name: String(formData.get("name") || "").trim(),
+              email: String(formData.get("email") || "").trim(),
+              phone: String(formData.get("phone") || "").trim(),
+              school: String(formData.get("school") || "").trim(),
+              major: String(formData.get("major") || "").trim(),
+              role: String(formData.get("role") || "").trim(),
+              teamId: String(formData.get("teamId") || "")
+            }
+          : participant
+      )
+    };
+    persistState(nextState);
+    setNotice("참여자 정보를 저장했습니다.");
+  };
+
+  const removeParticipant = (participantId: string) => {
+    const participant = state.participants.find((item) => item.id === participantId);
+    if (!participant) return;
+    const label = participant.name || participant.code;
+    if (!window.confirm(`${label} 참여자 코드를 삭제할까요?\n제출물 자체는 삭제되지 않지만 운영 목록에서는 사라집니다.`)) return;
+    const nextState = {
+      ...state,
+      participants: state.participants.filter((item) => item.id !== participantId),
+      feedbacks: state.feedbacks.filter((feedback) => feedback.participantId !== participantId)
+    };
+    persistState(nextState);
+    if (selectedParticipantId === participantId) setSelectedParticipantId("");
+    setNotice(`${label} 참여자 코드를 삭제했습니다.`);
+  };
+
   const addTeam = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!currentProgram) return;
@@ -756,6 +837,46 @@ export default function InternalPortal() {
     persistState({ ...state, teams: [team, ...state.teams] });
     setNotice("팀을 생성했습니다.");
     event.currentTarget.reset();
+  };
+
+  const updateTeam = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const teamId = form.dataset.teamId || "";
+    const formData = new FormData(form);
+    const name = String(formData.get("name") || "").trim();
+    const memo = String(formData.get("memo") || "").trim();
+    if (!name) {
+      setError("팀명을 입력해주세요.");
+      return;
+    }
+    const nextState = {
+      ...state,
+      teams: state.teams.map((team) => (team.id === teamId ? { ...team, name, memo } : team))
+    };
+    persistState(nextState);
+    setError("");
+    setNotice("팀 정보를 저장했습니다.");
+  };
+
+  const removeTeam = (teamId: string) => {
+    const team = state.teams.find((item) => item.id === teamId);
+    if (!team) return;
+    const memberCount = state.participants.filter((participant) => participant.teamId === teamId).length;
+    const message =
+      memberCount > 0
+        ? `${team.name} 팀을 삭제할까요?\n소속 멤버 ${memberCount}명은 미배정 상태로 변경됩니다.`
+        : `${team.name} 팀을 삭제할까요?`;
+    if (!window.confirm(message)) return;
+    const nextState = {
+      ...state,
+      teams: state.teams.filter((item) => item.id !== teamId),
+      participants: state.participants.map((participant) =>
+        participant.teamId === teamId ? { ...participant, teamId: "" } : participant
+      )
+    };
+    persistState(nextState);
+    setNotice(`${team.name} 팀을 삭제했습니다.`);
   };
 
   const assignTeam = (event: React.FormEvent<HTMLFormElement>) => {
@@ -916,6 +1037,9 @@ export default function InternalPortal() {
               </button>
               <button className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold" onClick={downloadSubmissionsCsv}>
                 제출 CSV
+              </button>
+              <button className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold" onClick={downloadModuleProgressCsv}>
+                모듈 CSV
               </button>
               <button className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold" onClick={downloadReportCsv}>
                 전체 결과 CSV
@@ -1358,8 +1482,108 @@ export default function InternalPortal() {
             <button className="mt-3 rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white md:mt-0">초대코드 생성</button>
             <p className="mt-3 text-sm text-gray-600 md:mt-0">프로그램 코드: <span className="font-bold">{currentProgram.programCode}</span></p>
           </form>
+          {selectedParticipantForEdit ? (
+            <form
+              key={selectedParticipantForEdit.id}
+              className="rounded-lg border border-blue-100 bg-blue-50/50 p-5 shadow-sm"
+              onSubmit={updateParticipantInfo}
+            >
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-blue-700">참여자 정보 수정</p>
+                  <h2 className="mt-1 text-xl font-bold text-gray-950">
+                    {selectedParticipantForEdit.name || selectedParticipantForEdit.code}
+                  </h2>
+                  <p className="mt-2 text-sm text-blue-950">
+                    참여자 코드 <span className="font-mono font-bold">{selectedParticipantForEdit.code}</span>
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white" type="submit">
+                    참여자 저장
+                  </button>
+                  <button
+                    className="rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-bold text-red-700"
+                    onClick={() => removeParticipant(selectedParticipantForEdit.id)}
+                    type="button"
+                  >
+                    참여자 삭제
+                  </button>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <label>
+                  <span className="mb-1 block text-sm font-semibold text-gray-800">이름</span>
+                  <input
+                    name="name"
+                    className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+                    defaultValue={selectedParticipantForEdit.name}
+                  />
+                </label>
+                <label>
+                  <span className="mb-1 block text-sm font-semibold text-gray-800">이메일</span>
+                  <input
+                    name="email"
+                    className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+                    defaultValue={selectedParticipantForEdit.email}
+                  />
+                </label>
+                <label>
+                  <span className="mb-1 block text-sm font-semibold text-gray-800">연락처</span>
+                  <input
+                    name="phone"
+                    className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+                    defaultValue={selectedParticipantForEdit.phone}
+                  />
+                </label>
+                <label>
+                  <span className="mb-1 block text-sm font-semibold text-gray-800">소속</span>
+                  <input
+                    name="school"
+                    className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+                    defaultValue={selectedParticipantForEdit.school}
+                  />
+                </label>
+                <label>
+                  <span className="mb-1 block text-sm font-semibold text-gray-800">학과/부서</span>
+                  <input
+                    name="major"
+                    className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+                    defaultValue={selectedParticipantForEdit.major}
+                  />
+                </label>
+                <label>
+                  <span className="mb-1 block text-sm font-semibold text-gray-800">역할</span>
+                  <input
+                    name="role"
+                    className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+                    defaultValue={selectedParticipantForEdit.role}
+                  />
+                </label>
+                <label className="md:col-span-3">
+                  <span className="mb-1 block text-sm font-semibold text-gray-800">팀</span>
+                  <select
+                    name="teamId"
+                    className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+                    defaultValue={selectedParticipantForEdit.teamId}
+                  >
+                    <option value="">미배정</option>
+                    {programTeams.map((team) => (
+                      <option key={team.id} value={team.id}>
+                        {team.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </form>
+          ) : (
+            <section className="rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-gray-600 shadow-sm">
+              아직 생성된 참여자 코드가 없습니다. 초대코드를 먼저 생성하세요.
+            </section>
+          )}
           <section className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
-            <table className="w-full min-w-[960px] text-left text-sm">
+            <table className="w-full min-w-[1040px] text-left text-sm">
               <thead className="bg-gray-100 text-gray-700">
                 <tr>
                   <th className="px-4 py-3">코드</th>
@@ -1369,6 +1593,7 @@ export default function InternalPortal() {
                   <th className="px-4 py-3">상태</th>
                   <th className="px-4 py-3">제출</th>
                   <th className="px-4 py-3">모듈 진행</th>
+                  <th className="px-4 py-3">관리</th>
                 </tr>
               </thead>
               <tbody>
@@ -1396,6 +1621,15 @@ export default function InternalPortal() {
                         ) : (
                           "-"
                         )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          className="rounded-md border border-blue-200 px-3 py-1.5 text-xs font-bold text-blue-800"
+                          onClick={() => setSelectedParticipantId(participant.id)}
+                          type="button"
+                        >
+                          수정
+                        </button>
                       </td>
                     </tr>
                   );
@@ -1441,11 +1675,52 @@ export default function InternalPortal() {
             {programTeams.map((team) => {
               const members = programParticipants.filter((participant) => participant.teamId === team.id);
               return (
-                <article key={team.id} className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-                  <h3 className="font-bold text-gray-950">{team.name}</h3>
-                  <p className="mt-1 text-sm text-gray-600">{team.memo || "메모 없음"}</p>
-                  <p className="mt-3 text-sm text-gray-700">멤버 {members.length}명: {members.map((member) => member.name || member.code).join(", ") || "없음"}</p>
-                </article>
+                <form
+                  key={team.id}
+                  className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm"
+                  data-team-id={team.id}
+                  onSubmit={updateTeam}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-blue-700">팀 정보</p>
+                      <h3 className="mt-1 font-bold text-gray-950">{team.name}</h3>
+                    </div>
+                    <button
+                      className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-bold text-red-700"
+                      onClick={() => removeTeam(team.id)}
+                      type="button"
+                    >
+                      삭제
+                    </button>
+                  </div>
+                  <div className="mt-4 grid gap-3">
+                    <label>
+                      <span className="mb-1 block text-sm font-semibold text-gray-800">팀명</span>
+                      <input
+                        name="name"
+                        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                        defaultValue={team.name}
+                      />
+                    </label>
+                    <label>
+                      <span className="mb-1 block text-sm font-semibold text-gray-800">메모</span>
+                      <textarea
+                        name="memo"
+                        className="min-h-20 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                        defaultValue={team.memo}
+                      />
+                    </label>
+                  </div>
+                  <p className="mt-3 text-sm text-gray-700">
+                    멤버 {members.length}명: {members.map((member) => member.name || member.code).join(", ") || "없음"}
+                  </p>
+                  <div className="mt-4 flex justify-end">
+                    <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white" type="submit">
+                      팀 저장
+                    </button>
+                  </div>
+                </form>
               );
             })}
           </section>
