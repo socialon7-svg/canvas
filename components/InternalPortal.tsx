@@ -27,6 +27,15 @@ import {
 
 type InternalTab = "dashboard" | "programs" | "participants" | "teams" | "submissions" | "report";
 type SubmissionFilter = "all" | "notEntered" | "submitted" | "notSubmitted" | "feedbackPending" | "feedbackDone" | "pdfFailed";
+type UiTone = "gray" | "blue" | "green" | "amber" | "red";
+
+type FocusInfo = {
+  title: string;
+  description: string;
+  tone: Exclude<UiTone, "gray">;
+  actionLabel: string;
+  filter?: SubmissionFilter;
+};
 
 const submissionFilterLabels: Record<SubmissionFilter, string> = {
   all: "전체",
@@ -86,9 +95,27 @@ async function loadServerSubmissions(adminPassword: string) {
   return { submissions: data.submissions, fallback: false };
 }
 
-function MetricCard({ label, value, hint }: { label: string; value: string | number; hint: string }) {
+function MetricCard({
+  label,
+  value,
+  hint,
+  tone = "gray"
+}: {
+  label: string;
+  value: string | number;
+  hint: string;
+  tone?: UiTone;
+}) {
+  const toneClasses: Record<UiTone, string> = {
+    gray: "border-gray-200 bg-white",
+    blue: "border-blue-200 bg-blue-50",
+    green: "border-green-200 bg-green-50",
+    amber: "border-amber-200 bg-amber-50",
+    red: "border-red-200 bg-red-50"
+  };
+
   return (
-    <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+    <section className={`rounded-lg border p-5 shadow-sm ${toneClasses[tone]}`}>
       <p className="text-sm text-gray-500">{label}</p>
       <strong className="mt-2 block text-3xl text-gray-950">{value}</strong>
       <p className="mt-2 text-sm text-gray-600">{hint}</p>
@@ -238,6 +265,74 @@ export default function InternalPortal() {
     }),
     [programStatusRows]
   );
+  const entryRate = operationalMetrics.totalParticipants
+    ? Math.round((operationalMetrics.entered / operationalMetrics.totalParticipants) * 100)
+    : 0;
+  const submissionRate = operationalMetrics.totalParticipants
+    ? Math.round((operationalMetrics.submitted / operationalMetrics.totalParticipants) * 100)
+    : 0;
+  const feedbackRate = operationalMetrics.submitted
+    ? Math.round((operationalMetrics.feedbackDone / operationalMetrics.submitted) * 100)
+    : 0;
+  const pdfIssueRate = operationalMetrics.submitted
+    ? Math.round((operationalMetrics.pdfFailed / operationalMetrics.submitted) * 100)
+    : 0;
+  const dashboardProgressItems = [
+    {
+      label: "입장률",
+      value: entryRate,
+      detail: `${operationalMetrics.entered}/${operationalMetrics.totalParticipants}명 입장`,
+      tone: "blue" as UiTone
+    },
+    {
+      label: "제출률",
+      value: submissionRate,
+      detail: `${operationalMetrics.submitted}/${operationalMetrics.totalParticipants}명 제출`,
+      tone: operationalMetrics.notSubmitted > 0 ? ("amber" as UiTone) : ("green" as UiTone)
+    },
+    {
+      label: "피드백 완료율",
+      value: feedbackRate,
+      detail: `${operationalMetrics.feedbackDone}/${operationalMetrics.submitted}건 완료`,
+      tone: operationalMetrics.feedbackPending > 0 ? ("blue" as UiTone) : ("green" as UiTone)
+    },
+    {
+      label: "PDF 오류율",
+      value: pdfIssueRate,
+      detail: `${operationalMetrics.pdfFailed}/${operationalMetrics.submitted}건 오류`,
+      tone: operationalMetrics.pdfFailed > 0 ? ("red" as UiTone) : ("green" as UiTone)
+    }
+  ];
+  const actionQueue = [
+    {
+      label: "미입장",
+      count: operationalMetrics.notEntered,
+      description: "참여자 코드 안내가 필요한 대상",
+      filter: "notEntered" as SubmissionFilter,
+      tone: "gray" as UiTone
+    },
+    {
+      label: "미제출",
+      count: operationalMetrics.notSubmitted,
+      description: "마감 전 제출 독려가 필요한 대상",
+      filter: "notSubmitted" as SubmissionFilter,
+      tone: "amber" as UiTone
+    },
+    {
+      label: "피드백 대기",
+      count: operationalMetrics.feedbackPending,
+      description: "제출은 되었고 코멘트가 필요한 건",
+      filter: "feedbackPending" as SubmissionFilter,
+      tone: "blue" as UiTone
+    },
+    {
+      label: "PDF 오류",
+      count: operationalMetrics.pdfFailed,
+      description: "인쇄 전 복구 확인이 필요한 건",
+      filter: "pdfFailed" as SubmissionFilter,
+      tone: "red" as UiTone
+    }
+  ];
   const filterCounts = useMemo<Record<SubmissionFilter, number>>(
     () => ({
       all: programStatusRows.length,
@@ -270,33 +365,41 @@ export default function InternalPortal() {
   }, [programStatusRows, submissionFilter]);
   const selectedStatusRow =
     filteredStatusRows.find((row) => row.participant.id === selectedParticipantId) || filteredStatusRows[0];
+  const activeSubmissionFilterLabel = submissionFilterLabels[submissionFilter];
   const reportSummary = useMemo(() => {
     if (!currentProgram) return "";
     return `${currentProgram.name} 운영 현황: 참여자 ${operationalMetrics.totalParticipants}명 중 ${operationalMetrics.entered}명이 입장했고, ${operationalMetrics.submitted}명이 제출했습니다. 미제출 ${operationalMetrics.notSubmitted}명, 피드백 대기 ${operationalMetrics.feedbackPending}건, PDF 오류 ${operationalMetrics.pdfFailed}건입니다.`;
   }, [currentProgram, operationalMetrics]);
-  const operationsFocus =
+  const operationsFocus: FocusInfo =
     operationalMetrics.pdfFailed > 0
       ? {
           title: `PDF 오류 ${operationalMetrics.pdfFailed}건`,
           description: "인쇄 전 PDF 오류 제출물을 먼저 열어 복구 여부를 확인하세요.",
-          tone: "red"
+          tone: "red",
+          actionLabel: "PDF 오류만 보기",
+          filter: "pdfFailed"
         }
       : operationalMetrics.notSubmitted > 0
         ? {
             title: `미제출 ${operationalMetrics.notSubmitted}명`,
             description: "미제출자 목록 복사로 현장 안내 메시지를 빠르게 준비할 수 있습니다.",
-            tone: "amber"
+            tone: "amber",
+            actionLabel: "미제출자 보기",
+            filter: "notSubmitted"
           }
         : operationalMetrics.feedbackPending > 0
           ? {
               title: `피드백 대기 ${operationalMetrics.feedbackPending}건`,
               description: "제출은 완료됐고 운영진 코멘트만 남은 상태입니다.",
-              tone: "blue"
+              tone: "blue",
+              actionLabel: "피드백 대기 보기",
+              filter: "feedbackPending"
             }
           : {
               title: "운영 상태가 안정적입니다",
               description: "제출과 피드백 흐름이 정상적으로 정리되고 있습니다.",
-              tone: "green"
+              tone: "green",
+              actionLabel: "결과보고 보기"
             };
 
   const persistState = (nextState: HighViewOperationsState) => {
@@ -449,6 +552,19 @@ export default function InternalPortal() {
     } catch {
       setNotice(reportSummary);
     }
+  };
+
+  const openFilteredSubmissions = (filter: SubmissionFilter) => {
+    setSubmissionFilter(filter);
+    setTab("submissions");
+  };
+
+  const openFocusAction = () => {
+    if (operationsFocus.filter) {
+      openFilteredSubmissions(operationsFocus.filter);
+      return;
+    }
+    setTab("report");
   };
 
   const login = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -642,48 +758,66 @@ export default function InternalPortal() {
   return (
     <div className="mx-auto max-w-7xl px-5 py-8">
       <header className="mb-5 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p className="text-sm font-semibold text-blue-700">내부직원 포털</p>
             <h1 className="mt-1 text-3xl font-bold text-gray-950">하이뷰랩 프로그램 운영 포털</h1>
             <p className="mt-2 text-sm text-gray-600">프로그램, 참여자, 팀, 산출물 제출, 피드백, 결과보고를 한 흐름으로 관리합니다.</p>
+            {currentProgram ? (
+              <p className="mt-3 inline-flex rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
+                현재 프로그램: {currentProgram.name} · {currentProgram.programCode}
+              </p>
+            ) : null}
           </div>
-          <div className="flex flex-wrap gap-2">
-            <select
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm"
-              value={currentProgram?.id || ""}
-              onChange={(event) => setCurrentProgramId(event.target.value)}
-            >
-              {state.programs.map((program) => (
-                <option key={program.id} value={program.id}>
-                  {program.name}
-                </option>
-              ))}
-            </select>
-            <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" onClick={() => refreshSubmissions()} disabled={refreshing}>
-              {refreshing ? "새로고침 중..." : "제출 새로고침"}
-            </button>
-            <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" onClick={() => exportOperationsState(state)}>
-              운영 데이터 백업
-            </button>
-            <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" onClick={downloadParticipantsCsv}>
-              참여자 CSV
-            </button>
-            <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" onClick={downloadSubmissionsCsv}>
-              제출 CSV
-            </button>
-            <Link className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800" href="/admin/modu-startup">
-              모두의창업 목록
-            </Link>
-            <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" onClick={downloadReportCsv}>
-              전체 결과 CSV
-            </button>
-            <button className="rounded-md border border-red-200 px-4 py-2 text-sm font-semibold text-red-700" onClick={handleReset}>
-              데모 초기화
-            </button>
-            <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" onClick={logout}>
-              로그아웃
-            </button>
+          <div className="grid gap-3 lg:min-w-[520px]">
+            <label className="grid gap-1 text-sm font-semibold text-gray-800">
+              프로그램 선택
+              <select
+                className="rounded-md border border-gray-300 px-3 py-2 text-sm font-normal"
+                value={currentProgram?.id || ""}
+                onChange={(event) => setCurrentProgramId(event.target.value)}
+              >
+                {state.programs.map((program) => (
+                  <option key={program.id} value={program.id}>
+                    {program.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:bg-gray-400" onClick={() => refreshSubmissions()} disabled={refreshing}>
+                {refreshing ? "새로고침 중..." : "제출 새로고침"}
+              </button>
+              <button className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-800" onClick={() => setTab("submissions")} type="button">
+                제출/피드백 보기
+              </button>
+              <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-bold" onClick={() => setTab("report")} type="button">
+                결과보고
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2 border-t border-gray-100 pt-3">
+              <button className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold" onClick={() => exportOperationsState(state)}>
+                운영 데이터 백업
+              </button>
+              <button className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold" onClick={downloadParticipantsCsv}>
+                참여자 CSV
+              </button>
+              <button className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold" onClick={downloadSubmissionsCsv}>
+                제출 CSV
+              </button>
+              <button className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold" onClick={downloadReportCsv}>
+                전체 결과 CSV
+              </button>
+              <Link className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-800" href="/admin/modu-startup">
+                모두의창업 목록
+              </Link>
+              <button className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700" onClick={handleReset}>
+                데모 초기화
+              </button>
+              <button className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold" onClick={logout}>
+                로그아웃
+              </button>
+            </div>
           </div>
         </div>
         <nav className="mt-5 flex flex-wrap gap-2">
@@ -707,7 +841,7 @@ export default function InternalPortal() {
       {tab === "dashboard" && currentProgram && stats ? (
         <main className="grid gap-4">
           <section
-            className={`rounded-lg border p-4 shadow-sm ${
+            className={`rounded-lg border p-5 shadow-sm ${
               operationsFocus.tone === "red"
                 ? "border-red-200 bg-red-50 text-red-900"
                 : operationsFocus.tone === "amber"
@@ -719,33 +853,109 @@ export default function InternalPortal() {
           >
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
-                <p className="text-sm font-bold">오늘의 운영 포커스 · {operationsFocus.title}</p>
-                <p className="mt-1 text-sm leading-6">{operationsFocus.description}</p>
+                <p className="text-sm font-bold">지금 먼저 볼 일</p>
+                <h2 className="mt-1 text-2xl font-bold">{operationsFocus.title}</h2>
+                <p className="mt-2 text-sm leading-6">{operationsFocus.description}</p>
               </div>
               <button
-                className="rounded-md border border-current/20 bg-white/70 px-4 py-2 text-sm font-bold"
-                onClick={() => setTab("submissions")}
+                className="rounded-md border border-current/20 bg-white/70 px-4 py-2 text-sm font-bold transition-colors hover:bg-white"
+                onClick={openFocusAction}
                 type="button"
               >
-                제출/피드백 보기
+                {operationsFocus.actionLabel}
               </button>
             </div>
           </section>
+
+          <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {dashboardProgressItems.map((item) => (
+              <article key={item.label} className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-600">{item.label}</p>
+                    <strong className="mt-1 block text-3xl text-gray-950">{item.value}%</strong>
+                  </div>
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+                      item.tone === "red"
+                        ? "bg-red-100 text-red-700"
+                        : item.tone === "amber"
+                          ? "bg-amber-100 text-amber-700"
+                          : item.tone === "blue"
+                            ? "bg-blue-100 text-blue-700"
+                            : "bg-green-100 text-green-700"
+                    }`}
+                  >
+                    {item.detail}
+                  </span>
+                </div>
+                <div className="mt-4 h-2 overflow-hidden rounded-full bg-gray-100">
+                  <div
+                    className={`h-full rounded-full ${
+                      item.tone === "red"
+                        ? "bg-red-600"
+                        : item.tone === "amber"
+                          ? "bg-amber-500"
+                          : item.tone === "blue"
+                            ? "bg-blue-600"
+                            : "bg-green-600"
+                    }`}
+                    style={{ width: `${item.value}%` }}
+                  />
+                </div>
+              </article>
+            ))}
+          </section>
+
+          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-blue-700">오늘 처리 큐</p>
+                <h2 className="mt-1 text-xl font-bold text-gray-950">현장에서 바로 확인할 항목</h2>
+              </div>
+              <p className="text-sm text-gray-600">카드를 누르면 제출/피드백 목록이 해당 상태로 필터링됩니다.</p>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {actionQueue.map((item) => (
+                <button
+                  key={item.label}
+                  className={`rounded-lg border p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow ${
+                    item.tone === "red"
+                      ? "border-red-200 bg-red-50 text-red-900"
+                      : item.tone === "amber"
+                        ? "border-amber-200 bg-amber-50 text-amber-900"
+                        : item.tone === "blue"
+                          ? "border-blue-200 bg-blue-50 text-blue-900"
+                          : "border-gray-200 bg-gray-50 text-gray-800"
+                  }`}
+                  onClick={() => openFilteredSubmissions(item.filter)}
+                  type="button"
+                >
+                  <span className="text-sm font-semibold">{item.label}</span>
+                  <strong className="mt-2 block text-3xl">{item.count}</strong>
+                  <span className="mt-2 block text-sm leading-6">{item.description}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
+            <MetricCard label="현재 참여자" value={operationalMetrics.totalParticipants} hint="선택 프로그램 기준" />
+            <MetricCard label="입장 완료" value={operationalMetrics.entered} hint={`미입장 ${operationalMetrics.notEntered}명`} tone={operationalMetrics.notEntered > 0 ? "amber" : "green"} />
+            <MetricCard label="제출 완료" value={operationalMetrics.submitted} hint={`미제출 ${operationalMetrics.notSubmitted}명`} tone={operationalMetrics.notSubmitted > 0 ? "amber" : "green"} />
+            <MetricCard label="피드백 대기" value={operationalMetrics.feedbackPending} hint={`완료 ${operationalMetrics.feedbackDone}건`} tone={operationalMetrics.feedbackPending > 0 ? "blue" : "green"} />
+            <MetricCard label="PDF 완료" value={operationalMetrics.pdfSuccess} hint="생성 가능 상태" tone="green" />
+            <MetricCard label="PDF 오류" value={operationalMetrics.pdfFailed} hint="복구 확인 필요" tone={operationalMetrics.pdfFailed > 0 ? "red" : "green"} />
+          </section>
+
           <section className="grid gap-4 md:grid-cols-5">
             <MetricCard label="전체 프로그램" value={overallStats.programs} hint={`운영중 ${overallStats.activePrograms}개`} />
             <MetricCard label="전체 참여자" value={overallStats.participants} hint="발급된 참여자 코드" />
-            <MetricCard label="제출 완료" value={overallStats.submitted} hint={`미제출 ${overallStats.missing}명`} />
+            <MetricCard label="전체 제출" value={overallStats.submitted} hint={`미제출 ${overallStats.missing}명`} tone={overallStats.missing > 0 ? "amber" : "green"} />
             <MetricCard label="전체 피드백" value={overallStats.feedbacks} hint="저장된 코멘트" />
-            <MetricCard label="현재 선택" value={stats.submitRate + "%"} hint={`${currentProgram.name} 제출률`} />
+            <MetricCard label="현재 제출률" value={stats.submitRate + "%"} hint={currentProgram.name} tone={stats.submitRate >= 80 ? "green" : "amber"} />
           </section>
-          <section className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
-            <MetricCard label="현재 참여자" value={operationalMetrics.totalParticipants} hint="선택 프로그램 기준" />
-            <MetricCard label="입장 완료" value={operationalMetrics.entered} hint={`미입장 ${operationalMetrics.notEntered}명`} />
-            <MetricCard label="제출 완료" value={operationalMetrics.submitted} hint={`미제출 ${operationalMetrics.notSubmitted}명`} />
-            <MetricCard label="피드백 대기" value={operationalMetrics.feedbackPending} hint={`완료 ${operationalMetrics.feedbackDone}건`} />
-            <MetricCard label="PDF 완료" value={operationalMetrics.pdfSuccess} hint="생성 가능 상태" />
-            <MetricCard label="PDF 오류" value={operationalMetrics.pdfFailed} hint="복구 확인 필요" />
-          </section>
+
           <section className="grid gap-3 lg:grid-cols-3">
             {programOverview.map(({ program, stats: programStats }) => (
               <article key={program.id} className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
@@ -783,12 +993,6 @@ export default function InternalPortal() {
                 </div>
               </article>
             ))}
-          </section>
-          <section className="grid gap-4 md:grid-cols-4">
-            <MetricCard label="참여자" value={stats.participants} hint={`접속/등록 ${stats.joined}명`} />
-            <MetricCard label="팀" value={stats.teams} hint="프로그램별 팀 구성" />
-            <MetricCard label="제출률" value={`${stats.submitRate}%`} hint={`제출 ${stats.submitted}/${stats.participants}`} />
-            <MetricCard label="피드백" value={stats.feedbacks} hint="저장된 피드백" />
           </section>
           <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-xl font-bold text-gray-950">{currentProgram.name}</h2>
@@ -849,6 +1053,15 @@ export default function InternalPortal() {
 
       {tab === "participants" && currentProgram ? (
         <main className="grid gap-4">
+          <section className="grid gap-3 md:grid-cols-4">
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+              <p className="text-xs font-semibold text-blue-700">참여자에게 안내할 프로그램 코드</p>
+              <strong className="mt-1 block font-mono text-2xl text-blue-950">{currentProgram.programCode}</strong>
+            </div>
+            <MetricCard label="발급 코드" value={programParticipants.length} hint="현재 프로그램 참여자" />
+            <MetricCard label="입장 완료" value={operationalMetrics.entered} hint={`미입장 ${operationalMetrics.notEntered}명`} tone={operationalMetrics.notEntered > 0 ? "amber" : "green"} />
+            <MetricCard label="제출 완료" value={operationalMetrics.submitted} hint={`미제출 ${operationalMetrics.notSubmitted}명`} tone={operationalMetrics.notSubmitted > 0 ? "amber" : "green"} />
+          </section>
           <form className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm md:flex md:items-end md:gap-3" onSubmit={addInvites}>
             <label className="block">
               <span className="mb-1 block text-sm font-semibold text-gray-800">생성 인원</span>
@@ -942,6 +1155,25 @@ export default function InternalPortal() {
       {tab === "submissions" ? (
         <main className="grid gap-4">
           <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="mb-4 grid gap-3 md:grid-cols-3">
+              <div className="rounded-lg bg-blue-50 p-4">
+                <p className="text-xs font-semibold text-blue-700">현재 필터</p>
+                <strong className="mt-1 block text-xl text-blue-950">{activeSubmissionFilterLabel}</strong>
+                <p className="mt-1 text-sm text-blue-900">{filteredStatusRows.length}건 표시 중</p>
+              </div>
+              <div className="rounded-lg bg-amber-50 p-4">
+                <p className="text-xs font-semibold text-amber-700">현장 안내 필요</p>
+                <strong className="mt-1 block text-xl text-amber-950">{operationalMetrics.notSubmitted}명 미제출</strong>
+                <p className="mt-1 text-sm text-amber-900">목록 복사 후 단체 안내에 활용하세요.</p>
+              </div>
+              <div className="rounded-lg bg-gray-50 p-4">
+                <p className="text-xs font-semibold text-gray-600">선택 상세</p>
+                <strong className="mt-1 block text-xl text-gray-950">
+                  {selectedStatusRow ? selectedStatusRow.participant.name || selectedStatusRow.participant.code : "선택 없음"}
+                </strong>
+                <p className="mt-1 text-sm text-gray-600">오른쪽 패널에서 제출물과 다음 액션을 확인합니다.</p>
+              </div>
+            </div>
             <div className="mb-3 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
                 <h2 className="text-lg font-bold text-gray-950">제출물 상태 필터</h2>
