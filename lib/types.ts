@@ -124,6 +124,8 @@ export interface HighViewParticipant {
   lastSeenAt: string;
   latestSubmissionId?: string;
   submittedAt?: string;
+  latestModuStartupSubmissionId?: string;
+  moduStartupSubmittedAt?: string;
 }
 
 export interface HighViewTeam {
@@ -169,6 +171,7 @@ export interface ModuStartupInput {
   businessStatus: string;
   teamMembers: string;
   videoUrl: string;
+  operation?: ParticipantOperationContext;
 }
 
 export interface ModuStartupDraft {
@@ -188,4 +191,14 @@ export interface ModuStartupDraft {
   socialImpactEnding: string;
   finalChecklist: string[];
   mentorComment: string;
+}
+
+export interface ModuStartupSubmission {
+  id: string;
+  createdAt: string;
+  input: ModuStartupInput;
+  draft: ModuStartupDraft;
+  submissionStatus?: SubmissionStatus;
+  pdfStatus?: PdfStatus;
+  adminCheckedAt?: string;
 }

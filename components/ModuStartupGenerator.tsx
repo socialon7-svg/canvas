@@ -1,8 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import type { ModuStartupDraft, ModuStartupInput } from "@/lib/types";
+import type { ModuStartupDraft, ModuStartupInput, ModuStartupSubmission } from "@/lib/types";
+import {
+  clearModuStartupPrefill,
+  loadModuStartupPrefill,
+  saveModuStartupSubmission
+} from "@/lib/storage";
+import { recordModuStartupSubmission } from "@/lib/operationsStorage";
 
 const initialInput: ModuStartupInput = {
   programName: "",
@@ -187,11 +193,19 @@ function formatDraft(input: ModuStartupInput, draft: ModuStartupDraft) {
 export default function ModuStartupGenerator() {
   const [input, setInput] = useState<ModuStartupInput>(initialInput);
   const [draft, setDraft] = useState<ModuStartupDraft | null>(null);
+  const [submittedSubmission, setSubmittedSubmission] = useState<ModuStartupSubmission | null>(null);
   const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
   const printableText = useMemo(() => (draft ? formatDraft(input, draft) : ""), [draft, input]);
+
+  useEffect(() => {
+    const prefill = loadModuStartupPrefill();
+    if (!prefill) return;
+    setInput((current) => ({ ...current, ...prefill }));
+  }, []);
 
   const updateInput = <K extends keyof ModuStartupInput>(key: K, value: ModuStartupInput[K]) => {
     setInput((current) => ({ ...current, [key]: value }));
@@ -223,6 +237,7 @@ export default function ModuStartupGenerator() {
       }
 
       setDraft(data.draft);
+      setSubmittedSubmission(null);
       setNotice("초안이 생성되었습니다. 그대로 쓰기보다 현장 경험과 실제 숫자를 한 번 더 확인하세요.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "초안 생성 중 오류가 발생했습니다.");
@@ -242,9 +257,52 @@ export default function ModuStartupGenerator() {
     }
   };
 
+  const submitDraft = async () => {
+    if (!draft) return;
+    setSubmitting(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const response = await fetch("/api/modu-startup-submissions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input, draft })
+      });
+      const data = (await response.json()) as {
+        submission?: ModuStartupSubmission;
+        code?: string;
+        error?: string;
+      };
+
+      if (response.status === 503 && (data.code === "SUPABASE_NOT_CONFIGURED" || data.code === "SUPABASE_TABLE_NOT_READY")) {
+        const fallbackSubmission = saveModuStartupSubmission(input, draft);
+        recordModuStartupSubmission(input, fallbackSubmission.id);
+        clearModuStartupPrefill();
+        setSubmittedSubmission(fallbackSubmission);
+        setNotice("중앙 저장소가 아직 준비되지 않아 이 브라우저에 임시 제출 저장했습니다.");
+        return;
+      }
+
+      if (!response.ok || !data.submission) {
+        throw new Error(data.error || "모두의창업 제출 저장에 실패했습니다.");
+      }
+
+      recordModuStartupSubmission(input, data.submission.id);
+      clearModuStartupPrefill();
+      setSubmittedSubmission(data.submission);
+      setNotice("모두의창업 초안이 운영 시스템에 제출되었습니다.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "모두의창업 제출 중 오류가 발생했습니다.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const resetAll = () => {
     setInput(initialInput);
     setDraft(null);
+    setSubmittedSubmission(null);
     setError("");
     setNotice("");
   };
@@ -283,12 +341,54 @@ export default function ModuStartupGenerator() {
         </p>
       ) : null}
 
+      {submittedSubmission ? (
+        <section className="no-print mb-5 rounded-lg border border-green-200 bg-green-50 p-5 shadow-sm">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-green-700">제출 완료</p>
+              <h2 className="mt-1 text-xl font-bold text-gray-950">
+                모두의창업 초안이 운영 시스템에 접수되었습니다.
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-green-900">
+                제출번호 {submittedSubmission.id.slice(0, 8).toUpperCase()} ·{" "}
+                {new Date(submittedSubmission.createdAt).toLocaleString("ko-KR")}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                className="rounded-md bg-green-700 px-4 py-2 text-sm font-bold text-white"
+                href={`/modu-startup/preview/${submittedSubmission.id}`}
+              >
+                제출물 열람
+              </Link>
+              <Link className="rounded-md border border-green-300 px-4 py-2 text-sm font-semibold text-green-800" href="/participant">
+                참여자 포털
+              </Link>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       <div className="grid gap-5 lg:grid-cols-[420px_1fr]">
         <section className="no-print rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-bold text-gray-950">입력 정보</h2>
           <p className="mt-2 text-sm leading-6 text-gray-600">
             내용이 부족해도 생성은 가능하지만, 숫자 2개 이상과 직접 경험 한 문장을 넣으면 결과가 좋아집니다.
           </p>
+
+          {input.operation?.participantCode ? (
+            <div className="mt-4 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-900">
+              <p className="font-bold">운영 시스템 연동됨</p>
+              <p className="mt-1">
+                참가자 코드 {input.operation.participantCode} · {input.operation.teamName || input.teamName || "팀 미배정"}
+                으로 제출 현황이 기록됩니다.
+              </p>
+            </div>
+          ) : (
+            <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              참여자 포털에서 입장하면 교육명, 팀명, 참가자명이 자동 연동됩니다. 지금 화면에서도 직접 작성과 제출은 가능합니다.
+            </div>
+          )}
 
           <div className="mt-5 space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
@@ -459,6 +559,14 @@ export default function ModuStartupGenerator() {
                 type="button"
               >
                 바로 인쇄
+              </button>
+              <button
+                className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-400"
+                disabled={!draft || submitting}
+                onClick={submitDraft}
+                type="button"
+              >
+                {submitting ? "제출 중..." : submittedSubmission ? "다시 제출" : "운영 시스템에 제출"}
               </button>
             </div>
           </div>

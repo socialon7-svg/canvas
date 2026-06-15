@@ -329,6 +329,9 @@ export default function AdminList() {
           <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" onClick={logout}>
             로그아웃
           </button>
+          <Link className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800" href="/admin/modu-startup">
+            모두의창업 목록
+          </Link>
           <Link className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" href="/">
             메인
           </Link>

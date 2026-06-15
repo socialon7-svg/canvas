@@ -8,6 +8,7 @@ import type {
   HighViewProgram,
   HighViewTeam,
   LeanCanvasSubmission,
+  ModuStartupInput,
   ParticipantInput
 } from "@/lib/types";
 
@@ -254,6 +255,37 @@ export function toParticipantInput(
   };
 }
 
+export function toModuStartupInput(
+  program: HighViewProgram,
+  participant: HighViewParticipant,
+  team?: HighViewTeam
+): ModuStartupInput {
+  return {
+    programName: program.name,
+    teamName: team?.name || "",
+    participantName: participant.name || participant.code,
+    ideaTitle: "",
+    ideaOneLine: "",
+    backgroundStory: "",
+    customerProblem: "",
+    executionPlan: "",
+    category: "",
+    businessStatus: "현재 사업자 아님",
+    teamMembers: "",
+    videoUrl: "",
+    operation: {
+      programId: program.id,
+      programCode: program.programCode,
+      programName: program.name,
+      participantId: participant.id,
+      participantCode: participant.code,
+      teamId: team?.id || participant.teamId,
+      teamName: team?.name || "",
+      role: participant.role
+    }
+  };
+}
+
 export function recordParticipantSubmission(participantInput: ParticipantInput, submissionId: string) {
   const participantId = participantInput.operation?.participantId;
   if (!participantId || !isBrowser()) return;
@@ -262,6 +294,18 @@ export function recordParticipantSubmission(participantInput: ParticipantInput, 
   if (!participant) return;
   participant.latestSubmissionId = submissionId;
   participant.submittedAt = new Date().toISOString();
+  participant.lastSeenAt = new Date().toISOString();
+  saveOperationsState(state);
+}
+
+export function recordModuStartupSubmission(input: ModuStartupInput, submissionId: string) {
+  const participantId = input.operation?.participantId;
+  if (!participantId || !isBrowser()) return;
+  const state = loadOperationsState();
+  const participant = state.participants.find((item) => item.id === participantId);
+  if (!participant) return;
+  participant.latestModuStartupSubmissionId = submissionId;
+  participant.moduStartupSubmittedAt = new Date().toISOString();
   participant.lastSeenAt = new Date().toISOString();
   saveOperationsState(state);
 }

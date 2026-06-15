@@ -648,6 +648,9 @@ export default function InternalPortal() {
             <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" onClick={downloadSubmissionsCsv}>
               제출 CSV
             </button>
+            <Link className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800" href="/admin/modu-startup">
+              모두의창업 목록
+            </Link>
             <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" onClick={downloadReportCsv}>
               전체 결과 CSV
             </button>

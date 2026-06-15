@@ -4,13 +4,14 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { HighViewOperationsState, HighViewParticipant, LeanCanvasSubmission } from "@/lib/types";
-import { getSubmission, saveParticipantPrefill } from "@/lib/storage";
+import { getSubmission, saveModuStartupPrefill, saveParticipantPrefill } from "@/lib/storage";
 import { normalizeAccessCode, validateAccessCodeInput } from "@/lib/normalize";
 import {
   defaultOperationsState,
   findFeedback,
   loadOperationsState,
   saveOperationsState,
+  toModuStartupInput,
   toParticipantInput
 } from "@/lib/operationsStorage";
 
@@ -185,6 +186,12 @@ export default function ParticipantPortal() {
     if (!program || !participant) return;
     saveParticipantPrefill(toParticipantInput(program, participant, team));
     router.push("/participant/canvas");
+  };
+
+  const startModuStartup = () => {
+    if (!program || !participant) return;
+    saveModuStartupPrefill(toModuStartupInput(program, participant, team));
+    router.push("/modu-startup");
   };
 
   if (!program || !participant) {
@@ -495,7 +502,7 @@ export default function ParticipantPortal() {
             </p>
             <button
               className="mt-5 rounded-md bg-blue-700 px-5 py-3 text-sm font-bold text-white"
-              onClick={() => router.push("/modu-startup")}
+              onClick={startModuStartup}
               type="button"
             >
               모두의창업 초안 생성
