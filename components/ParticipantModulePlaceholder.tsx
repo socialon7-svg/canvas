@@ -37,6 +37,7 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
   const [programId, setProgramId] = useState("");
   const [participantId, setParticipantId] = useState("");
   const [inputData, setInputData] = useState("");
+  const [outputData, setOutputData] = useState("");
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
@@ -50,6 +51,7 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
     const participant = loaded.participants.find((item) => item.id === storedParticipantId);
     const progress = participant?.moduleProgress?.[slug];
     if (progress?.inputData) setInputData(progress.inputData);
+    if (progress?.outputData) setOutputData(progress.outputData);
   }, [slug]);
 
   const startupModule = getStartupModuleBySlug(slug);
@@ -67,7 +69,7 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
       moduleId: startupModule.id,
       status,
       inputData,
-      outputData: progress?.outputData || "",
+      outputData,
       createdAt: progress?.createdAt || now,
       updatedAt: now
     };
@@ -89,6 +91,20 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
     saveOperationsState(nextState);
     setState(nextState);
     setNotice(`${startupModule.title} 상태를 '${statusLabel(status)}'로 저장했습니다.`);
+  };
+
+  const copyOutput = async () => {
+    const text = outputData.trim();
+    if (!text) {
+      setNotice("복사할 결과 메모가 없습니다.");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setNotice("결과 메모를 클립보드에 복사했습니다.");
+    } catch {
+      setNotice(text);
+    }
   };
 
   if (!startupModule) {
@@ -221,10 +237,32 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
             </dl>
           </section>
           <section className="rounded-lg border border-blue-200 bg-blue-50 p-5 shadow-sm">
-            <p className="text-sm font-bold text-blue-800">결과 영역 준비 중</p>
+            <p className="text-sm font-bold text-blue-800">결과 메모</p>
             <p className="mt-2 text-sm leading-6 text-blue-950">
-              다음 단계에서 이 영역에 AI 생성 결과, PDF/HWPX/슬라이드 산출 버튼, 멘토 피드백을 연결할 수 있습니다.
+              AI 생성 기능이 붙기 전까지는 직접 정리한 결과를 저장하고 복사할 수 있습니다.
             </p>
+            <textarea
+              className="mt-3 min-h-40 w-full rounded-md border border-blue-200 bg-white px-3 py-2 text-sm leading-6 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              onChange={(event) => setOutputData(event.target.value)}
+              placeholder="모듈 수행 결과, 핵심 문장, 다음에 붙일 AI 결과 초안 등을 적어두세요."
+              value={outputData}
+            />
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <button
+                className="rounded-md bg-blue-700 px-3 py-2 text-sm font-bold text-white"
+                onClick={() => saveProgress("completed")}
+                type="button"
+              >
+                결과 저장
+              </button>
+              <button
+                className="rounded-md border border-blue-300 bg-white px-3 py-2 text-sm font-bold text-blue-800"
+                onClick={copyOutput}
+                type="button"
+              >
+                결과 복사
+              </button>
+            </div>
           </section>
           <Link className="rounded-md border border-gray-300 bg-white px-4 py-2 text-center text-sm font-bold" href="/participant">
             모듈 목록으로 돌아가기

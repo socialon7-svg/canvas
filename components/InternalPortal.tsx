@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import StartupModuleSelector from "@/components/StartupModuleSelector";
 import StatusBadge from "@/components/StatusBadge";
-import type { FeedbackStatus, HighViewOperationsState, LeanCanvasSubmission } from "@/lib/types";
+import type { FeedbackStatus, HighViewOperationsState, LeanCanvasSubmission, ProgramStatus } from "@/lib/types";
 import { deleteSubmission, loadSubmissions } from "@/lib/storage";
 import {
   DEFAULT_STARTUP_MODULE_IDS,
@@ -187,7 +187,11 @@ export default function InternalPortal() {
   const currentProgram = state.programs.find((program) => program.id === currentProgramId) || state.programs[0];
   const currentProgramModuleIds = useMemo(() => getProgramModuleIds(currentProgram), [currentProgram]);
   const currentProgramModules = useMemo(() => getProgramModules(currentProgram), [currentProgram]);
-  const currentParticipantVisibleModuleCount = currentProgramModules.filter((module) => !module.isAdminOnly).length;
+  const currentProgramVisibleModules = useMemo(
+    () => currentProgramModules.filter((module) => !module.isAdminOnly && module.status !== "disabled"),
+    [currentProgramModules]
+  );
+  const currentParticipantVisibleModuleCount = currentProgramVisibleModules.length;
 
   useEffect(() => {
     if (!currentProgram) return;
@@ -283,6 +287,43 @@ export default function InternalPortal() {
     }),
     [programStatusRows]
   );
+  const moduleProgressRows = useMemo(
+    () =>
+      programParticipants.map((participant) => {
+        const statuses = currentProgramVisibleModules.map(
+          (module) => participant.moduleProgress?.[module.slug]?.status || "not_started"
+        );
+        const completed = statuses.filter((status) => status === "completed").length;
+        const inProgress = statuses.filter((status) => status === "in_progress").length;
+        const needsReview = statuses.filter((status) => status === "needs_review").length;
+        const total = statuses.length;
+
+        return {
+          participant,
+          completed,
+          inProgress,
+          needsReview,
+          notStarted: Math.max(total - completed - inProgress - needsReview, 0),
+          total,
+          completionRate: total ? Math.round((completed / total) * 100) : 0
+        };
+      }),
+    [currentProgramVisibleModules, programParticipants]
+  );
+  const moduleProgressMetrics = useMemo(() => {
+    const totalTasks = moduleProgressRows.reduce((sum, row) => sum + row.total, 0);
+    const completedTasks = moduleProgressRows.reduce((sum, row) => sum + row.completed, 0);
+    const inProgressTasks = moduleProgressRows.reduce((sum, row) => sum + row.inProgress, 0);
+    const needsReviewTasks = moduleProgressRows.reduce((sum, row) => sum + row.needsReview, 0);
+    return {
+      totalTasks,
+      completedTasks,
+      inProgressTasks,
+      needsReviewTasks,
+      notStartedTasks: Math.max(totalTasks - completedTasks - inProgressTasks - needsReviewTasks, 0),
+      completionRate: totalTasks ? Math.round((completedTasks / totalTasks) * 100) : 0
+    };
+  }, [moduleProgressRows]);
   const entryRate = operationalMetrics.totalParticipants
     ? Math.round((operationalMetrics.entered / operationalMetrics.totalParticipants) * 100)
     : 0;
@@ -659,6 +700,37 @@ export default function InternalPortal() {
     setNotice(`${currentProgram.name}의 노출 모듈 ${moduleIds.length}개를 저장했습니다.`);
   };
 
+  const updateCurrentProgramInfo = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!currentProgram) return;
+    const formData = new FormData(event.currentTarget);
+    const name = String(formData.get("name") || "").trim();
+    const clientName = String(formData.get("clientName") || "").trim();
+    if (!name || !clientName) {
+      setError("프로그램명과 기관명은 비워둘 수 없습니다.");
+      return;
+    }
+    const nextState = {
+      ...state,
+      programs: state.programs.map((program) =>
+        program.id === currentProgram.id
+          ? {
+              ...program,
+              name,
+              clientName,
+              startDate: String(formData.get("startDate") || "").trim() || program.startDate,
+              endDate: String(formData.get("endDate") || "").trim() || program.endDate,
+              brief: String(formData.get("brief") || "").trim(),
+              status: String(formData.get("status") || program.status) as ProgramStatus
+            }
+          : program
+      )
+    };
+    persistState(nextState);
+    setError("");
+    setNotice("프로그램 기본 정보를 저장했습니다.");
+  };
+
   const addInvites = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!currentProgram) return;
@@ -988,6 +1060,33 @@ export default function InternalPortal() {
             <MetricCard label="PDF 오류" value={operationalMetrics.pdfFailed} hint="복구 확인 필요" tone={operationalMetrics.pdfFailed > 0 ? "red" : "green"} />
           </section>
 
+          <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <MetricCard
+              label="모듈 완료율"
+              value={moduleProgressMetrics.completionRate + "%"}
+              hint={`${moduleProgressMetrics.completedTasks}/${moduleProgressMetrics.totalTasks}개 과제 완료`}
+              tone={moduleProgressMetrics.completionRate >= 80 ? "green" : "amber"}
+            />
+            <MetricCard
+              label="모듈 진행 중"
+              value={moduleProgressMetrics.inProgressTasks}
+              hint="교육생이 임시 저장한 모듈"
+              tone={moduleProgressMetrics.inProgressTasks > 0 ? "blue" : "gray"}
+            />
+            <MetricCard
+              label="검토 필요"
+              value={moduleProgressMetrics.needsReviewTasks}
+              hint="운영진 확인이 필요한 모듈"
+              tone={moduleProgressMetrics.needsReviewTasks > 0 ? "amber" : "green"}
+            />
+            <MetricCard
+              label="시작 전 모듈"
+              value={moduleProgressMetrics.notStartedTasks}
+              hint="아직 손대지 않은 배정 모듈"
+              tone={moduleProgressMetrics.notStartedTasks > 0 ? "amber" : "green"}
+            />
+          </section>
+
           <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
@@ -1101,6 +1200,75 @@ export default function InternalPortal() {
           </form>
           <div className="grid gap-4">
             {currentProgram ? (
+              <form className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm" onSubmit={updateCurrentProgramInfo}>
+                <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-blue-700">현재 프로그램 기본 정보</p>
+                    <h2 className="mt-1 text-xl font-bold text-gray-950">{currentProgram.name}</h2>
+                    <p className="mt-2 text-sm text-gray-600">교육명, 기관명, 기간, 운영 상태를 수정합니다.</p>
+                  </div>
+                  <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white" type="submit">
+                    기본 정보 저장
+                  </button>
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <label>
+                    <span className="mb-1 block text-sm font-semibold text-gray-800">프로그램명</span>
+                    <input
+                      name="name"
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                      defaultValue={currentProgram.name}
+                    />
+                  </label>
+                  <label>
+                    <span className="mb-1 block text-sm font-semibold text-gray-800">기관명</span>
+                    <input
+                      name="clientName"
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                      defaultValue={currentProgram.clientName}
+                    />
+                  </label>
+                  <label>
+                    <span className="mb-1 block text-sm font-semibold text-gray-800">시작일</span>
+                    <input
+                      name="startDate"
+                      type="date"
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                      defaultValue={currentProgram.startDate}
+                    />
+                  </label>
+                  <label>
+                    <span className="mb-1 block text-sm font-semibold text-gray-800">종료일</span>
+                    <input
+                      name="endDate"
+                      type="date"
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                      defaultValue={currentProgram.endDate}
+                    />
+                  </label>
+                  <label>
+                    <span className="mb-1 block text-sm font-semibold text-gray-800">운영 상태</span>
+                    <select
+                      name="status"
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                      defaultValue={currentProgram.status}
+                    >
+                      <option value="active">운영중</option>
+                      <option value="closed">종료</option>
+                    </select>
+                  </label>
+                  <label className="md:col-span-2">
+                    <span className="mb-1 block text-sm font-semibold text-gray-800">운영 메모</span>
+                    <textarea
+                      name="brief"
+                      className="min-h-24 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                      defaultValue={currentProgram.brief}
+                    />
+                  </label>
+                </div>
+              </form>
+            ) : null}
+            {currentProgram ? (
               <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
                 <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div>
@@ -1191,7 +1359,7 @@ export default function InternalPortal() {
             <p className="mt-3 text-sm text-gray-600 md:mt-0">프로그램 코드: <span className="font-bold">{currentProgram.programCode}</span></p>
           </form>
           <section className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
-            <table className="w-full min-w-[820px] text-left text-sm">
+            <table className="w-full min-w-[960px] text-left text-sm">
               <thead className="bg-gray-100 text-gray-700">
                 <tr>
                   <th className="px-4 py-3">코드</th>
@@ -1200,11 +1368,13 @@ export default function InternalPortal() {
                   <th className="px-4 py-3">팀</th>
                   <th className="px-4 py-3">상태</th>
                   <th className="px-4 py-3">제출</th>
+                  <th className="px-4 py-3">모듈 진행</th>
                 </tr>
               </thead>
               <tbody>
                 {programParticipants.map((participant) => {
                   const team = programTeams.find((item) => item.id === participant.teamId);
+                  const moduleRow = moduleProgressRows.find((row) => row.participant.id === participant.id);
                   return (
                     <tr key={participant.id} className="border-t border-gray-200">
                       <td className="px-4 py-3 font-semibold">{participant.code}</td>
@@ -1213,6 +1383,20 @@ export default function InternalPortal() {
                       <td className="px-4 py-3">{team?.name || "미배정"}</td>
                       <td className="px-4 py-3">{participant.joinedAt ? "접속" : "초대됨"}</td>
                       <td className="px-4 py-3">{participant.latestSubmissionId ? "완료" : "대기"}</td>
+                      <td className="px-4 py-3">
+                        {moduleRow ? (
+                          <div>
+                            <p className="font-semibold text-gray-950">
+                              {moduleRow.completed}/{moduleRow.total}개 완료
+                            </p>
+                            <p className="mt-1 text-xs text-gray-500">
+                              진행 {moduleRow.inProgress} · 검토 {moduleRow.needsReview} · 시작 전 {moduleRow.notStarted}
+                            </p>
+                          </div>
+                        ) : (
+                          "-"
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
