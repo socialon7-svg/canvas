@@ -11,6 +11,7 @@ import type {
   ModuStartupInput,
   ParticipantInput
 } from "@/lib/types";
+import { DEFAULT_STARTUP_MODULE_IDS, normalizeStartupModuleIds } from "@/lib/startupModules";
 
 const OPERATIONS_KEY = "highviewlab-operations-state-v1";
 
@@ -68,7 +69,8 @@ export function defaultOperationsState(): HighViewOperationsState {
         programCode: "HV-DEMO",
         status: "active",
         createdAt: new Date().toISOString(),
-        brief: "참여자가 린캔버스 과제를 제출하고 내부직원이 운영 현황과 피드백을 관리하는 데모 프로그램입니다."
+        brief: "참여자가 린캔버스 과제를 제출하고 내부직원이 운영 현황과 피드백을 관리하는 데모 프로그램입니다.",
+        moduleIds: DEFAULT_STARTUP_MODULE_IDS
       }
     ],
     participants: [
@@ -129,8 +131,21 @@ export function normalizeOperationsState(value: unknown): HighViewOperationsStat
   const state = value as Partial<HighViewOperationsState>;
   return {
     version: 1,
-    programs: Array.isArray(state.programs) ? state.programs : fallback.programs,
-    participants: Array.isArray(state.participants) ? state.participants : fallback.participants,
+    programs: Array.isArray(state.programs)
+      ? state.programs.map((program) => ({
+          ...program,
+          moduleIds: normalizeStartupModuleIds((program as Partial<HighViewProgram>).moduleIds)
+        }))
+      : fallback.programs,
+    participants: Array.isArray(state.participants)
+      ? state.participants.map((participant) => ({
+          ...participant,
+          moduleProgress:
+            participant.moduleProgress && typeof participant.moduleProgress === "object"
+              ? participant.moduleProgress
+              : {}
+        }))
+      : fallback.participants,
     teams: Array.isArray(state.teams) ? state.teams : fallback.teams,
     feedbacks: Array.isArray(state.feedbacks) ? state.feedbacks : []
   };
@@ -164,7 +179,11 @@ export function resetOperationsState() {
   return initial;
 }
 
-export function createProgram(input: Pick<HighViewProgram, "name" | "clientName" | "startDate" | "endDate" | "brief">) {
+export function createProgram(
+  input: Pick<HighViewProgram, "name" | "clientName" | "startDate" | "endDate" | "brief"> & {
+    moduleIds?: number[];
+  }
+) {
   return {
     id: uuid("program"),
     name: input.name,
@@ -174,7 +193,8 @@ export function createProgram(input: Pick<HighViewProgram, "name" | "clientName"
     programCode: makeCode("HV"),
     status: "active",
     createdAt: new Date().toISOString(),
-    brief: input.brief
+    brief: input.brief,
+    moduleIds: normalizeStartupModuleIds(input.moduleIds)
   } satisfies HighViewProgram;
 }
 

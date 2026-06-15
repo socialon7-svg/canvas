@@ -3,8 +3,15 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { HighViewOperationsState, HighViewParticipant, LeanCanvasSubmission } from "@/lib/types";
+import type {
+  HighViewOperationsState,
+  HighViewParticipant,
+  LeanCanvasSubmission,
+  ParticipantModuleProgressStatus,
+  StartupModule
+} from "@/lib/types";
 import { getSubmission, saveModuStartupPrefill, saveParticipantPrefill } from "@/lib/storage";
+import { getParticipantVisibleModules } from "@/lib/startupModules";
 import { normalizeAccessCode, validateAccessCodeInput } from "@/lib/normalize";
 import {
   defaultOperationsState,
@@ -44,6 +51,20 @@ function removeSessionValue(key: string) {
   }
 }
 
+const moduleStatusLabels: Record<ParticipantModuleProgressStatus, string> = {
+  not_started: "시작 전",
+  in_progress: "진행 중",
+  completed: "완료",
+  needs_review: "검토 필요"
+};
+
+function moduleStatusClass(status: ParticipantModuleProgressStatus) {
+  if (status === "completed") return "border-green-200 bg-green-50 text-green-800";
+  if (status === "in_progress") return "border-blue-200 bg-blue-50 text-blue-800";
+  if (status === "needs_review") return "border-amber-200 bg-amber-50 text-amber-800";
+  return "border-gray-200 bg-gray-50 text-gray-600";
+}
+
 export default function ParticipantPortal() {
   const router = useRouter();
   const [state, setState] = useState<HighViewOperationsState>(() => defaultOperationsState());
@@ -72,11 +93,22 @@ export default function ParticipantPortal() {
   const hasProfile = Boolean(participant?.name?.trim());
   const hasLeanCanvasSubmission = Boolean(participant?.latestSubmissionId || latestSubmission);
   const hasModuStartupSubmission = Boolean(participant?.latestModuStartupSubmissionId || participant?.moduStartupSubmittedAt);
+  const visibleModules = getParticipantVisibleModules(program);
+  const getModuleProgressStatus = (module: StartupModule): ParticipantModuleProgressStatus => {
+    if (module.slug === "lean-canvas" && hasLeanCanvasSubmission) return "completed";
+    if (module.slug === "modu-startup-application" && hasModuStartupSubmission) return "completed";
+    return participant?.moduleProgress?.[module.slug]?.status || "not_started";
+  };
+  const completedModuleCount = visibleModules.filter((module) => getModuleProgressStatus(module) === "completed").length;
+  const nextIncompleteModule = visibleModules.find((module) => getModuleProgressStatus(module) !== "completed");
   const fullProgressSteps = [
     { label: "입장", done: Boolean(program && participant), hint: "코드 확인" },
     { label: "내 정보", done: hasProfile, hint: "이름/소속" },
-    { label: "린캔버스", done: hasLeanCanvasSubmission, hint: "PDF 제출" },
-    { label: "모두의창업", done: hasModuStartupSubmission, hint: "신청서 초안" },
+    {
+      label: "선택 모듈",
+      done: visibleModules.length > 0 && completedModuleCount === visibleModules.length,
+      hint: `${completedModuleCount}/${visibleModules.length || 0}개`
+    },
     { label: "피드백", done: Boolean(feedback), hint: "운영진 확인" }
   ];
   const fullCompletedSteps = fullProgressSteps.filter((step) => step.done).length;
@@ -88,21 +120,14 @@ export default function ParticipantPortal() {
         action: "내 정보 확인",
         onClick: () => setTab("profile")
       }
-    : !hasLeanCanvasSubmission
+    : nextIncompleteModule
       ? {
-          title: "린캔버스 제출이 아직 남았습니다",
-          description: "아이디어를 10칸 캔버스로 정리하고 PDF 제출까지 완료해주세요.",
-          action: "린캔버스 작성",
-          onClick: () => startCanvas()
+          title: `${nextIncompleteModule.title}이 남았습니다`,
+          description: "운영진이 배정한 모듈만 순서대로 표시됩니다. 시작 전인 모듈부터 차례로 진행하세요.",
+          action: "모듈 목록 보기",
+          onClick: () => setTab("write")
         }
-      : !hasModuStartupSubmission
-        ? {
-            title: "모두의창업 초안 제출이 아직 남았습니다",
-            description: "Q1~Q8 신청서 초안을 생성하고 운영 시스템에 제출해주세요.",
-            action: "모두의창업 작성",
-            onClick: () => startModuStartup()
-          }
-        : feedback
+      : feedback
           ? {
               title: "피드백이 도착했습니다",
               description: "운영진 코멘트와 다음 행동을 확인하고 필요하면 다시 보완해주세요.",
@@ -232,6 +257,18 @@ export default function ParticipantPortal() {
     router.push("/modu-startup");
   };
 
+  const openModule = (module: StartupModule) => {
+    if (module.slug === "lean-canvas") {
+      startCanvas();
+      return;
+    }
+    if (module.slug === "modu-startup-application") {
+      startModuStartup();
+      return;
+    }
+    router.push(module.route);
+  };
+
   if (!program || !participant) {
     return (
       <div className="mx-auto flex min-h-screen max-w-md items-center px-5 py-10">
@@ -297,7 +334,7 @@ export default function ParticipantPortal() {
   const tabs: Array<{ key: ParticipantTab; label: string }> = [
     { key: "home", label: "홈" },
     { key: "profile", label: "내 정보" },
-    { key: "write", label: "작성하기" },
+    { key: "write", label: "모듈" },
     { key: "feedback", label: "피드백" }
   ];
 
@@ -354,7 +391,7 @@ export default function ParticipantPortal() {
         <div className="mt-4 h-3 overflow-hidden rounded-full bg-gray-100">
           <div className="h-full rounded-full bg-blue-700 transition-all" style={{ width: `${fullProgressPercent}%` }} />
         </div>
-        <div className="mt-4 grid gap-2 sm:grid-cols-5">
+        <div className="mt-4 grid gap-2 sm:grid-cols-4">
           {fullProgressSteps.map((step) => (
             <div
               key={step.label}
@@ -375,22 +412,66 @@ export default function ParticipantPortal() {
           <section className="rounded-lg border border-blue-200 bg-blue-50 p-5 shadow-sm md:col-span-3">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
-                <p className="text-sm font-semibold text-blue-700">오늘의 과제</p>
-                <h2 className="mt-1 text-xl font-bold text-gray-950">린캔버스 초안 작성 및 제출</h2>
+                <p className="text-sm font-semibold text-blue-700">오늘의 모듈</p>
+                <h2 className="mt-1 text-xl font-bold text-gray-950">
+                  {nextIncompleteModule ? nextIncompleteModule.title : "배정된 모듈을 모두 확인했습니다"}
+                </h2>
                 <p className="mt-2 text-sm leading-6 text-gray-700">
-                  {latestSubmission
-                    ? "이미 제출된 산출물이 있습니다. 필요하면 제출물을 다시 열어 PDF와 피드백 상태를 확인하세요."
-                    : "아이디어 정보를 입력하면 AI 초안이 생성되고, 수정 후 PDF 산출물로 제출됩니다."}
+                  {nextIncompleteModule
+                    ? nextIncompleteModule.description
+                    : "운영진이 추가 모듈을 열면 이곳에 다음 과제가 표시됩니다."}
                 </p>
               </div>
               <button
                 className="rounded-md bg-blue-700 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-blue-800 active:bg-blue-900"
-                onClick={() => (latestSubmission ? router.push(`/preview/${latestSubmission.id}`) : startCanvas())}
+                onClick={() => (nextIncompleteModule ? openModule(nextIncompleteModule) : setTab("write"))}
                 type="button"
               >
-                {latestSubmission ? "제출물 확인하기" : "과제 작성 시작"}
+                {nextIncompleteModule ? "시작하기" : "모듈 목록 보기"}
               </button>
             </div>
+          </section>
+          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm md:col-span-3">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-gray-500">배정된 창업교육 모듈</p>
+                <h2 className="mt-1 text-xl font-bold text-gray-950">
+                  {completedModuleCount}/{visibleModules.length}개 완료
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-gray-600">
+                  관리자 설정에 따라 필요한 모듈만 표시됩니다. 숨겨진 모듈은 교육생 화면에 나타나지 않습니다.
+                </p>
+              </div>
+              <button
+                className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-800"
+                onClick={() => setTab("write")}
+                type="button"
+              >
+                전체 모듈 보기
+              </button>
+            </div>
+            {visibleModules.length ? (
+              <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                {visibleModules.slice(0, 6).map((module) => {
+                  const moduleStatus = getModuleProgressStatus(module);
+                  return (
+                    <button
+                      key={module.id}
+                      className="rounded-md border border-gray-200 bg-gray-50 p-3 text-left transition-colors hover:border-blue-300 hover:bg-blue-50"
+                      onClick={() => openModule(module)}
+                      type="button"
+                    >
+                      <span className="text-xs font-bold text-blue-700">{module.order}. {moduleStatusLabels[moduleStatus]}</span>
+                      <span className="mt-1 block font-bold text-gray-950">{module.title}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="mt-4 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                아직 배정된 모듈이 없습니다. 운영진에게 프로그램 설정을 확인해주세요.
+              </p>
+            )}
           </section>
           <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm md:col-span-3">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -531,31 +612,53 @@ export default function ParticipantPortal() {
       ) : null}
 
       {tab === "write" ? (
-        <main className="grid gap-4 md:grid-cols-2">
+        <main className="grid gap-4">
           <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-bold text-gray-950">오늘의 과제: 린캔버스 작성</h2>
-          <p className="mt-2 text-sm leading-6 text-gray-600">
-            기존 린캔버스 입력 화면으로 이동합니다. 교육명, 팀명, 참가자명은 자동으로 채워집니다.
-          </p>
-          <button className="mt-5 rounded-md bg-blue-700 px-5 py-3 text-sm font-bold text-white" onClick={startCanvas}>
-            린캔버스 과제 작성 시작
-          </button>
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-blue-700">나에게 배정된 모듈</p>
+                <h2 className="mt-1 text-2xl font-bold text-gray-950">{program.name}</h2>
+                <p className="mt-2 text-sm leading-6 text-gray-600">
+                  운영진이 선택한 모듈만 표시됩니다. 순서대로 진행하고, 준비 중 모듈은 임시 메모와 상태만 저장할 수 있습니다.
+                </p>
+              </div>
+              <span className="rounded-full bg-blue-50 px-3 py-1 text-sm font-bold text-blue-800">
+                {completedModuleCount}/{visibleModules.length}개 완료
+              </span>
+            </div>
           </section>
-
-          <section className="rounded-lg border border-blue-200 bg-blue-50 p-5 shadow-sm">
-            <p className="text-sm font-semibold text-blue-700">모두의창업</p>
-            <h2 className="mt-1 text-lg font-bold text-gray-950">신청서 초안 생성</h2>
-            <p className="mt-2 text-sm leading-6 text-blue-950">
-              Q1~Q8 답변, 증거 문장, 정책 키워드, 최종 체크리스트를 자동 생성합니다. 신청서 제출 전 보완용으로 사용하세요.
-            </p>
-            <button
-              className="mt-5 rounded-md bg-blue-700 px-5 py-3 text-sm font-bold text-white"
-              onClick={startModuStartup}
-              type="button"
-            >
-              모두의창업 초안 생성
-            </button>
-          </section>
+          {visibleModules.length ? (
+            <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {visibleModules.map((module) => {
+                const moduleStatus = getModuleProgressStatus(module);
+                return (
+                  <article key={module.id} className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold text-blue-700">STEP {module.order}</p>
+                        <h2 className="mt-1 text-lg font-bold text-gray-950">{module.title}</h2>
+                      </div>
+                      <span className={`rounded-full border px-2.5 py-1 text-xs font-bold ${moduleStatusClass(moduleStatus)}`}>
+                        {moduleStatusLabels[moduleStatus]}
+                      </span>
+                    </div>
+                    <p className="mt-3 min-h-12 text-sm leading-6 text-gray-600">{module.description}</p>
+                    <button
+                      className="mt-5 w-full rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-800 active:bg-blue-900"
+                      onClick={() => openModule(module)}
+                      type="button"
+                    >
+                      {moduleStatus === "not_started" ? "시작하기" : "이어하기"}
+                    </button>
+                  </article>
+                );
+              })}
+            </section>
+          ) : (
+            <section className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-sm leading-6 text-amber-900">
+              아직 이 프로그램에 배정된 교육생용 모듈이 없습니다. 운영진에게 프로그램 모듈 설정을 확인해주세요.
+            </section>
+          )}
         </main>
       ) : null}
 

@@ -2,9 +2,16 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import StartupModuleSelector from "@/components/StartupModuleSelector";
 import StatusBadge from "@/components/StatusBadge";
 import type { FeedbackStatus, HighViewOperationsState, LeanCanvasSubmission } from "@/lib/types";
 import { deleteSubmission, loadSubmissions } from "@/lib/storage";
+import {
+  DEFAULT_STARTUP_MODULE_IDS,
+  getProgramModuleIds,
+  getProgramModules,
+  normalizeStartupModuleIds
+} from "@/lib/startupModules";
 import {
   getFeedbackProgressStatus,
   getParticipantStatus,
@@ -151,6 +158,8 @@ export default function InternalPortal() {
   const [refreshing, setRefreshing] = useState(false);
   const [submissionFilter, setSubmissionFilter] = useState<SubmissionFilter>("all");
   const [selectedParticipantId, setSelectedParticipantId] = useState("");
+  const [newProgramModuleIds, setNewProgramModuleIds] = useState<number[]>(DEFAULT_STARTUP_MODULE_IDS);
+  const [currentProgramModuleDraftIds, setCurrentProgramModuleDraftIds] = useState<number[]>(DEFAULT_STARTUP_MODULE_IDS);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -176,6 +185,15 @@ export default function InternalPortal() {
   }, []);
 
   const currentProgram = state.programs.find((program) => program.id === currentProgramId) || state.programs[0];
+  const currentProgramModuleIds = useMemo(() => getProgramModuleIds(currentProgram), [currentProgram]);
+  const currentProgramModules = useMemo(() => getProgramModules(currentProgram), [currentProgram]);
+  const currentParticipantVisibleModuleCount = currentProgramModules.filter((module) => !module.isAdminOnly).length;
+
+  useEffect(() => {
+    if (!currentProgram) return;
+    setCurrentProgramModuleDraftIds(getProgramModuleIds(currentProgram));
+  }, [currentProgram, currentProgramModuleIds]);
+
   const programTeams = useMemo(
     () => (currentProgram ? state.teams.filter((team) => team.programId === currentProgram.id) : []),
     [state, currentProgram]
@@ -607,7 +625,8 @@ export default function InternalPortal() {
       clientName: String(formData.get("clientName") || "").trim(),
       startDate: String(formData.get("startDate") || "").trim(),
       endDate: String(formData.get("endDate") || "").trim(),
-      brief: String(formData.get("brief") || "").trim()
+      brief: String(formData.get("brief") || "").trim(),
+      moduleIds: newProgramModuleIds
     });
     if (!program.name || !program.clientName) {
       setError("프로그램명과 기관명은 필수입니다.");
@@ -617,7 +636,27 @@ export default function InternalPortal() {
     persistState(nextState);
     setCurrentProgramId(program.id);
     setNotice("프로그램을 생성했습니다.");
+    setNewProgramModuleIds(DEFAULT_STARTUP_MODULE_IDS);
     event.currentTarget.reset();
+  };
+
+  const saveCurrentProgramModules = () => {
+    if (!currentProgram) return;
+    const moduleIds = normalizeStartupModuleIds(currentProgramModuleDraftIds);
+    const nextState = {
+      ...state,
+      programs: state.programs.map((program) =>
+        program.id === currentProgram.id
+          ? {
+              ...program,
+              moduleIds
+            }
+          : program
+      )
+    };
+    persistState(nextState);
+    setCurrentProgramModuleDraftIds(moduleIds);
+    setNotice(`${currentProgram.name}의 노출 모듈 ${moduleIds.length}개를 저장했습니다.`);
   };
 
   const addInvites = (event: React.FormEvent<HTMLFormElement>) => {
@@ -765,7 +804,8 @@ export default function InternalPortal() {
             <p className="mt-2 text-sm text-gray-600">프로그램, 참여자, 팀, 산출물 제출, 피드백, 결과보고를 한 흐름으로 관리합니다.</p>
             {currentProgram ? (
               <p className="mt-3 inline-flex rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
-                현재 프로그램: {currentProgram.name} · {currentProgram.programCode}
+                현재 프로그램: {currentProgram.name} · {currentProgram.programCode} · 교육생 노출 모듈{" "}
+                {currentParticipantVisibleModuleCount}개
               </p>
             ) : null}
           </div>
@@ -948,6 +988,39 @@ export default function InternalPortal() {
             <MetricCard label="PDF 오류" value={operationalMetrics.pdfFailed} hint="복구 확인 필요" tone={operationalMetrics.pdfFailed > 0 ? "red" : "green"} />
           </section>
 
+          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-blue-700">교육생 노출 모듈</p>
+                <h2 className="mt-1 text-xl font-bold text-gray-950">
+                  {currentParticipantVisibleModuleCount}개 모듈이 교육생 화면에 표시됩니다
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-gray-600">
+                  프로그램별 모듈 구성은 프로그램 탭에서 수정할 수 있습니다.
+                </p>
+              </div>
+              <button
+                className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-800"
+                onClick={() => setTab("programs")}
+                type="button"
+              >
+                모듈 설정 수정
+              </button>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {currentProgramModules.slice(0, 10).map((module) => (
+                <span key={module.id} className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
+                  {module.order}. {module.title}
+                </span>
+              ))}
+              {currentProgramModules.length > 10 ? (
+                <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
+                  +{currentProgramModules.length - 10}개
+                </span>
+              ) : null}
+            </div>
+          </section>
+
           <section className="grid gap-4 md:grid-cols-5">
             <MetricCard label="전체 프로그램" value={overallStats.programs} hint={`운영중 ${overallStats.activePrograms}개`} />
             <MetricCard label="전체 참여자" value={overallStats.participants} hint="발급된 참여자 코드" />
@@ -1017,37 +1090,80 @@ export default function InternalPortal() {
                 <input name="endDate" type="date" className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
               </div>
               <textarea name="brief" className="min-h-24 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" placeholder="운영 메모" />
+              <StartupModuleSelector
+                description="새 프로그램을 만들 때 교육생에게 노출할 창업교육 모듈을 선택합니다."
+                selectedModuleIds={newProgramModuleIds}
+                title="새 프로그램 모듈 선택"
+                onChange={setNewProgramModuleIds}
+              />
               <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white">생성하기</button>
             </div>
           </form>
-          <section className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
-            <table className="w-full min-w-[720px] text-left text-sm">
-              <thead className="bg-gray-100 text-gray-700">
-                <tr>
-                  <th className="px-4 py-3">프로그램</th>
-                  <th className="px-4 py-3">기관</th>
-                  <th className="px-4 py-3">코드</th>
-                  <th className="px-4 py-3">기간</th>
-                  <th className="px-4 py-3">선택</th>
-                </tr>
-              </thead>
-              <tbody>
-                {state.programs.map((program) => (
-                  <tr key={program.id} className="border-t border-gray-200">
-                    <td className="px-4 py-3 font-semibold">{program.name}</td>
-                    <td className="px-4 py-3">{program.clientName}</td>
-                    <td className="px-4 py-3">{program.programCode}</td>
-                    <td className="px-4 py-3">{program.startDate} ~ {program.endDate}</td>
-                    <td className="px-4 py-3">
-                      <button className="font-semibold text-blue-700 underline" onClick={() => setCurrentProgramId(program.id)}>
-                        선택
-                      </button>
-                    </td>
+          <div className="grid gap-4">
+            {currentProgram ? (
+              <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+                <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-blue-700">현재 프로그램 모듈 수정</p>
+                    <h2 className="mt-1 text-xl font-bold text-gray-950">{currentProgram.name}</h2>
+                    <p className="mt-2 text-sm text-gray-600">
+                      저장하면 참여자 포털의 모듈 목록이 이 선택값 기준으로 즉시 바뀝니다.
+                    </p>
+                  </div>
+                  <button
+                    className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white"
+                    onClick={saveCurrentProgramModules}
+                    type="button"
+                  >
+                    선택 모듈 저장
+                  </button>
+                </div>
+                <StartupModuleSelector
+                  description="현재 선택된 프로그램에서 사용할 모듈만 남깁니다. 관리자용 모듈은 교육생에게 보이지 않습니다."
+                  selectedModuleIds={currentProgramModuleDraftIds}
+                  title="현재 프로그램 모듈 선택"
+                  onChange={setCurrentProgramModuleDraftIds}
+                />
+              </section>
+            ) : null}
+            <section className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+              <table className="w-full min-w-[820px] text-left text-sm">
+                <thead className="bg-gray-100 text-gray-700">
+                  <tr>
+                    <th className="px-4 py-3">프로그램</th>
+                    <th className="px-4 py-3">기관</th>
+                    <th className="px-4 py-3">코드</th>
+                    <th className="px-4 py-3">기간</th>
+                    <th className="px-4 py-3">모듈</th>
+                    <th className="px-4 py-3">선택</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
+                </thead>
+                <tbody>
+                  {state.programs.map((program) => {
+                    const moduleCount = getProgramModules(program).filter((module) => !module.isAdminOnly).length;
+                    return (
+                      <tr key={program.id} className="border-t border-gray-200">
+                        <td className="px-4 py-3 font-semibold">{program.name}</td>
+                        <td className="px-4 py-3">{program.clientName}</td>
+                        <td className="px-4 py-3">{program.programCode}</td>
+                        <td className="px-4 py-3">{program.startDate} ~ {program.endDate}</td>
+                        <td className="px-4 py-3">{moduleCount}개 노출</td>
+                        <td className="px-4 py-3">
+                          <button
+                            className="font-semibold text-blue-700 underline"
+                            onClick={() => setCurrentProgramId(program.id)}
+                            type="button"
+                          >
+                            선택
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </section>
+          </div>
         </main>
       ) : null}
 

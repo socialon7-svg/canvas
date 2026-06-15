@@ -96,6 +96,40 @@ export const emptyCanvasDraft: LeanCanvasDraft = {
 export type ProgramStatus = "active" | "closed";
 export type SubmissionStatus = "draft" | "submitted" | "reviewed" | "returned";
 export type PdfStatus = "idle" | "generating" | "success" | "failed";
+export type StartupModuleStatus = "ready" | "coming_soon" | "disabled";
+export type StartupModuleCategoryKey =
+  | "idea"
+  | "customer_problem"
+  | "validation"
+  | "market"
+  | "business_model"
+  | "execution"
+  | "proposal"
+  | "pitch"
+  | "operations";
+export type ParticipantModuleProgressStatus = "not_started" | "in_progress" | "completed" | "needs_review";
+
+export interface StartupModule {
+  id: number;
+  order: number;
+  title: string;
+  description: string;
+  category: StartupModuleCategoryKey;
+  isDefault: boolean;
+  isAdminOnly: boolean;
+  status: StartupModuleStatus;
+  slug: string;
+  route: string;
+}
+
+export interface ParticipantModuleProgress {
+  moduleId: number;
+  status: ParticipantModuleProgressStatus;
+  inputData: string;
+  outputData: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface HighViewProgram {
   id: string;
@@ -107,6 +141,7 @@ export interface HighViewProgram {
   status: ProgramStatus;
   createdAt: string;
   brief: string;
+  moduleIds: number[];
 }
 
 export interface HighViewParticipant {
@@ -126,6 +161,7 @@ export interface HighViewParticipant {
   submittedAt?: string;
   latestModuStartupSubmissionId?: string;
   moduStartupSubmittedAt?: string;
+  moduleProgress?: Record<string, ParticipantModuleProgress>;
 }
 
 export interface HighViewTeam {
