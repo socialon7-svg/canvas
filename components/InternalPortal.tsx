@@ -274,6 +274,30 @@ export default function InternalPortal() {
     if (!currentProgram) return "";
     return `${currentProgram.name} 운영 현황: 참여자 ${operationalMetrics.totalParticipants}명 중 ${operationalMetrics.entered}명이 입장했고, ${operationalMetrics.submitted}명이 제출했습니다. 미제출 ${operationalMetrics.notSubmitted}명, 피드백 대기 ${operationalMetrics.feedbackPending}건, PDF 오류 ${operationalMetrics.pdfFailed}건입니다.`;
   }, [currentProgram, operationalMetrics]);
+  const operationsFocus =
+    operationalMetrics.pdfFailed > 0
+      ? {
+          title: `PDF 오류 ${operationalMetrics.pdfFailed}건`,
+          description: "인쇄 전 PDF 오류 제출물을 먼저 열어 복구 여부를 확인하세요.",
+          tone: "red"
+        }
+      : operationalMetrics.notSubmitted > 0
+        ? {
+            title: `미제출 ${operationalMetrics.notSubmitted}명`,
+            description: "미제출자 목록 복사로 현장 안내 메시지를 빠르게 준비할 수 있습니다.",
+            tone: "amber"
+          }
+        : operationalMetrics.feedbackPending > 0
+          ? {
+              title: `피드백 대기 ${operationalMetrics.feedbackPending}건`,
+              description: "제출은 완료됐고 운영진 코멘트만 남은 상태입니다.",
+              tone: "blue"
+            }
+          : {
+              title: "운영 상태가 안정적입니다",
+              description: "제출과 피드백 흐름이 정상적으로 정리되고 있습니다.",
+              tone: "green"
+            };
 
   const persistState = (nextState: HighViewOperationsState) => {
     saveOperationsState(nextState);
@@ -682,6 +706,31 @@ export default function InternalPortal() {
 
       {tab === "dashboard" && currentProgram && stats ? (
         <main className="grid gap-4">
+          <section
+            className={`rounded-lg border p-4 shadow-sm ${
+              operationsFocus.tone === "red"
+                ? "border-red-200 bg-red-50 text-red-900"
+                : operationsFocus.tone === "amber"
+                  ? "border-amber-200 bg-amber-50 text-amber-900"
+                  : operationsFocus.tone === "blue"
+                    ? "border-blue-200 bg-blue-50 text-blue-900"
+                    : "border-green-200 bg-green-50 text-green-900"
+            }`}
+          >
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm font-bold">오늘의 운영 포커스 · {operationsFocus.title}</p>
+                <p className="mt-1 text-sm leading-6">{operationsFocus.description}</p>
+              </div>
+              <button
+                className="rounded-md border border-current/20 bg-white/70 px-4 py-2 text-sm font-bold"
+                onClick={() => setTab("submissions")}
+                type="button"
+              >
+                제출/피드백 보기
+              </button>
+            </div>
+          </section>
           <section className="grid gap-4 md:grid-cols-5">
             <MetricCard label="전체 프로그램" value={overallStats.programs} hint={`운영중 ${overallStats.activePrograms}개`} />
             <MetricCard label="전체 참여자" value={overallStats.participants} hint="발급된 참여자 코드" />

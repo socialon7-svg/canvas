@@ -69,14 +69,52 @@ export default function ParticipantPortal() {
   const feedback = findFeedback(state, participant?.latestSubmissionId);
   const latestPdfStatus = latestSubmission?.pdfStatus ?? "success";
   const latestSubmissionCode = latestSubmission?.id.slice(0, 8).toUpperCase();
-  const progressSteps = [
-    { label: "입장", done: Boolean(program && participant) },
-    { label: "내 정보", done: Boolean(participant?.name?.trim()) },
-    { label: "과제 제출", done: Boolean(participant?.latestSubmissionId || latestSubmission) },
-    { label: "피드백", done: Boolean(feedback) }
+  const hasProfile = Boolean(participant?.name?.trim());
+  const hasLeanCanvasSubmission = Boolean(participant?.latestSubmissionId || latestSubmission);
+  const hasModuStartupSubmission = Boolean(participant?.latestModuStartupSubmissionId || participant?.moduStartupSubmittedAt);
+  const fullProgressSteps = [
+    { label: "입장", done: Boolean(program && participant), hint: "코드 확인" },
+    { label: "내 정보", done: hasProfile, hint: "이름/소속" },
+    { label: "린캔버스", done: hasLeanCanvasSubmission, hint: "PDF 제출" },
+    { label: "모두의창업", done: hasModuStartupSubmission, hint: "신청서 초안" },
+    { label: "피드백", done: Boolean(feedback), hint: "운영진 확인" }
   ];
-  const completedSteps = progressSteps.filter((step) => step.done).length;
-  const progressPercent = Math.round((completedSteps / progressSteps.length) * 100);
+  const fullCompletedSteps = fullProgressSteps.filter((step) => step.done).length;
+  const fullProgressPercent = Math.round((fullCompletedSteps / fullProgressSteps.length) * 100);
+  const nextAction = !hasProfile
+    ? {
+        title: "내 정보를 먼저 확인해주세요",
+        description: "이름, 연락처, 소속이 맞아야 운영진이 제출 현황을 정확히 확인할 수 있습니다.",
+        action: "내 정보 확인",
+        onClick: () => setTab("profile")
+      }
+    : !hasLeanCanvasSubmission
+      ? {
+          title: "린캔버스 제출이 아직 남았습니다",
+          description: "아이디어를 10칸 캔버스로 정리하고 PDF 제출까지 완료해주세요.",
+          action: "린캔버스 작성",
+          onClick: () => startCanvas()
+        }
+      : !hasModuStartupSubmission
+        ? {
+            title: "모두의창업 초안 제출이 아직 남았습니다",
+            description: "Q1~Q8 신청서 초안을 생성하고 운영 시스템에 제출해주세요.",
+            action: "모두의창업 작성",
+            onClick: () => startModuStartup()
+          }
+        : feedback
+          ? {
+              title: "피드백이 도착했습니다",
+              description: "운영진 코멘트와 다음 행동을 확인하고 필요하면 다시 보완해주세요.",
+              action: "피드백 보기",
+              onClick: () => setTab("feedback")
+            }
+          : {
+              title: "제출이 접수되었습니다",
+              description: "운영진 확인 대기 중입니다. 제출물은 언제든 다시 열람할 수 있습니다.",
+              action: "제출물 확인",
+              onClick: () => (latestSubmission ? router.push(`/preview/${latestSubmission.id}`) : setTab("home"))
+            };
 
   useEffect(() => {
     let cancelled = false;
@@ -296,6 +334,42 @@ export default function ParticipantPortal() {
         <p className="mb-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">{notice}</p>
       ) : null}
 
+      <section className="mb-5 rounded-lg border border-blue-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-blue-700">나의 진행 상황</p>
+            <h2 className="mt-1 text-2xl font-bold text-gray-950">{fullProgressPercent}% 완료</h2>
+            <p className="mt-2 text-sm leading-6 text-gray-600">
+              {fullCompletedSteps}/{fullProgressSteps.length}단계 완료 · {nextAction.title}
+            </p>
+          </div>
+          <button
+            className="rounded-md bg-blue-700 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-blue-800 active:bg-blue-900"
+            onClick={nextAction.onClick}
+            type="button"
+          >
+            {nextAction.action}
+          </button>
+        </div>
+        <div className="mt-4 h-3 overflow-hidden rounded-full bg-gray-100">
+          <div className="h-full rounded-full bg-blue-700 transition-all" style={{ width: `${fullProgressPercent}%` }} />
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-5">
+          {fullProgressSteps.map((step) => (
+            <div
+              key={step.label}
+              className={`rounded-md border px-3 py-2 text-sm ${
+                step.done ? "border-green-200 bg-green-50 text-green-800" : "border-gray-200 bg-gray-50 text-gray-600"
+              }`}
+            >
+              <p className="font-bold">{step.done ? "완료" : "대기"} · {step.label}</p>
+              <p className="mt-1 text-xs opacity-80">{step.hint}</p>
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 rounded-md bg-blue-50 px-3 py-2 text-sm leading-6 text-blue-900">{nextAction.description}</p>
+      </section>
+
       {tab === "home" ? (
         <main className="grid gap-4 md:grid-cols-3">
           <section className="rounded-lg border border-blue-200 bg-blue-50 p-5 shadow-sm md:col-span-3">
@@ -345,32 +419,6 @@ export default function ParticipantPortal() {
                   <dd className="mt-1 font-semibold text-gray-950">{participant.school || "미입력"}</dd>
                 </div>
               </dl>
-            </div>
-          </section>
-          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm md:col-span-3">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <p className="text-sm font-semibold text-gray-500">진행률</p>
-                <h2 className="mt-1 text-2xl font-bold text-gray-950">{progressPercent}% 완료</h2>
-              </div>
-              <p className="text-sm text-gray-600">
-                {completedSteps}/{progressSteps.length}단계 완료
-              </p>
-            </div>
-            <div className="mt-4 h-3 overflow-hidden rounded-full bg-gray-100">
-              <div className="h-full rounded-full bg-blue-700 transition-all" style={{ width: `${progressPercent}%` }} />
-            </div>
-            <div className="mt-4 grid gap-2 sm:grid-cols-4">
-              {progressSteps.map((step) => (
-                <div
-                  key={step.label}
-                  className={`rounded-md border px-3 py-2 text-sm font-semibold ${
-                    step.done ? "border-blue-200 bg-blue-50 text-blue-800" : "border-gray-200 bg-gray-50 text-gray-500"
-                  }`}
-                >
-                  {step.done ? "완료" : "대기"} · {step.label}
-                </div>
-              ))}
             </div>
           </section>
           {latestSubmission ? (

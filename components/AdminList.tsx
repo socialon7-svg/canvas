@@ -269,6 +269,24 @@ export default function AdminList() {
   const filteredSubmissions = filterByAdminStatus(searchedSubmissions, filter);
   const metrics = calculateAdminMetrics(submissions);
   const hasActiveListFilter = Boolean(normalizedQuery) || filter !== "all";
+  const adminFocus =
+    metrics.pdfFailed > 0
+      ? {
+          tone: "red",
+          title: `PDF 오류 ${metrics.pdfFailed}건을 먼저 확인해주세요`,
+          description: "현장 인쇄 전 미리보기 화면을 열어 PDF/인쇄 상태를 복구하는 것이 우선입니다."
+        }
+      : metrics.total === 0
+        ? {
+            tone: "amber",
+            title: "아직 제출물이 없습니다",
+            description: "참여자에게 제출 완료 화면과 제출번호가 보이는지 먼저 확인해주세요."
+          }
+        : {
+            tone: "green",
+            title: "제출 목록이 정상 수집 중입니다",
+            description: `현재 ${filteredSubmissions.length}건이 표시됩니다. 검색과 필터로 팀별 상황을 빠르게 확인하세요.`
+          };
 
   if (!authorized) {
     return (
@@ -337,6 +355,31 @@ export default function AdminList() {
           </Link>
         </div>
       </header>
+
+      <section
+        className={`mb-4 rounded-lg border p-4 shadow-sm ${
+          adminFocus.tone === "red"
+            ? "border-red-200 bg-red-50 text-red-900"
+            : adminFocus.tone === "amber"
+              ? "border-amber-200 bg-amber-50 text-amber-900"
+              : "border-green-200 bg-green-50 text-green-900"
+        }`}
+      >
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm font-bold">{adminFocus.title}</p>
+            <p className="mt-1 text-sm leading-6">{adminFocus.description}</p>
+          </div>
+          <button
+            className="rounded-md border border-current/20 bg-white/70 px-4 py-2 text-sm font-bold"
+            disabled={refreshing}
+            onClick={() => refreshList()}
+            type="button"
+          >
+            최신 상태 확인
+          </button>
+        </div>
+      </section>
 
       <section className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
         <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">

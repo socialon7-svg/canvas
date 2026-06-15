@@ -7,6 +7,14 @@ import { deleteModuStartupSubmission, loadModuStartupSubmissions } from "@/lib/s
 
 const ADMIN_SESSION_KEY = "lean-canvas-admin-authorized";
 const ADMIN_PASSWORD_KEY = "lean-canvas-admin-password";
+type ModuReviewFilter = "all" | "needsEvidence" | "needsPolicy" | "noVideo";
+
+const REVIEW_FILTER_LABELS: Record<ModuReviewFilter, string> = {
+  all: "전체",
+  needsEvidence: "증거 보완",
+  needsPolicy: "키워드 보완",
+  noVideo: "영상 없음"
+};
 
 function readSessionValue(key: string) {
   try {
@@ -102,6 +110,7 @@ export default function ModuStartupAdminList() {
   const [refreshing, setRefreshing] = useState(false);
   const [fallbackMode, setFallbackMode] = useState(false);
   const [query, setQuery] = useState("");
+  const [reviewFilter, setReviewFilter] = useState<ModuReviewFilter>("all");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -189,7 +198,7 @@ export default function ModuStartupAdminList() {
   };
 
   const normalizedQuery = query.trim().toLowerCase();
-  const filteredSubmissions = useMemo(
+  const searchedSubmissions = useMemo(
     () =>
       normalizedQuery
         ? submissions.filter((submission) =>
@@ -214,8 +223,48 @@ export default function ModuStartupAdminList() {
     total: submissions.length,
     withEvidence: submissions.filter((submission) => submission.draft.evidenceLines.length >= 2).length,
     withVideo: submissions.filter((submission) => submission.input.videoUrl.trim()).length,
-    withPolicy: submissions.filter((submission) => submission.draft.policyKeywords.length >= 2).length
+    withPolicy: submissions.filter((submission) => submission.draft.policyKeywords.length >= 2).length,
+    needsEvidence: submissions.filter((submission) => submission.draft.evidenceLines.length < 2).length,
+    needsPolicy: submissions.filter((submission) => submission.draft.policyKeywords.length < 2).length,
+    noVideo: submissions.filter((submission) => !submission.input.videoUrl.trim()).length
   };
+  const filterCounts: Record<ModuReviewFilter, number> = {
+    all: searchedSubmissions.length,
+    needsEvidence: searchedSubmissions.filter((submission) => submission.draft.evidenceLines.length < 2).length,
+    needsPolicy: searchedSubmissions.filter((submission) => submission.draft.policyKeywords.length < 2).length,
+    noVideo: searchedSubmissions.filter((submission) => !submission.input.videoUrl.trim()).length
+  };
+  const filteredSubmissions = useMemo(() => {
+    switch (reviewFilter) {
+      case "needsEvidence":
+        return searchedSubmissions.filter((submission) => submission.draft.evidenceLines.length < 2);
+      case "needsPolicy":
+        return searchedSubmissions.filter((submission) => submission.draft.policyKeywords.length < 2);
+      case "noVideo":
+        return searchedSubmissions.filter((submission) => !submission.input.videoUrl.trim());
+      case "all":
+      default:
+        return searchedSubmissions;
+    }
+  }, [reviewFilter, searchedSubmissions]);
+  const reviewFocus =
+    metrics.needsEvidence > 0
+      ? {
+          title: `증거 문장 보완이 필요한 제출 ${metrics.needsEvidence}건`,
+          description: "숫자, 출처, 베타 유저, 매출 등 객관 증거가 부족한 팀을 먼저 확인하세요.",
+          tone: "amber"
+        }
+      : metrics.needsPolicy > 0
+        ? {
+            title: `정책 키워드 보완이 필요한 제출 ${metrics.needsPolicy}건`,
+            description: "AI, 로컬, ESG, 글로벌, DX 중 아이디어와 자연스러운 키워드 2~3개가 있는지 확인하세요.",
+            tone: "blue"
+          }
+        : {
+            title: "모두의창업 제출 품질이 안정적입니다",
+            description: "증거 문장과 정책 키워드가 기본 기준을 충족하고 있습니다.",
+            tone: "green"
+          };
 
   if (!authorized) {
     return (
@@ -277,6 +326,19 @@ export default function ModuStartupAdminList() {
         </div>
       </header>
 
+      <section
+        className={`mb-4 rounded-lg border p-4 shadow-sm ${
+          reviewFocus.tone === "amber"
+            ? "border-amber-200 bg-amber-50 text-amber-900"
+            : reviewFocus.tone === "blue"
+              ? "border-blue-200 bg-blue-50 text-blue-900"
+              : "border-green-200 bg-green-50 text-green-900"
+        }`}
+      >
+        <p className="text-sm font-bold">{reviewFocus.title}</p>
+        <p className="mt-1 text-sm leading-6">{reviewFocus.description}</p>
+      </section>
+
       <section className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
           <p className="text-xs font-semibold text-gray-500">전체 제출</p>
@@ -310,6 +372,22 @@ export default function ModuStartupAdminList() {
         >
           CSV 다운로드
         </button>
+      </div>
+      <div className="mb-4 flex flex-wrap gap-2">
+        {(Object.keys(REVIEW_FILTER_LABELS) as ModuReviewFilter[]).map((item) => (
+          <button
+            key={item}
+            className={`rounded-full border px-3 py-1.5 text-sm font-semibold transition-colors ${
+              reviewFilter === item
+                ? "border-blue-700 bg-blue-700 text-white"
+                : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+            }`}
+            onClick={() => setReviewFilter(item)}
+            type="button"
+          >
+            {REVIEW_FILTER_LABELS[item]} {filterCounts[item]}
+          </button>
+        ))}
       </div>
 
       {error ? <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
