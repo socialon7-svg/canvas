@@ -24,7 +24,7 @@ npm run build
 ```bash
 AI_API_KEY=
 AI_BASE_URL=https://integrate.api.nvidia.com/v1
-AI_MODEL_NAME=meta/llama-3.3-70b-instruct
+AI_MODEL_NAME=gpt-5.4
 AI_MOCK=false
 
 NEXT_PUBLIC_SUPABASE_URL=

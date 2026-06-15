@@ -155,3 +155,37 @@ export interface HighViewOperationsState {
   teams: HighViewTeam[];
   feedbacks: HighViewFeedback[];
 }
+
+export interface ModuStartupInput {
+  programName: string;
+  teamName: string;
+  participantName: string;
+  ideaTitle: string;
+  ideaOneLine: string;
+  backgroundStory: string;
+  customerProblem: string;
+  executionPlan: string;
+  category: string;
+  businessStatus: string;
+  teamMembers: string;
+  videoUrl: string;
+}
+
+export interface ModuStartupDraft {
+  q1IdeaIntro: string;
+  q2BackgroundStory: string;
+  q3CustomerProblem: string;
+  q4ExecutionPlan: string;
+  q5CategoryReason: string;
+  q6BusinessStatusCheck: string;
+  q7TeamIntro: string;
+  q8VideoPitch: string;
+  openingHook: string;
+  evidenceLines: string[];
+  personaDefinition: string;
+  differentiationFocus: string;
+  policyKeywords: string[];
+  socialImpactEnding: string;
+  finalChecklist: string[];
+  mentorComment: string;
+}

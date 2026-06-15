@@ -476,7 +476,8 @@ export default function ParticipantPortal() {
       ) : null}
 
       {tab === "write" ? (
-        <main className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+        <main className="grid gap-4 md:grid-cols-2">
+          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-bold text-gray-950">오늘의 과제: 린캔버스 작성</h2>
           <p className="mt-2 text-sm leading-6 text-gray-600">
             기존 린캔버스 입력 화면으로 이동합니다. 교육명, 팀명, 참가자명은 자동으로 채워집니다.
@@ -484,6 +485,22 @@ export default function ParticipantPortal() {
           <button className="mt-5 rounded-md bg-blue-700 px-5 py-3 text-sm font-bold text-white" onClick={startCanvas}>
             린캔버스 과제 작성 시작
           </button>
+          </section>
+
+          <section className="rounded-lg border border-blue-200 bg-blue-50 p-5 shadow-sm">
+            <p className="text-sm font-semibold text-blue-700">모두의창업</p>
+            <h2 className="mt-1 text-lg font-bold text-gray-950">신청서 초안 생성</h2>
+            <p className="mt-2 text-sm leading-6 text-blue-950">
+              Q1~Q8 답변, 증거 문장, 정책 키워드, 최종 체크리스트를 자동 생성합니다. 신청서 제출 전 보완용으로 사용하세요.
+            </p>
+            <button
+              className="mt-5 rounded-md bg-blue-700 px-5 py-3 text-sm font-bold text-white"
+              onClick={() => router.push("/modu-startup")}
+              type="button"
+            >
+              모두의창업 초안 생성
+            </button>
+          </section>
         </main>
       ) : null}
 

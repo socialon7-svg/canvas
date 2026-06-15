@@ -14,6 +14,13 @@ const roleCards = [
     action: "참여자로 입장하기"
   },
   {
+    href: "/modu-startup",
+    eyebrow: "AI 작성 도구",
+    title: "모두의창업 초안 생성",
+    description: "Q1~Q8 입력을 바탕으로 신청서 초안, 증거 문장, 정책 키워드, 최종 체크리스트를 자동 생성합니다.",
+    action: "초안 생성하기"
+  },
+  {
     href: "/internal",
     eyebrow: "운영진",
     title: "운영 포털",
@@ -32,7 +39,7 @@ const roleCards = [
 export default function Home() {
   return (
     <main className="flex min-h-screen items-center px-5 py-10">
-      <section className="mx-auto w-full max-w-5xl">
+      <section className="mx-auto w-full max-w-6xl">
         <div className="text-center">
           <p className="text-sm font-semibold text-blue-700">창업교육·캠프 운영 MVP</p>
           <h1 className="mt-3 text-3xl font-bold tracking-tight text-gray-950 sm:text-4xl">
@@ -43,7 +50,7 @@ export default function Home() {
           </p>
         </div>
 
-        <div className="mt-8 grid gap-4 md:grid-cols-3">
+        <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {roleCards.map((card) => (
             <Link
               key={card.href}
