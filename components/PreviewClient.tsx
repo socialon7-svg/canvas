@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import PrintableCanvas from "@/components/PrintableCanvas";
 import StatusBadge from "@/components/StatusBadge";
 import type { LeanCanvasSubmission, PdfStatus } from "@/lib/types";
@@ -11,6 +11,7 @@ import { getFeedbackProgressStatus, getSubmissionStatus } from "@/lib/status";
 
 export default function PreviewClient({ id }: { id: string }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const printRef = useRef<HTMLDivElement>(null);
   const [submission, setSubmission] = useState<LeanCanvasSubmission | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -19,6 +20,7 @@ export default function PreviewClient({ id }: { id: string }) {
   const [pdfStatus, setPdfStatus] = useState<PdfStatus>("success");
   const [pdfErrorMessage, setPdfErrorMessage] = useState("");
   const [fallbackNotice, setFallbackNotice] = useState("");
+  const [autoDownloadStarted, setAutoDownloadStarted] = useState(false);
 
   useEffect(() => {
     const loadSubmission = async () => {
@@ -68,23 +70,6 @@ export default function PreviewClient({ id }: { id: string }) {
     loadSubmission();
   }, [id]);
 
-  if (!loaded) {
-    return <div className="px-5 py-10 text-sm text-gray-600">제출물을 불러오는 중입니다...</div>;
-  }
-
-  if (error || !submission) {
-    return (
-      <div className="mx-auto max-w-3xl px-5 py-10">
-        <div className="rounded-lg border border-red-200 bg-white p-6 text-sm text-red-700">
-          {error || "제출물을 찾을 수 없습니다."}
-        </div>
-        <Link className="mt-4 inline-block rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-800 active:bg-blue-900" href="/participant">
-          새로 작성하기
-        </Link>
-      </div>
-    );
-  }
-
   const safeFilePart = (value: string) =>
     value
       .trim()
@@ -92,8 +77,8 @@ export default function PreviewClient({ id }: { id: string }) {
       .replace(/\s+/g, "_")
       .slice(0, 40);
 
-  const fileName = `${safeFilePart(submission.participant.teamName || "팀")}_${safeFilePart(
-    submission.participant.ideaName || "린캔버스"
+  const fileName = `${safeFilePart(submission?.participant.teamName || "팀")}_${safeFilePart(
+    submission?.participant.ideaName || "린캔버스"
   )}.pdf`;
 
   const downloadPdf = async () => {
@@ -136,6 +121,34 @@ export default function PreviewClient({ id }: { id: string }) {
   };
 
   const print = () => window.print();
+
+  useEffect(() => {
+    if (!loaded || !submission || autoDownloadStarted || searchParams.get("download") !== "1") return;
+
+    setAutoDownloadStarted(true);
+    const timer = window.setTimeout(() => {
+      document.querySelector<HTMLButtonElement>("[data-pdf-download-button]")?.click();
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [autoDownloadStarted, loaded, searchParams, submission]);
+
+  if (!loaded) {
+    return <div className="px-5 py-10 text-sm text-gray-600">제출물을 불러오는 중입니다...</div>;
+  }
+
+  if (error || !submission) {
+    return (
+      <div className="mx-auto max-w-3xl px-5 py-10">
+        <div className="rounded-lg border border-red-200 bg-white p-6 text-sm text-red-700">
+          {error || "제출물을 찾을 수 없습니다."}
+        </div>
+        <Link className="mt-4 inline-block rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-800 active:bg-blue-900" href="/participant">
+          새로 작성하기
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="px-5 py-6">
@@ -189,6 +202,7 @@ export default function PreviewClient({ id }: { id: string }) {
         </div>
         <div className="flex flex-wrap gap-2">
           <button
+            data-pdf-download-button
             className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-800 active:bg-blue-900 disabled:bg-gray-400"
             disabled={pdfLoading}
             onClick={downloadPdf}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { ModuStartupSubmission } from "@/lib/types";
 import { getModuStartupSubmission } from "@/lib/storage";
@@ -43,9 +43,13 @@ function formatSubmission(submission: ModuStartupSubmission) {
 }
 
 export default function ModuStartupPreview({ id }: { id: string }) {
+  const printRef = useRef<HTMLElement>(null);
   const [submission, setSubmission] = useState<ModuStartupSubmission | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [actionNotice, setActionNotice] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [pdfLoading, setPdfLoading] = useState(false);
   const text = useMemo(() => (submission ? formatSubmission(submission) : ""), [submission]);
 
   useEffect(() => {
@@ -86,7 +90,63 @@ export default function ModuStartupPreview({ id }: { id: string }) {
 
   const copyText = async () => {
     if (!text) return;
-    await navigator.clipboard.writeText(text);
+    setActionNotice("");
+    setActionError("");
+    try {
+      await navigator.clipboard.writeText(text);
+      setActionNotice("복사용 텍스트를 클립보드에 복사했습니다.");
+    } catch {
+      setActionError("브라우저 권한 때문에 복사하지 못했습니다. 아래 내용을 직접 선택해 복사해주세요.");
+    }
+  };
+
+  const safeFilePart = (value: string) =>
+    value
+      .trim()
+      .replace(/[\/:*?"<>|]/g, "")
+      .replace(/\s+/g, "_")
+      .slice(0, 40);
+
+  const downloadPdf = async () => {
+    if (!submission || !printRef.current) return;
+
+    setPdfLoading(true);
+    setActionNotice("");
+    setActionError("");
+    try {
+      const html2pdf = (await import("html2pdf.js")).default;
+      const fileName = `${safeFilePart(submission.input.teamName || "팀")}_${safeFilePart(
+        submission.input.ideaTitle || submission.input.ideaOneLine || "모두의창업"
+      )}.pdf`;
+
+      await html2pdf()
+        .set({
+          margin: 8,
+          filename: fileName,
+          image: { type: "jpeg", quality: 0.98 },
+          html2canvas: {
+            scale: 2,
+            useCORS: true,
+            letterRendering: true
+          },
+          jsPDF: {
+            unit: "mm",
+            format: "a4",
+            orientation: "portrait"
+          },
+          pagebreak: {
+            mode: ["avoid-all", "css", "legacy"]
+          }
+        })
+        .from(printRef.current)
+        .save();
+
+      setActionNotice("PDF 다운로드를 완료했습니다.");
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : "PDF 다운로드에 실패했습니다. 바로 인쇄를 이용해주세요.");
+    } finally {
+      setPdfLoading(false);
+    }
   };
 
   if (loading) {
@@ -122,6 +182,14 @@ export default function ModuStartupPreview({ id }: { id: string }) {
           <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" onClick={copyText} type="button">
             전체 복사
           </button>
+          <button
+            className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-400"
+            disabled={pdfLoading}
+            onClick={downloadPdf}
+            type="button"
+          >
+            {pdfLoading ? "PDF 생성 중..." : "PDF 다운로드"}
+          </button>
           <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white" onClick={() => window.print()} type="button">
             바로 인쇄
           </button>
@@ -130,8 +198,18 @@ export default function ModuStartupPreview({ id }: { id: string }) {
           </Link>
         </div>
       </section>
+      {actionNotice ? (
+        <p className="no-print mb-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-900">
+          {actionNotice}
+        </p>
+      ) : null}
+      {actionError ? (
+        <p className="no-print mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+          {actionError}
+        </p>
+      ) : null}
 
-      <article className="print-page rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+      <article ref={printRef} className="print-page rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
         <header className="print-header border-b border-gray-200 pb-4">
           <p className="text-sm font-semibold text-blue-700">{submission.input.programName || "프로그램명 없음"}</p>
           <h2 className="mt-1 text-3xl font-bold text-gray-950">{submission.input.ideaTitle || submission.input.ideaOneLine || "아이디어"}</h2>

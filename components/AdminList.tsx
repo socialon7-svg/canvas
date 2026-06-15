@@ -555,8 +555,8 @@ export default function AdminList() {
                       </Link>
                     </td>
                     <td className="px-4 py-3">
-                      <Link className="font-semibold text-gray-800 underline" href={`/preview/${submission.id}`}>
-                        PDF
+                      <Link className="font-semibold text-gray-800 underline" href={`/preview/${submission.id}?download=1`}>
+                        PDF 다운로드
                       </Link>
                     </td>
                     <td className="px-4 py-3">
