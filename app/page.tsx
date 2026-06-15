@@ -14,13 +14,6 @@ const roleCards = [
     action: "참여자로 입장하기"
   },
   {
-    href: "/modu-startup",
-    eyebrow: "AI 작성 도구",
-    title: "모두의창업 초안 생성",
-    description: "Q1~Q8 입력을 바탕으로 신청서 초안, 증거 문장, 정책 키워드, 최종 체크리스트를 자동 생성합니다.",
-    action: "초안 생성하기"
-  },
-  {
     href: "/internal",
     eyebrow: "운영진",
     title: "운영 포털",
@@ -50,7 +43,7 @@ export default function Home() {
           </p>
         </div>
 
-        <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {roleCards.map((card) => (
             <Link
               key={card.href}
