@@ -127,6 +127,8 @@ export interface ParticipantModuleProgress {
   status: ParticipantModuleProgressStatus;
   inputData: string;
   outputData: string;
+  adminComment?: string;
+  reviewedAt?: string;
   createdAt: string;
   updatedAt: string;
 }

@@ -176,6 +176,16 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
         <p className="mt-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">{notice}</p>
       ) : null}
 
+      {progress?.adminComment ? (
+        <section className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-5 shadow-sm">
+          <p className="text-sm font-bold text-amber-800">운영진 검토 코멘트</p>
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-amber-950">{progress.adminComment}</p>
+          {progress.reviewedAt ? (
+            <p className="mt-2 text-xs text-amber-800">검토 시각: {new Date(progress.reviewedAt).toLocaleString("ko-KR")}</p>
+          ) : null}
+        </section>
+      ) : null}
+
       <section className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <form className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-bold text-gray-950">모듈 입력 영역</h2>

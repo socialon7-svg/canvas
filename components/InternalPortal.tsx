@@ -4,7 +4,13 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import StartupModuleSelector from "@/components/StartupModuleSelector";
 import StatusBadge from "@/components/StatusBadge";
-import type { FeedbackStatus, HighViewOperationsState, LeanCanvasSubmission, ProgramStatus } from "@/lib/types";
+import type {
+  FeedbackStatus,
+  HighViewOperationsState,
+  LeanCanvasSubmission,
+  ParticipantModuleProgressStatus,
+  ProgramStatus
+} from "@/lib/types";
 import { deleteSubmission, loadSubmissions } from "@/lib/storage";
 import {
   DEFAULT_STARTUP_MODULE_IDS,
@@ -32,8 +38,9 @@ import {
   saveOperationsState
 } from "@/lib/operationsStorage";
 
-type InternalTab = "dashboard" | "programs" | "participants" | "teams" | "submissions" | "report";
+type InternalTab = "dashboard" | "programs" | "participants" | "teams" | "submissions" | "moduleReviews" | "report";
 type SubmissionFilter = "all" | "notEntered" | "submitted" | "notSubmitted" | "feedbackPending" | "feedbackDone" | "pdfFailed";
+type ModuleReviewFilter = "needsReview" | "inProgress" | "completed" | "all";
 type UiTone = "gray" | "blue" | "green" | "amber" | "red";
 
 type FocusInfo = {
@@ -52,6 +59,20 @@ const submissionFilterLabels: Record<SubmissionFilter, string> = {
   feedbackPending: "피드백 대기",
   feedbackDone: "피드백 완료",
   pdfFailed: "PDF 오류"
+};
+
+const moduleReviewFilterLabels: Record<ModuleReviewFilter, string> = {
+  needsReview: "검토 필요",
+  inProgress: "진행 중",
+  completed: "완료",
+  all: "전체"
+};
+
+const moduleProgressStatusLabels: Record<ParticipantModuleProgressStatus, string> = {
+  not_started: "시작 전",
+  in_progress: "진행 중",
+  completed: "완료",
+  needs_review: "검토 필요"
 };
 
 const ADMIN_SESSION_KEY = "highviewlab-internal-authorized";
@@ -157,6 +178,7 @@ export default function InternalPortal() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [submissionFilter, setSubmissionFilter] = useState<SubmissionFilter>("all");
+  const [moduleReviewFilter, setModuleReviewFilter] = useState<ModuleReviewFilter>("needsReview");
   const [selectedParticipantId, setSelectedParticipantId] = useState("");
   const [newProgramModuleIds, setNewProgramModuleIds] = useState<number[]>(DEFAULT_STARTUP_MODULE_IDS);
   const [currentProgramModuleDraftIds, setCurrentProgramModuleDraftIds] = useState<number[]>(DEFAULT_STARTUP_MODULE_IDS);
@@ -326,6 +348,45 @@ export default function InternalPortal() {
       completionRate: totalTasks ? Math.round((completedTasks / totalTasks) * 100) : 0
     };
   }, [moduleProgressRows]);
+  const moduleReviewRows = useMemo(
+    () =>
+      programParticipants.flatMap((participant) => {
+        const team = programTeams.find((item) => item.id === participant.teamId);
+        return currentProgramVisibleModules
+          .map((module) => {
+            const progress = participant.moduleProgress?.[module.slug];
+            const status = progress?.status || "not_started";
+            return {
+              participant,
+              team,
+              module,
+              progress,
+              status
+            };
+          })
+          .filter((row) => row.status !== "not_started" || row.progress?.inputData || row.progress?.outputData);
+      }),
+    [currentProgramVisibleModules, programParticipants, programTeams]
+  );
+  const moduleReviewCounts = useMemo<Record<ModuleReviewFilter, number>>(
+    () => ({
+      needsReview: moduleReviewRows.filter((row) => row.status === "needs_review").length,
+      inProgress: moduleReviewRows.filter((row) => row.status === "in_progress").length,
+      completed: moduleReviewRows.filter((row) => row.status === "completed").length,
+      all: moduleReviewRows.length
+    }),
+    [moduleReviewRows]
+  );
+  const filteredModuleReviewRows = useMemo(() => {
+    if (moduleReviewFilter === "all") return moduleReviewRows;
+    if (moduleReviewFilter === "needsReview") {
+      return moduleReviewRows.filter((row) => row.status === "needs_review");
+    }
+    if (moduleReviewFilter === "inProgress") {
+      return moduleReviewRows.filter((row) => row.status === "in_progress");
+    }
+    return moduleReviewRows.filter((row) => row.status === "completed");
+  }, [moduleReviewFilter, moduleReviewRows]);
   const entryRate = operationalMetrics.totalParticipants
     ? Math.round((operationalMetrics.entered / operationalMetrics.totalParticipants) * 100)
     : 0;
@@ -432,7 +493,14 @@ export default function InternalPortal() {
     return `${currentProgram.name} 운영 현황: 참여자 ${operationalMetrics.totalParticipants}명 중 ${operationalMetrics.entered}명이 입장했고, ${operationalMetrics.submitted}명이 제출했습니다. 미제출 ${operationalMetrics.notSubmitted}명, 피드백 대기 ${operationalMetrics.feedbackPending}건, PDF 오류 ${operationalMetrics.pdfFailed}건입니다.`;
   }, [currentProgram, operationalMetrics]);
   const operationsFocus: FocusInfo =
-    operationalMetrics.pdfFailed > 0
+    moduleReviewCounts.needsReview > 0
+      ? {
+          title: `모듈 검토 필요 ${moduleReviewCounts.needsReview}건`,
+          description: "교육생이 검토 요청한 모듈을 확인하고 상태와 코멘트를 저장하세요.",
+          tone: "amber",
+          actionLabel: "모듈 검토 열기"
+        }
+      : operationalMetrics.pdfFailed > 0
       ? {
           title: `PDF 오류 ${operationalMetrics.pdfFailed}건`,
           description: "인쇄 전 PDF 오류 제출물을 먼저 열어 복구 여부를 확인하세요.",
@@ -546,6 +614,8 @@ export default function InternalPortal() {
         "상태",
         "입력메모",
         "결과메모",
+        "운영진코멘트",
+        "검토시각",
         "업데이트"
       ],
       ...programParticipants.flatMap((participant) => {
@@ -563,6 +633,8 @@ export default function InternalPortal() {
             progress?.status || "not_started",
             progress?.inputData || "",
             progress?.outputData || "",
+            progress?.adminComment || "",
+            progress?.reviewedAt ? new Date(progress.reviewedAt).toLocaleString("ko-KR") : "",
             progress?.updatedAt ? new Date(progress.updatedAt).toLocaleString("ko-KR") : ""
           ];
         });
@@ -659,7 +731,16 @@ export default function InternalPortal() {
     setTab("submissions");
   };
 
+  const openFilteredModuleReviews = (filter: ModuleReviewFilter = "needsReview") => {
+    setModuleReviewFilter(filter);
+    setTab("moduleReviews");
+  };
+
   const openFocusAction = () => {
+    if (moduleReviewCounts.needsReview > 0) {
+      openFilteredModuleReviews("needsReview");
+      return;
+    }
     if (operationsFocus.filter) {
       openFilteredSubmissions(operationsFocus.filter);
       return;
@@ -919,6 +1000,45 @@ export default function InternalPortal() {
     setNotice("피드백을 저장했습니다.");
   };
 
+  const handleModuleReview = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const participantId = form.dataset.participantId || "";
+    const moduleSlug = form.dataset.moduleSlug || "";
+    const participant = state.participants.find((item) => item.id === participantId);
+    const startupModule = currentProgramVisibleModules.find((item) => item.slug === moduleSlug);
+    if (!participant || !startupModule) return;
+    const formData = new FormData(form);
+    const now = new Date().toISOString();
+    const currentProgress = participant.moduleProgress?.[startupModule.slug];
+    const status = String(formData.get("status") || currentProgress?.status || "in_progress") as ParticipantModuleProgressStatus;
+    const nextState = {
+      ...state,
+      participants: state.participants.map((item) =>
+        item.id === participant.id
+          ? {
+              ...item,
+              moduleProgress: {
+                ...(item.moduleProgress || {}),
+                [startupModule.slug]: {
+                  moduleId: startupModule.id,
+                  status,
+                  inputData: currentProgress?.inputData || "",
+                  outputData: currentProgress?.outputData || "",
+                  adminComment: String(formData.get("adminComment") || "").trim(),
+                  reviewedAt: now,
+                  createdAt: currentProgress?.createdAt || now,
+                  updatedAt: now
+                }
+              }
+            }
+          : item
+      )
+    };
+    persistState(nextState);
+    setNotice(`${participant.name || participant.code}의 ${startupModule.title} 검토 상태를 저장했습니다.`);
+  };
+
   const removeSubmission = async (submission: LeanCanvasSubmission) => {
     if (!window.confirm(`${submission.participant.ideaName || "선택한 제출물"}을 삭제할까요?`)) return;
     const adminPassword = readSessionValue(ADMIN_PASSWORD_KEY);
@@ -984,6 +1104,7 @@ export default function InternalPortal() {
     { key: "participants", label: "참여자" },
     { key: "teams", label: "팀" },
     { key: "submissions", label: "제출/피드백" },
+    { key: "moduleReviews", label: "모듈검토" },
     { key: "report", label: "결과보고" }
   ];
 
@@ -1023,6 +1144,13 @@ export default function InternalPortal() {
               </button>
               <button className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-800" onClick={() => setTab("submissions")} type="button">
                 제출/피드백 보기
+              </button>
+              <button
+                className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-bold text-amber-800"
+                onClick={() => openFilteredModuleReviews("needsReview")}
+                type="button"
+              >
+                모듈검토 {moduleReviewCounts.needsReview}
               </button>
               <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-bold" onClick={() => setTab("report")} type="button">
                 결과보고
@@ -1904,6 +2032,150 @@ export default function InternalPortal() {
               )}
             </aside>
           </section>
+        </main>
+      ) : null}
+
+      {tab === "moduleReviews" && currentProgram ? (
+        <main className="grid gap-4">
+          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-blue-700">모듈별 관리자 검토</p>
+                <h2 className="mt-1 text-2xl font-bold text-gray-950">{currentProgram.name}</h2>
+                <p className="mt-2 text-sm leading-6 text-gray-600">
+                  교육생이 작성한 모듈 입력/결과 메모를 확인하고, 운영진 코멘트와 상태를 저장합니다.
+                </p>
+              </div>
+              <button
+                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-bold"
+                onClick={downloadModuleProgressCsv}
+                type="button"
+              >
+                모듈 CSV 다운로드
+              </button>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-4">
+              <MetricCard
+                label="검토 필요"
+                value={moduleReviewCounts.needsReview}
+                hint="교육생 요청"
+                tone={moduleReviewCounts.needsReview > 0 ? "amber" : "green"}
+              />
+              <MetricCard label="진행 중" value={moduleReviewCounts.inProgress} hint="임시저장 또는 작성 중" tone="blue" />
+              <MetricCard label="완료" value={moduleReviewCounts.completed} hint="완료 표시된 모듈" tone="green" />
+              <MetricCard label="전체 기록" value={moduleReviewCounts.all} hint="입력 또는 결과가 있는 모듈" />
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {(Object.keys(moduleReviewFilterLabels) as ModuleReviewFilter[]).map((filter) => (
+                <button
+                  key={filter}
+                  className={`rounded-full border px-3 py-1.5 text-sm font-semibold ${
+                    moduleReviewFilter === filter ? "border-blue-700 bg-blue-700 text-white" : "border-gray-300 bg-white text-gray-700"
+                  }`}
+                  onClick={() => setModuleReviewFilter(filter)}
+                  type="button"
+                >
+                  {moduleReviewFilterLabels[filter]} {moduleReviewCounts[filter]}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          {filteredModuleReviewRows.length === 0 ? (
+            <section className="rounded-lg border border-gray-200 bg-white p-8 text-center shadow-sm">
+              <p className="text-lg font-bold text-gray-950">현재 필터에 해당하는 모듈 기록이 없습니다</p>
+              <p className="mt-2 text-sm text-gray-600">
+                교육생이 모듈에서 임시 저장, 완료, 검토 필요 중 하나를 저장하면 이곳에 표시됩니다.
+              </p>
+            </section>
+          ) : (
+            <section className="grid gap-4">
+              {filteredModuleReviewRows.map((row) => (
+                <article
+                  key={`${row.participant.id}-${row.module.slug}`}
+                  className={`rounded-lg border bg-white p-5 shadow-sm ${
+                    row.status === "needs_review" ? "border-amber-200" : "border-gray-200"
+                  }`}
+                >
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-blue-700">
+                        STEP {row.module.order} · {row.team?.name || "미배정"} · {row.participant.name || row.participant.code}
+                      </p>
+                      <h3 className="mt-1 text-xl font-bold text-gray-950">{row.module.title}</h3>
+                      <p className="mt-1 text-sm text-gray-600">{row.module.description}</p>
+                    </div>
+                    <span
+                      className={`rounded-full px-3 py-1 text-sm font-bold ${
+                        row.status === "needs_review"
+                          ? "bg-amber-100 text-amber-800"
+                          : row.status === "completed"
+                            ? "bg-green-100 text-green-800"
+                            : "bg-blue-100 text-blue-800"
+                      }`}
+                    >
+                      {moduleProgressStatusLabels[row.status]}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                    <section className="rounded-md bg-gray-50 p-4">
+                      <p className="text-sm font-bold text-gray-900">교육생 입력 메모</p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-700">
+                        {row.progress?.inputData || "입력 메모 없음"}
+                      </p>
+                    </section>
+                    <section className="rounded-md bg-gray-50 p-4">
+                      <p className="text-sm font-bold text-gray-900">교육생 결과 메모</p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-700">
+                        {row.progress?.outputData || "결과 메모 없음"}
+                      </p>
+                    </section>
+                  </div>
+
+                  <form
+                    className="mt-4 grid gap-3 rounded-md border border-gray-200 bg-gray-50 p-4 md:grid-cols-[minmax(0,1fr)_180px_auto]"
+                    data-module-slug={row.module.slug}
+                    data-participant-id={row.participant.id}
+                    onSubmit={handleModuleReview}
+                  >
+                    <label>
+                      <span className="mb-1 block text-sm font-semibold text-gray-800">운영진 코멘트</span>
+                      <textarea
+                        name="adminComment"
+                        className="min-h-24 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+                        defaultValue={row.progress?.adminComment || ""}
+                        placeholder="보완할 점, 확인한 점, 다음 행동을 적어주세요."
+                      />
+                      {row.progress?.reviewedAt ? (
+                        <span className="mt-1 block text-xs text-gray-500">
+                          마지막 검토: {new Date(row.progress.reviewedAt).toLocaleString("ko-KR")}
+                        </span>
+                      ) : null}
+                    </label>
+                    <label>
+                      <span className="mb-1 block text-sm font-semibold text-gray-800">검토 후 상태</span>
+                      <select
+                        name="status"
+                        className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+                        defaultValue={row.status}
+                      >
+                        <option value="not_started">시작 전</option>
+                        <option value="in_progress">진행 중</option>
+                        <option value="needs_review">검토 필요</option>
+                        <option value="completed">완료</option>
+                      </select>
+                    </label>
+                    <div className="flex items-end">
+                      <button className="w-full rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white" type="submit">
+                        검토 저장
+                      </button>
+                    </div>
+                  </form>
+                </article>
+              ))}
+            </section>
+          )}
         </main>
       ) : null}
 
