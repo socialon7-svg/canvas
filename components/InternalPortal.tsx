@@ -51,6 +51,13 @@ type FocusInfo = {
   filter?: SubmissionFilter;
 };
 
+type FeedbackQuickTemplate = {
+  label: string;
+  status: FeedbackStatus;
+  comment: string;
+  nextAction: string;
+};
+
 const submissionFilterLabels: Record<SubmissionFilter, string> = {
   all: "전체",
   notEntered: "미입장",
@@ -74,6 +81,27 @@ const moduleProgressStatusLabels: Record<ParticipantModuleProgressStatus, string
   completed: "완료",
   needs_review: "검토 필요"
 };
+
+const feedbackQuickTemplates: FeedbackQuickTemplate[] = [
+  {
+    label: "핵심 보완",
+    status: "needs_revision",
+    comment: "고객 문제와 해결책의 방향은 보입니다. 대상 고객, 숫자 근거, 차별점을 한 문장씩 더 구체화해주세요.",
+    nextAction: "고객/문제/차별점에 숫자 또는 사례를 1개씩 추가"
+  },
+  {
+    label: "발표 가능",
+    status: "good",
+    comment: "전체 흐름은 발표에 사용할 수 있습니다. 표현을 짧게 정리하고 핵심 지표를 앞에 배치해주세요.",
+    nextAction: "발표용 문장으로 3분 안에 읽히게 압축"
+  },
+  {
+    label: "우수",
+    status: "excellent",
+    comment: "문제, 고객, 해결책의 연결이 명확합니다. 현재 수준으로 제출 가능하며 발표에서는 검증 근거를 강조해주세요.",
+    nextAction: "발표 시 고객 검증 근거와 다음 실행 계획 강조"
+  }
+];
 
 const ADMIN_SESSION_KEY = "highviewlab-internal-authorized";
 const ADMIN_PASSWORD_KEY = "highviewlab-internal-password";
@@ -1109,6 +1137,30 @@ export default function InternalPortal() {
     setNotice("피드백을 저장했습니다.");
   };
 
+  const applyFeedbackTemplate = (submissionId: string, template: FeedbackQuickTemplate) => {
+    const form = Array.from(document.querySelectorAll<HTMLFormElement>("form[data-submission-id]")).find(
+      (item) => item.dataset.submissionId === submissionId
+    );
+    if (!form) return;
+
+    const setFieldValue = (field: Element | RadioNodeList | null, value: string) => {
+      if (
+        field instanceof HTMLInputElement ||
+        field instanceof HTMLTextAreaElement ||
+        field instanceof HTMLSelectElement
+      ) {
+        field.value = value;
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+        field.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    };
+
+    setFieldValue(form.elements.namedItem("comment"), template.comment);
+    setFieldValue(form.elements.namedItem("nextAction"), template.nextAction);
+    setFieldValue(form.elements.namedItem("status"), template.status);
+    setNotice(`${template.label} 피드백 템플릿을 입력했습니다. 저장 버튼을 눌러 반영하세요.`);
+  };
+
   const handleModuleReview = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -2085,6 +2137,26 @@ export default function InternalPortal() {
                       ) : null}
                       {submission ? (
                         <form className="mt-4 grid gap-3" data-submission-id={submission.id} onSubmit={handleFeedback}>
+                          <div className="rounded-md border border-blue-100 bg-blue-50 p-3">
+                            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                              <div>
+                                <p className="text-sm font-bold text-blue-900">빠른 피드백 템플릿</p>
+                                <p className="mt-1 text-xs text-blue-800">버튼으로 초안을 채운 뒤 필요한 부분만 고쳐 저장하세요.</p>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {feedbackQuickTemplates.map((template) => (
+                                  <button
+                                    key={template.label}
+                                    className="rounded-md border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-blue-800 transition-colors hover:bg-blue-100"
+                                    onClick={() => applyFeedbackTemplate(submission.id, template)}
+                                    type="button"
+                                  >
+                                    {template.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
                           <textarea
                             name="comment"
                             className="min-h-24 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
