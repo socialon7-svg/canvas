@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type {
+  FeedbackStatus,
   HighViewOperationsState,
   HighViewParticipant,
   LeanCanvasSubmission,
@@ -58,11 +59,23 @@ const moduleStatusLabels: Record<ParticipantModuleProgressStatus, string> = {
   needs_review: "검토 필요"
 };
 
+const feedbackStatusLabels: Record<FeedbackStatus, string> = {
+  needs_revision: "수정 필요",
+  good: "양호",
+  excellent: "우수"
+};
+
 function moduleStatusClass(status: ParticipantModuleProgressStatus) {
   if (status === "completed") return "border-green-200 bg-green-50 text-green-800";
   if (status === "in_progress") return "border-blue-200 bg-blue-50 text-blue-800";
   if (status === "needs_review") return "border-amber-200 bg-amber-50 text-amber-800";
   return "border-gray-200 bg-gray-50 text-gray-600";
+}
+
+function feedbackStatusClass(status: FeedbackStatus) {
+  if (status === "excellent") return "border-green-200 bg-green-50 text-green-800";
+  if (status === "good") return "border-blue-200 bg-blue-50 text-blue-800";
+  return "border-amber-200 bg-amber-50 text-amber-800";
 }
 
 export default function ParticipantPortal() {
@@ -311,6 +324,21 @@ export default function ParticipantPortal() {
       return;
     }
     router.push(module.route);
+  };
+
+  const copyFeedback = async () => {
+    if (!feedback) return;
+    const text = [
+      `[피드백 상태] ${feedbackStatusLabels[feedback.status]}`,
+      `[코멘트] ${feedback.comment || "-"}`,
+      `[다음 액션] ${feedback.nextAction || "-"}`
+    ].join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setNotice("피드백과 다음 액션을 클립보드에 복사했습니다.");
+    } catch {
+      setNotice(text);
+    }
   };
 
   if (!program || !participant) {
@@ -724,41 +752,152 @@ export default function ParticipantPortal() {
 
       {tab === "feedback" ? (
         <main className="grid gap-4">
-          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-bold text-gray-950">내 제출물</h2>
-            {latestSubmission ? (
-              <div className="mt-3 text-sm text-gray-700">
-                <p className="font-semibold">{latestSubmission.participant.ideaName || "아이디어명 없음"}</p>
-                <p className="mt-1 text-gray-600">{new Date(latestSubmission.createdAt).toLocaleString("ko-KR")} 제출</p>
-                <button
-                  className="mt-3 rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold"
-                  onClick={() => router.push(`/preview/${latestSubmission.id}`)}
-                >
-                  제출물 열람
-                </button>
+          <section
+            className={`rounded-lg border p-5 shadow-sm ${
+              feedback
+                ? feedback.status === "needs_revision"
+                  ? "border-amber-200 bg-amber-50"
+                  : "border-green-200 bg-green-50"
+                : latestSubmission
+                  ? "border-blue-200 bg-blue-50"
+                  : "border-amber-200 bg-amber-50"
+            }`}
+          >
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-gray-700">피드백 상태</p>
+                <h2 className="mt-1 text-2xl font-bold text-gray-950">
+                  {feedback ? feedbackStatusLabels[feedback.status] : latestSubmission ? "운영진 검토 대기" : "제출 전"}
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-gray-700">
+                  {feedback
+                    ? "운영진 코멘트와 다음 액션을 확인하고 필요한 부분만 보완하세요."
+                    : latestSubmission
+                      ? "제출물은 접수되었습니다. 운영진 검토가 끝나면 이 탭에 코멘트가 표시됩니다."
+                      : "아직 연결된 제출물이 없습니다. 먼저 배정된 모듈을 작성하고 최종 제출을 완료하세요."}
+                </p>
               </div>
-            ) : (
-              <p className="mt-3 text-sm text-gray-600">아직 연결된 제출물이 없습니다. 최종 제출 후 다시 확인하세요.</p>
-            )}
+              <div className="flex flex-wrap gap-2">
+                {latestSubmission ? (
+                  <>
+                    <button
+                      className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white"
+                      onClick={() => router.push(`/preview/${latestSubmission.id}`)}
+                      type="button"
+                    >
+                      제출물 열람
+                    </button>
+                    <button
+                      className={`rounded-md border px-4 py-2 text-sm font-bold ${
+                        latestPdfStatus === "failed" ? "border-red-200 bg-red-50 text-red-700" : "border-blue-200 bg-white text-blue-800"
+                      }`}
+                      onClick={() => router.push(`/preview/${latestSubmission.id}?download=1`)}
+                      type="button"
+                    >
+                      {latestPdfStatus === "failed" ? "PDF 다시 생성" : "PDF 다운로드"}
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white"
+                    onClick={() => setTab("write")}
+                    type="button"
+                  >
+                    모듈 작성하기
+                  </button>
+                )}
+                {feedback ? (
+                  <button
+                    className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-800"
+                    onClick={copyFeedback}
+                    type="button"
+                  >
+                    피드백 복사
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </section>
+          <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <article className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+              <h2 className="text-lg font-bold text-gray-950">내 제출물</h2>
+              {latestSubmission ? (
+                <div className="mt-4 grid gap-3 text-sm text-gray-700 sm:grid-cols-3">
+                  <div className="rounded-md bg-gray-50 p-3">
+                    <p className="text-xs font-semibold text-gray-500">아이디어</p>
+                    <p className="mt-1 font-bold text-gray-950">{latestSubmission.participant.ideaName || "아이디어명 없음"}</p>
+                  </div>
+                  <div className="rounded-md bg-gray-50 p-3">
+                    <p className="text-xs font-semibold text-gray-500">제출 시간</p>
+                    <p className="mt-1 font-bold text-gray-950">{new Date(latestSubmission.createdAt).toLocaleString("ko-KR")}</p>
+                  </div>
+                  <div className="rounded-md bg-gray-50 p-3">
+                    <p className="text-xs font-semibold text-gray-500">PDF</p>
+                    <p className={`mt-1 font-bold ${latestPdfStatus === "failed" ? "text-red-700" : "text-green-700"}`}>
+                      {latestPdfStatus === "failed" ? "오류, 다시 생성 필요" : "다운로드 가능"}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  최종 제출이 완료되면 이곳에 제출 시간과 PDF 상태가 표시됩니다.
+                </p>
+              )}
+            </article>
+            <aside className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+              <h2 className="text-lg font-bold text-gray-950">다음 행동</h2>
+              <ol className="mt-3 space-y-3 text-sm text-gray-700">
+                <li className="rounded-md bg-gray-50 p-3">
+                  <span className="font-bold text-gray-950">1. 제출물 확인</span>
+                  <p className="mt-1">내가 낸 내용과 PDF 상태를 먼저 확인합니다.</p>
+                </li>
+                <li className="rounded-md bg-gray-50 p-3">
+                  <span className="font-bold text-gray-950">2. 코멘트 반영</span>
+                  <p className="mt-1">수정 필요가 표시되면 모듈 탭에서 보완합니다.</p>
+                </li>
+                <li className="rounded-md bg-gray-50 p-3">
+                  <span className="font-bold text-gray-950">3. 운영진 확인</span>
+                  <p className="mt-1">모호한 내용은 현장 운영진에게 바로 질문하세요.</p>
+                </li>
+              </ol>
+              {feedback?.status === "needs_revision" ? (
+                <button
+                  className="mt-4 w-full rounded-md bg-amber-600 px-4 py-2 text-sm font-bold text-white"
+                  onClick={() => setTab("write")}
+                  type="button"
+                >
+                  보완하러 가기
+                </button>
+              ) : null}
+            </aside>
           </section>
           <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-bold text-gray-950">피드백</h2>
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-blue-700">운영진 피드백</p>
+                <h2 className="mt-1 text-lg font-bold text-gray-950">코멘트와 다음 액션</h2>
+              </div>
+              {feedback ? (
+                <span className={`rounded-full border px-3 py-1 text-sm font-bold ${feedbackStatusClass(feedback.status)}`}>
+                  {feedbackStatusLabels[feedback.status]}
+                </span>
+              ) : null}
+            </div>
             {feedback ? (
-              <div className="mt-3 space-y-3 text-sm">
-                <p>
-                  <span className="rounded-full bg-blue-50 px-3 py-1 font-bold text-blue-700">{feedback.status}</span>
-                </p>
+              <div className="mt-4 grid gap-3 text-sm md:grid-cols-2">
                 <div className="rounded-md bg-gray-50 p-3">
                   <p className="font-bold text-gray-900">코멘트</p>
-                  <p className="mt-1 whitespace-pre-wrap text-gray-700">{feedback.comment || "-"}</p>
+                  <p className="mt-2 whitespace-pre-wrap leading-6 text-gray-700">{feedback.comment || "-"}</p>
                 </div>
                 <div className="rounded-md bg-gray-50 p-3">
                   <p className="font-bold text-gray-900">다음 액션</p>
-                  <p className="mt-1 whitespace-pre-wrap text-gray-700">{feedback.nextAction || "-"}</p>
+                  <p className="mt-2 whitespace-pre-wrap leading-6 text-gray-700">{feedback.nextAction || "-"}</p>
                 </div>
               </div>
             ) : (
-              <p className="mt-3 text-sm text-gray-600">아직 피드백이 없습니다. 운영진 검토가 끝나면 이곳에 코멘트와 다음 액션이 표시됩니다.</p>
+              <p className="mt-4 rounded-md bg-gray-50 px-3 py-3 text-sm leading-6 text-gray-600">
+                아직 피드백이 없습니다. 운영진 검토가 끝나면 이곳에 코멘트와 다음 액션이 표시됩니다.
+              </p>
             )}
           </section>
         </main>
