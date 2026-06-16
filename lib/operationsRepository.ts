@@ -80,6 +80,20 @@ export interface ModuleSubmissionRow {
   updated_at: string;
 }
 
+export interface ParticipantModuleProgressRow {
+  id: string;
+  program_id: string;
+  participant_id: string;
+  module_slug: string;
+  status: string;
+  current_step: number;
+  input_data: JsonObject;
+  output_data: JsonObject;
+  admin_comment: string;
+  reviewed_at: string | null;
+  updated_at: string;
+}
+
 export interface FeedbackRow {
   id: string;
   program_id: string;
@@ -422,7 +436,7 @@ export async function upsertModuleProgress(input: {
       { onConflict: "program_id,participant_id,module_slug" }
     )
     .select("*")
-    .single();
+    .single<ParticipantModuleProgressRow>();
 
   throwIfError(error);
   return requireData(data, "모듈 진행 상태 저장 결과가 없습니다.");

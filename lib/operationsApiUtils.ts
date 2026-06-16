@@ -38,7 +38,10 @@ export function isOperationsTableMissingError(error: unknown) {
       (text.includes("programs") ||
         text.includes("participants") ||
         text.includes("program_modules") ||
-        text.includes("module_submissions")))
+        text.includes("participant_module_progress") ||
+        text.includes("module_drafts") ||
+        text.includes("module_submissions") ||
+        text.includes("feedbacks")))
   );
 }
 

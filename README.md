@@ -325,6 +325,10 @@ P0 Phase 2에서 다음 서버 API를 추가했습니다.
 - `PATCH /api/participants/[id]/last-seen`
 - `GET /api/module-drafts?programId=&participantId=&moduleSlug=`
 - `PUT /api/module-drafts`
+- `GET /api/module-submissions?programId=&moduleSlug=&status=`
+- `POST /api/module-submissions`
+- `PATCH /api/module-progress`
+- `POST /api/feedbacks`
 
 프로그램/참여자 관리 API는 관리자 httpOnly cookie 인증을 사용합니다. 참여자 입장 API는 프로그램 코드+참여자 코드 또는 `join_token`으로 참여자를 확인하고, 정상 입장 시 `joined_at`, `last_seen_at`을 갱신합니다. Supabase 운영 테이블이 준비되지 않은 경우 기존 localStorage 데모 흐름으로 fallback합니다.
 
