@@ -821,6 +821,37 @@ export default function InternalPortal() {
     }
   };
 
+  const copyNotEnteredMessage = async () => {
+    if (!currentProgram) return;
+    const rows = programStatusRows.filter((row) => row.participantStatus === "invited");
+    const participantUrl = typeof window === "undefined" ? "/participant" : `${window.location.origin}/participant`;
+    const lines = rows.map((row) => {
+      const team = programTeams.find((item) => item.id === row.participant.teamId);
+      return `${team?.name || "미배정"} / ${row.participant.name || "미등록"} / 참여자 코드: ${row.participant.code}`;
+    });
+    const text = lines.length
+      ? [
+          `[${currentProgram.name}] 참여자 입장 안내`,
+          `아직 참여자 페이지에 입장하지 않은 대상 ${lines.length}명입니다.`,
+          "",
+          `참여자 페이지: ${participantUrl}`,
+          `프로그램 코드: ${currentProgram.programCode}`,
+          "",
+          "개별 참여자 코드:",
+          ...lines.map((line) => `- ${line}`),
+          "",
+          "안내문:",
+          "참여자 페이지에서 프로그램 코드와 본인 참여자 코드를 입력해 입장해주세요. 입장 후 내 정보가 맞는지 확인하고 배정된 모듈을 진행하면 됩니다."
+        ].join("\n")
+      : "미입장자가 없습니다.";
+    try {
+      await navigator.clipboard.writeText(text);
+      setNotice("참여자 입장 안내문을 클립보드에 복사했습니다.");
+    } catch {
+      setNotice(text);
+    }
+  };
+
   const copyPdfIssueMessage = async () => {
     if (!currentProgram) return;
     const rows = programStatusRows.filter((row) => row.submission && row.pdfStatus === "failed");
@@ -2027,8 +2058,10 @@ export default function InternalPortal() {
               </div>
               <div className="rounded-lg bg-amber-50 p-4">
                 <p className="text-xs font-semibold text-amber-700">현장 안내 필요</p>
-                <strong className="mt-1 block text-xl text-amber-950">{operationalMetrics.notSubmitted}명 미제출</strong>
-                <p className="mt-1 text-sm text-amber-900">목록 복사 후 단체 안내에 활용하세요.</p>
+                <strong className="mt-1 block text-xl text-amber-950">
+                  {operationalMetrics.notEntered}명 미입장 · {operationalMetrics.notSubmitted}명 미제출
+                </strong>
+                <p className="mt-1 text-sm text-amber-900">입장/제출 안내문을 복사해 단체 공지에 활용하세요.</p>
               </div>
               <div className="rounded-lg bg-gray-50 p-4">
                 <p className="text-xs font-semibold text-gray-600">선택 상세</p>
@@ -2044,6 +2077,13 @@ export default function InternalPortal() {
                 <p className="mt-1 text-sm text-gray-600">미입장, 미제출, 피드백 대기, PDF 오류를 빠르게 좁혀 봅니다.</p>
               </div>
               <div className="flex flex-wrap gap-2">
+                <button
+                  className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800 transition-colors hover:bg-blue-100"
+                  onClick={copyNotEnteredMessage}
+                  type="button"
+                >
+                  입장 안내문 복사
+                </button>
                 <button
                   className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900 transition-colors hover:bg-amber-100"
                   onClick={copyUnsubmittedList}
