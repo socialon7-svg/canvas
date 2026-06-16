@@ -2004,6 +2004,16 @@ export default function InternalPortal() {
                               <Link className="rounded-md border border-gray-300 px-3 py-2 text-sm font-semibold" href={`/preview/${submission.id}`}>
                                 미리보기
                               </Link>
+                              <Link
+                                className={`rounded-md border px-3 py-2 text-sm font-semibold ${
+                                  row.pdfStatus === "failed"
+                                    ? "border-red-200 bg-red-50 text-red-700"
+                                    : "border-blue-200 bg-blue-50 text-blue-800"
+                                }`}
+                                href={`/preview/${submission.id}?download=1`}
+                              >
+                                {row.pdfStatus === "failed" ? "PDF 재시도" : "PDF 다운로드"}
+                              </Link>
                               <button className="rounded-md border border-red-200 px-3 py-2 text-sm font-semibold text-red-700" onClick={() => removeSubmission(submission)}>
                                 삭제
                               </button>
@@ -2011,6 +2021,11 @@ export default function InternalPortal() {
                           ) : null}
                         </div>
                       </div>
+                      {submission && row.pdfStatus === "failed" ? (
+                        <p className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs leading-5 text-red-700">
+                          PDF 생성 실패 기록이 있습니다. PDF 재시도 버튼으로 다시 생성하고, 계속 실패하면 미리보기에서 바로 인쇄를 이용하세요.
+                        </p>
+                      ) : null}
                       {submission ? (
                         <form className="mt-4 grid gap-3" data-submission-id={submission.id} onSubmit={handleFeedback}>
                           <textarea
@@ -2079,9 +2094,28 @@ export default function InternalPortal() {
                     </div>
                   </dl>
                   {selectedStatusRow.submission ? (
-                    <Link className="inline-flex rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white" href={`/preview/${selectedStatusRow.submission.id}`}>
-                      제출물 열람
-                    </Link>
+                    <div className="space-y-3">
+                      {selectedStatusRow.pdfStatus === "failed" ? (
+                        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs leading-5 text-red-700">
+                          PDF 오류가 표시된 제출물입니다. 다운로드 재시도 후에도 실패하면 미리보기 화면에서 바로 인쇄하세요.
+                        </p>
+                      ) : null}
+                      <div className="flex flex-wrap gap-2">
+                        <Link className="inline-flex rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white" href={`/preview/${selectedStatusRow.submission.id}`}>
+                          제출물 열람
+                        </Link>
+                        <Link
+                          className={`inline-flex rounded-md border px-4 py-2 text-sm font-bold ${
+                            selectedStatusRow.pdfStatus === "failed"
+                              ? "border-red-200 bg-red-50 text-red-700"
+                              : "border-blue-200 bg-blue-50 text-blue-800"
+                          }`}
+                          href={`/preview/${selectedStatusRow.submission.id}?download=1`}
+                        >
+                          {selectedStatusRow.pdfStatus === "failed" ? "PDF 재생성" : "PDF 다운로드"}
+                        </Link>
+                      </div>
+                    </div>
                   ) : (
                     <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                       미제출 참여자입니다. 필요하면 미제출자 목록 복사 버튼으로 운영 메시지를 준비하세요.
