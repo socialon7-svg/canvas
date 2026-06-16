@@ -103,36 +103,9 @@ const feedbackQuickTemplates: FeedbackQuickTemplate[] = [
   }
 ];
 
-const ADMIN_SESSION_KEY = "highviewlab-internal-authorized";
-const ADMIN_PASSWORD_KEY = "highviewlab-internal-password";
-
-function readSessionValue(key: string) {
-  try {
-    return window.sessionStorage?.getItem(key) || "";
-  } catch {
-    return "";
-  }
-}
-
-function writeSessionValue(key: string, value: string) {
-  try {
-    window.sessionStorage?.setItem(key, value);
-  } catch {
-    // Session storage can be blocked in embedded browser contexts.
-  }
-}
-
-function removeSessionValue(key: string) {
-  try {
-    window.sessionStorage?.removeItem(key);
-  } catch {
-    // Ignore storage failures.
-  }
-}
-
-async function loadServerSubmissions(adminPassword: string) {
+async function loadServerSubmissions() {
   const response = await fetch("/api/submissions", {
-    headers: { "x-admin-password": adminPassword }
+    credentials: "same-origin"
   });
   const data = (await response.json()) as {
     submissions?: LeanCanvasSubmission[];
@@ -140,15 +113,19 @@ async function loadServerSubmissions(adminPassword: string) {
     error?: string;
   };
 
+  if (response.status === 401) {
+    return { submissions: [], fallback: false, unauthorized: true };
+  }
+
   if (response.status === 503 && (data.code === "SUPABASE_NOT_CONFIGURED" || data.code === "SUPABASE_TABLE_NOT_READY")) {
-    return { submissions: loadSubmissions(), fallback: true };
+    return { submissions: loadSubmissions(), fallback: true, unauthorized: false };
   }
 
   if (!response.ok || !data.submissions) {
     throw new Error(data.error || "제출 목록을 불러오지 못했습니다.");
   }
 
-  return { submissions: data.submissions, fallback: false };
+  return { submissions: data.submissions, fallback: false, unauthorized: false };
 }
 
 function MetricCard({
@@ -218,14 +195,15 @@ export default function InternalPortal() {
     setState(loaded);
     setCurrentProgramId(loaded.programs[0]?.id || "");
 
-    const storedPassword = readSessionValue(ADMIN_PASSWORD_KEY);
-    const storedAuth = readSessionValue(ADMIN_SESSION_KEY) === "true";
-    if (!storedAuth || !storedPassword) return;
-
-    setAuthorized(true);
     setRefreshing(true);
-    loadServerSubmissions(storedPassword)
+    loadServerSubmissions()
       .then((result) => {
+        if (result.unauthorized) {
+          setAuthorized(false);
+          setSubmissions([]);
+          return;
+        }
+        setAuthorized(true);
         setSubmissions(result.submissions);
         setFallbackMode(result.fallback);
         if (result.fallback) setNotice("Supabase 대신 이 브라우저의 임시 제출 목록을 표시합니다.");
@@ -625,12 +603,21 @@ export default function InternalPortal() {
     setState({ ...nextState });
   };
 
-  const refreshSubmissions = async (adminPassword = readSessionValue(ADMIN_PASSWORD_KEY)) => {
+  const refreshSubmissions = async (options: { silentUnauthorized?: boolean } = {}) => {
     setRefreshing(true);
     setError("");
     setNotice("");
     try {
-      const result = await loadServerSubmissions(adminPassword);
+      const result = await loadServerSubmissions();
+      if (result.unauthorized) {
+        setAuthorized(false);
+        setSubmissions([]);
+        if (!options.silentUnauthorized) {
+          setError("내부직원 로그인이 필요합니다.");
+        }
+        return;
+      }
+      setAuthorized(true);
       setSubmissions(result.submissions);
       setFallbackMode(result.fallback);
       if (result.fallback) setNotice("Supabase 대신 이 브라우저의 임시 제출 목록을 표시합니다.");
@@ -987,16 +974,15 @@ export default function InternalPortal() {
       const response = await fetch("/api/admin-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
         body: JSON.stringify({ password })
       });
       const data = (await response.json()) as { ok?: boolean };
       if (!response.ok || !data.ok) throw new Error("암호가 올바르지 않습니다.");
 
-      writeSessionValue(ADMIN_SESSION_KEY, "true");
-      writeSessionValue(ADMIN_PASSWORD_KEY, password);
       setAuthorized(true);
       setPassword("");
-      await refreshSubmissions(password);
+      await refreshSubmissions();
     } catch (err) {
       setError(err instanceof Error ? err.message : "로그인에 실패했습니다.");
     } finally {
@@ -1004,9 +990,8 @@ export default function InternalPortal() {
     }
   };
 
-  const logout = () => {
-    removeSessionValue(ADMIN_SESSION_KEY);
-    removeSessionValue(ADMIN_PASSWORD_KEY);
+  const logout = async () => {
+    await fetch("/api/admin-logout", { method: "POST", credentials: "same-origin" }).catch(() => null);
     setAuthorized(false);
     setSubmissions([]);
   };
@@ -1296,7 +1281,6 @@ export default function InternalPortal() {
 
   const removeSubmission = async (submission: LeanCanvasSubmission) => {
     if (!window.confirm(`${submission.participant.ideaName || "선택한 제출물"}을 삭제할까요?`)) return;
-    const adminPassword = readSessionValue(ADMIN_PASSWORD_KEY);
 
     if (fallbackMode) {
       setSubmissions(deleteSubmission(submission.id));
@@ -1305,7 +1289,7 @@ export default function InternalPortal() {
 
     const response = await fetch(`/api/submissions/${submission.id}/delete`, {
       method: "POST",
-      headers: { "x-admin-password": adminPassword }
+      credentials: "same-origin"
     });
     const data = (await response.json()) as { ok?: boolean; error?: string };
     if (!response.ok || !data.ok) {

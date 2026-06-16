@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { adminUnauthorizedResponse, isAdminRequest } from "@/lib/adminAuth";
 import { createSupabaseServerClient, hasSupabaseServerConfig } from "@/lib/supabaseServer";
 import type { LeanCanvasDraft, LeanCanvasSubmission, ParticipantInput } from "@/lib/types";
 
@@ -32,11 +33,6 @@ function validateSubmission(body: SubmissionRequest) {
   if (!body.participant?.ideaName?.trim()) return "아이디어명이 없습니다.";
   if (!body.canvas) return "린캔버스 데이터가 없습니다.";
   return "";
-}
-
-function isAuthorized(request: Request) {
-  const adminPassword = request.headers.get("x-admin-password");
-  return Boolean(process.env.ADMIN_PASSWORD && adminPassword === process.env.ADMIN_PASSWORD);
 }
 
 function isMissingTableError(error: unknown) {
@@ -111,8 +107,8 @@ export async function POST(request: Request) {
 }
 
 export async function GET(request: Request) {
-  if (!isAuthorized(request)) {
-    return NextResponse.json({ error: "권한이 없습니다." }, { status: 401 });
+  if (!isAdminRequest(request)) {
+    return adminUnauthorizedResponse();
   }
 
   try {

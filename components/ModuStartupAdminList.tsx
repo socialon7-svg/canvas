@@ -5,8 +5,6 @@ import Link from "next/link";
 import type { ModuStartupSubmission } from "@/lib/types";
 import { deleteModuStartupSubmission, loadModuStartupSubmissions } from "@/lib/storage";
 
-const ADMIN_SESSION_KEY = "lean-canvas-admin-authorized";
-const ADMIN_PASSWORD_KEY = "lean-canvas-admin-password";
 type ModuReviewFilter = "all" | "needsEvidence" | "needsPolicy" | "noVideo";
 
 const REVIEW_FILTER_LABELS: Record<ModuReviewFilter, string> = {
@@ -15,30 +13,6 @@ const REVIEW_FILTER_LABELS: Record<ModuReviewFilter, string> = {
   needsPolicy: "키워드 보완",
   noVideo: "영상 없음"
 };
-
-function readSessionValue(key: string) {
-  try {
-    return window.sessionStorage?.getItem(key) || "";
-  } catch {
-    return "";
-  }
-}
-
-function writeSessionValue(key: string, value: string) {
-  try {
-    window.sessionStorage?.setItem(key, value);
-  } catch {
-    // Session storage can be blocked in embedded browser contexts.
-  }
-}
-
-function removeSessionValue(key: string) {
-  try {
-    window.sessionStorage?.removeItem(key);
-  } catch {
-    // Ignore storage failures.
-  }
-}
 
 function escapeCsv(value: unknown) {
   const text = value == null ? "" : String(value);
@@ -81,9 +55,9 @@ function downloadCsv(submissions: ModuStartupSubmission[]) {
   URL.revokeObjectURL(url);
 }
 
-async function loadServerSubmissions(adminPassword: string) {
+async function loadServerSubmissions() {
   const response = await fetch("/api/modu-startup-submissions", {
-    headers: { "x-admin-password": adminPassword }
+    credentials: "same-origin"
   });
   const data = (await response.json()) as {
     submissions?: ModuStartupSubmission[];
@@ -91,15 +65,19 @@ async function loadServerSubmissions(adminPassword: string) {
     error?: string;
   };
 
+  if (response.status === 401) {
+    return { submissions: [], fallback: false, unauthorized: true };
+  }
+
   if (response.status === 503 && (data.code === "SUPABASE_NOT_CONFIGURED" || data.code === "SUPABASE_TABLE_NOT_READY")) {
-    return { submissions: loadModuStartupSubmissions(), fallback: true };
+    return { submissions: loadModuStartupSubmissions(), fallback: true, unauthorized: false };
   }
 
   if (!response.ok || !data.submissions) {
     throw new Error(data.error || "모두의창업 제출 목록을 불러오지 못했습니다.");
   }
 
-  return { submissions: data.submissions, fallback: false };
+  return { submissions: data.submissions, fallback: false, unauthorized: false };
 }
 
 export default function ModuStartupAdminList() {
@@ -114,14 +92,23 @@ export default function ModuStartupAdminList() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
-  async function refreshList(adminPassword = readSessionValue(ADMIN_PASSWORD_KEY)) {
+  async function refreshList(options: { silentUnauthorized?: boolean } = {}) {
     setRefreshing(true);
     setError("");
     setNotice("");
     try {
-      const result = await loadServerSubmissions(adminPassword);
+      const result = await loadServerSubmissions();
+      if (result.unauthorized) {
+        setAuthorized(false);
+        setSubmissions([]);
+        if (!options.silentUnauthorized) {
+          setError("관리자 로그인이 필요합니다.");
+        }
+        return;
+      }
       setSubmissions(result.submissions);
       setFallbackMode(result.fallback);
+      setAuthorized(true);
       if (result.fallback) {
         setNotice("Supabase 모두의창업 테이블이 아직 준비되지 않아 이 브라우저의 임시 제출 목록을 표시합니다.");
       }
@@ -133,11 +120,7 @@ export default function ModuStartupAdminList() {
   }
 
   useEffect(() => {
-    const storedPassword = readSessionValue(ADMIN_PASSWORD_KEY);
-    if (readSessionValue(ADMIN_SESSION_KEY) === "true" && storedPassword) {
-      setAuthorized(true);
-      refreshList(storedPassword);
-    }
+    void refreshList({ silentUnauthorized: true });
   }, []);
 
   const login = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -148,16 +131,15 @@ export default function ModuStartupAdminList() {
       const response = await fetch("/api/admin-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
         body: JSON.stringify({ password })
       });
       const data = (await response.json()) as { ok?: boolean };
       if (!response.ok || !data.ok) {
         throw new Error("암호가 올바르지 않습니다.");
       }
-      writeSessionValue(ADMIN_SESSION_KEY, "true");
-      writeSessionValue(ADMIN_PASSWORD_KEY, password);
       setAuthorized(true);
-      await refreshList(password);
+      await refreshList();
       setPassword("");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "로그인에 실패했습니다.");
@@ -166,9 +148,8 @@ export default function ModuStartupAdminList() {
     }
   };
 
-  const logout = () => {
-    removeSessionValue(ADMIN_SESSION_KEY);
-    removeSessionValue(ADMIN_PASSWORD_KEY);
+  const logout = async () => {
+    await fetch("/api/admin-logout", { method: "POST", credentials: "same-origin" }).catch(() => null);
     setAuthorized(false);
     setSubmissions([]);
   };
@@ -177,7 +158,6 @@ export default function ModuStartupAdminList() {
     const label = submission.input.teamName || submission.input.ideaTitle || "선택한 제출물";
     if (!window.confirm(`${label} 모두의창업 제출물을 삭제할까요?\n삭제 후에는 목록에서 바로 사라집니다.`)) return;
 
-    const adminPassword = readSessionValue(ADMIN_PASSWORD_KEY);
     if (fallbackMode) {
       setSubmissions(deleteModuStartupSubmission(submission.id));
       return;
@@ -185,7 +165,7 @@ export default function ModuStartupAdminList() {
 
     const response = await fetch(`/api/modu-startup-submissions/${submission.id}/delete`, {
       method: "POST",
-      headers: { "x-admin-password": adminPassword }
+      credentials: "same-origin"
     });
     const data = (await response.json()) as { ok?: boolean; error?: string };
 

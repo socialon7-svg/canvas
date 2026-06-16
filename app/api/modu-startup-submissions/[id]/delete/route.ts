@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
+import { adminUnauthorizedResponse, isAdminRequest } from "@/lib/adminAuth";
 import { createSupabaseServerClient, hasSupabaseServerConfig } from "@/lib/supabaseServer";
-
-function isAuthorized(request: Request) {
-  const adminPassword = request.headers.get("x-admin-password");
-  return Boolean(process.env.ADMIN_PASSWORD && adminPassword === process.env.ADMIN_PASSWORD);
-}
 
 function isMissingTableError(error: unknown) {
   const text = typeof error === "string" ? error : JSON.stringify(error) ?? "";
@@ -18,8 +14,8 @@ function isMissingTableError(error: unknown) {
 }
 
 export async function POST(request: Request, { params }: { params: Promise<unknown> }) {
-  if (!isAuthorized(request)) {
-    return NextResponse.json({ error: "권한이 없습니다." }, { status: 401 });
+  if (!isAdminRequest(request)) {
+    return adminUnauthorizedResponse();
   }
 
   try {

@@ -155,6 +155,28 @@ CSV 포함 항목:
 
 운영 배포에서는 Supabase 중앙 저장을 사용합니다. Supabase 설정이 없거나 테이블이 준비되지 않은 경우, MVP 흐름 유지를 위해 해당 브라우저의 localStorage에 임시 저장합니다.
 
+### 3.9 Supabase 운영 모드
+
+실제 기관/대학 운영에서는 Supabase를 단일 원천으로 사용합니다. 여러 운영진이 같은 프로그램을 동시에 열어도 참여자, 팀, 모듈 진행, 제출, 피드백 상태가 같은 DB 기준으로 보이도록 설계합니다.
+
+운영 모드 기준:
+
+- `NEXT_PUBLIC_SUPABASE_URL`과 `SUPABASE_SERVICE_ROLE_KEY` 또는 `SUPABASE_SECRET_KEY`를 서버 환경변수에 설정합니다.
+- `supabase/migrations/001_operations_core.sql`을 적용해 프로그램, 참여자, 팀, 공통 모듈 제출 테이블을 준비합니다.
+- 관리자 인증은 `ADMIN_PASSWORD` 검증 후 httpOnly cookie를 발급합니다. 비밀번호는 브라우저 `sessionStorage`에 저장하지 않습니다.
+- client component에서 service role key를 직접 사용하지 않습니다.
+
+### 3.10 localStorage 데모 모드
+
+Supabase 환경변수가 없거나 테이블이 아직 준비되지 않은 경우, 현장 데모와 오프라인 테스트를 위해 기존 localStorage fallback이 동작합니다.
+
+데모 모드 주의:
+
+- 데이터는 현재 브라우저에만 저장됩니다.
+- 다른 운영진 또는 다른 기기에서는 같은 상태를 볼 수 없습니다.
+- 개인정보가 들어갈 수 있으므로 실제 교육 운영에서는 Supabase 운영 모드를 사용해야 합니다.
+- 화면에는 “이 브라우저 임시 제출 목록” 안내를 표시합니다.
+
 ## 4. 화면 경로
 
 | 경로 | 설명 |
@@ -219,11 +241,13 @@ SUPABASE_SERVICE_ROLE_KEY=
 SUPABASE_SECRET_KEY=
 
 ADMIN_PASSWORD=
+ADMIN_SESSION_SECRET=
 ```
 
 주의:
 
 - `AI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_SECRET_KEY`, `ADMIN_PASSWORD`는 서버에서만 사용합니다.
+- `ADMIN_SESSION_SECRET`은 선택값입니다. 없으면 `ADMIN_PASSWORD`를 관리자 쿠키 서명에 사용합니다.
 - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`는 브라우저 노출이 가능한 값입니다.
 - 운영 배포에서는 Vercel Project Environment Variables에 위 환경변수를 설정해야 합니다.
 - Supabase 중앙 저장을 사용하려면 `NEXT_PUBLIC_SUPABASE_URL`과 `SUPABASE_SERVICE_ROLE_KEY` 또는 `SUPABASE_SECRET_KEY`가 필요합니다.
@@ -259,6 +283,27 @@ on modu_startup_submissions (created_at desc);
 ```
 
 운영 초기에는 RLS를 끄거나, 서버 Route에서 service role key로만 접근하게 구성합니다. 클라이언트에서 직접 insert/select하지 않습니다.
+
+### 9.3 운영 공통 테이블
+
+P0 안정화부터는 다음 공통 운영 테이블을 추가합니다.
+
+- `programs`: 교육 프로그램 기본 정보와 프로그램 코드
+- `teams`: 프로그램별 팀
+- `participants`: 참여자 정보, 참여자 코드, QR/매직링크용 `join_token`
+- `program_modules`: 프로그램별 활성 모듈
+- `participant_module_progress`: 참여자별 모듈 진행 상태
+- `module_drafts`: 서버 자동저장 draft
+- `module_submissions`: 린캔버스, 모두의창업 등 공통 모듈 제출
+- `feedbacks`: 운영진/멘토 피드백
+
+적용 파일:
+
+```bash
+supabase/migrations/001_operations_core.sql
+```
+
+기존 `lean_canvas_submissions`, `modu_startup_submissions`는 호환을 위해 유지합니다. 신규 기능은 가능한 한 공통 `module_submissions`와 관련 운영 테이블을 사용하도록 점진적으로 이관합니다.
 
 ## 10. 현재 MVP의 한계
 
