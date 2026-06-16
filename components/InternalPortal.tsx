@@ -572,7 +572,7 @@ export default function InternalPortal() {
       : operationalMetrics.notSubmitted > 0
         ? {
             title: `미제출 ${operationalMetrics.notSubmitted}명`,
-            description: "미제출자 목록 복사로 현장 안내 메시지를 빠르게 준비할 수 있습니다.",
+            description: "미제출 안내문 복사로 현장 공지 메시지를 빠르게 준비할 수 있습니다.",
             tone: "amber",
             actionLabel: "미제출자 보기",
             filter: "notSubmitted"
@@ -763,16 +763,64 @@ export default function InternalPortal() {
   };
 
   const copyUnsubmittedList = async () => {
-    const lines = programStatusRows
-      .filter((row) => !row.submission)
-      .map((row) => {
-        const team = programTeams.find((item) => item.id === row.participant.teamId);
-        return `${team?.name || "미배정"} / ${row.participant.name || "미등록"} / ${row.participant.code}`;
-      });
-    const text = lines.length ? lines.join("\n") : "미제출자가 없습니다.";
+    if (!currentProgram) return;
+    const rows = programStatusRows.filter((row) => !row.submission);
+    const participantUrl = typeof window === "undefined" ? "/participant" : `${window.location.origin}/participant`;
+    const lines = rows.map((row) => {
+      const team = programTeams.find((item) => item.id === row.participant.teamId);
+      return `${team?.name || "미배정"} / ${row.participant.name || "미등록"} / ${row.participant.code}`;
+    });
+    const text = lines.length
+      ? [
+          `[${currentProgram.name}] 미제출 안내`,
+          `아직 제출이 확인되지 않은 참여자 ${lines.length}명입니다.`,
+          "",
+          `참여자 페이지: ${participantUrl}`,
+          `프로그램 코드: ${currentProgram.programCode}`,
+          "",
+          "대상:",
+          ...lines.map((line) => `- ${line}`),
+          "",
+          "안내문:",
+          "배정된 모듈을 작성한 뒤 최종 제출까지 완료해주세요. 제출 완료 화면과 제출번호가 보이면 정상 접수입니다."
+        ].join("\n")
+      : "미제출자가 없습니다.";
     try {
       await navigator.clipboard.writeText(text);
-      setNotice("미제출자 목록을 클립보드에 복사했습니다.");
+      setNotice("미제출 안내문을 클립보드에 복사했습니다.");
+    } catch {
+      setNotice(text);
+    }
+  };
+
+  const copyPdfIssueMessage = async () => {
+    if (!currentProgram) return;
+    const rows = programStatusRows.filter((row) => row.submission && row.pdfStatus === "failed");
+    const lines = rows.map((row) => {
+      const team = row.submission?.participant.teamName || programTeams.find((item) => item.id === row.participant.teamId)?.name || "미배정";
+      const name = row.participant.name || row.submission?.participant.participantName || "미등록";
+      const idea = row.submission?.participant.ideaName || "아이디어명 없음";
+      const previewUrl =
+        typeof window === "undefined" || !row.submission
+          ? ""
+          : `${window.location.origin}/preview/${row.submission.id}`;
+      return `${team} / ${name} / ${idea}${previewUrl ? ` / ${previewUrl}` : ""}`;
+    });
+    const text = lines.length
+      ? [
+          `[${currentProgram.name}] PDF 오류 점검`,
+          `PDF 생성 오류가 표시된 제출물 ${lines.length}건입니다.`,
+          "",
+          "점검 대상:",
+          ...lines.map((line) => `- ${line}`),
+          "",
+          "운영 안내:",
+          "미리보기 화면에서 PDF 재생성을 먼저 시도하고, 계속 실패하면 바로 인쇄로 현장 출력 여부를 확인해주세요."
+        ].join("\n")
+      : "PDF 오류 제출물이 없습니다.";
+    try {
+      await navigator.clipboard.writeText(text);
+      setNotice("PDF 오류 점검 안내문을 클립보드에 복사했습니다.");
     } catch {
       setNotice(text);
     }
@@ -1943,13 +1991,22 @@ export default function InternalPortal() {
                 <h2 className="text-lg font-bold text-gray-950">제출물 상태 필터</h2>
                 <p className="mt-1 text-sm text-gray-600">미입장, 미제출, 피드백 대기, PDF 오류를 빠르게 좁혀 봅니다.</p>
               </div>
-              <button
-                className="rounded-md border border-gray-300 px-3 py-2 text-sm font-semibold transition-colors hover:bg-gray-50"
-                onClick={copyUnsubmittedList}
-                type="button"
-              >
-                미제출자 목록 복사
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900 transition-colors hover:bg-amber-100"
+                  onClick={copyUnsubmittedList}
+                  type="button"
+                >
+                  미제출 안내문 복사
+                </button>
+                <button
+                  className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100"
+                  onClick={copyPdfIssueMessage}
+                  type="button"
+                >
+                  PDF 오류 점검 복사
+                </button>
+              </div>
             </div>
             <div className="flex flex-wrap gap-2">
               {(Object.keys(submissionFilterLabels) as SubmissionFilter[]).map((filter) => (
