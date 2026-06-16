@@ -152,6 +152,8 @@ CSV 포함 항목:
 - PDF 생성: `html2pdf.js`
 - 인쇄: 브라우저 인쇄
 - 출력 기준: A4 가로형
+- PDF 상태: 제출 직후 `idle`, 생성 버튼 클릭 시 `generating`, 성공 시 `success`, 실패 시 `failed`
+- 상태 저장: Supabase 운영 모드에서는 제출 테이블에 `pdf_status`, `pdf_error_message`, `pdf_generated_at`을 저장하고, 데모 모드에서는 localStorage에 반영합니다.
 
 ### 3.8 Supabase 중앙 저장 및 localStorage fallback
 

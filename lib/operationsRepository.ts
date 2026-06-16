@@ -72,6 +72,7 @@ export interface ModuleSubmissionRow {
   status: string;
   pdf_status: string;
   pdf_error_message: string | null;
+  pdf_generated_at: string | null;
   input_data: JsonObject;
   output_data: JsonObject;
   submitted_at: string;
@@ -470,6 +471,27 @@ export async function listModuleSubmissions(filters: { programId?: string; modul
   const { data, error } = await query.returns<ModuleSubmissionRow[]>();
   throwIfError(error);
   return data ?? [];
+}
+
+export async function updateModuleSubmissionPdfStatus(input: {
+  submissionId: string;
+  pdfStatus: "idle" | "generating" | "success" | "failed";
+  pdfErrorMessage?: string;
+}) {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from("module_submissions")
+    .update({
+      pdf_status: input.pdfStatus,
+      pdf_error_message: input.pdfStatus === "failed" ? (input.pdfErrorMessage ?? "") : null,
+      pdf_generated_at: input.pdfStatus === "success" ? new Date().toISOString() : null
+    })
+    .eq("id", input.submissionId)
+    .select("*")
+    .single<ModuleSubmissionRow>();
+
+  throwIfError(error);
+  return requireData(data, "모듈 제출 PDF 상태 저장 결과가 없습니다.");
 }
 
 export async function createFeedback(input: {

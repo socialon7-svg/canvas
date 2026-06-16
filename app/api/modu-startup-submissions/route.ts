@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminUnauthorizedResponse, isAdminRequest } from "@/lib/adminAuth";
 import { createSupabaseServerClient, hasSupabaseServerConfig } from "@/lib/supabaseServer";
-import type { ModuStartupDraft, ModuStartupInput, ModuStartupSubmission } from "@/lib/types";
+import type { ModuStartupDraft, ModuStartupInput, ModuStartupSubmission, PdfStatus } from "@/lib/types";
 
 interface ModuStartupSubmissionRequest {
   input: ModuStartupInput;
@@ -13,6 +13,9 @@ interface ModuStartupSubmissionRow {
   created_at: string;
   input: ModuStartupInput;
   draft: ModuStartupDraft;
+  pdf_status?: string | null;
+  pdf_error_message?: string | null;
+  pdf_generated_at?: string | null;
 }
 
 function toSubmission(row: ModuStartupSubmissionRow): ModuStartupSubmission {
@@ -22,8 +25,14 @@ function toSubmission(row: ModuStartupSubmissionRow): ModuStartupSubmission {
     input: row.input,
     draft: row.draft,
     submissionStatus: "submitted",
-    pdfStatus: "success"
+    pdfStatus: normalizePdfStatus(row.pdf_status),
+    pdfErrorMessage: row.pdf_error_message ?? "",
+    pdfGeneratedAt: row.pdf_generated_at ?? undefined
   };
+}
+
+function normalizePdfStatus(value: unknown): PdfStatus {
+  return value === "generating" || value === "success" || value === "failed" || value === "idle" ? value : "idle";
 }
 
 function validateSubmission(body: ModuStartupSubmissionRequest) {
@@ -81,7 +90,7 @@ export async function POST(request: Request) {
         input: body.input,
         draft: body.draft
       })
-      .select("id, created_at, input, draft")
+      .select("*")
       .single<ModuStartupSubmissionRow>();
 
     if (error) {
@@ -121,7 +130,7 @@ export async function GET(request: Request) {
     const supabase = createSupabaseServerClient();
     const { data, error } = await supabase
       .from("modu_startup_submissions")
-      .select("id, created_at, input, draft")
+      .select("*")
       .order("created_at", { ascending: false })
       .returns<ModuStartupSubmissionRow[]>();
 

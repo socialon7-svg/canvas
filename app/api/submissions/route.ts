@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminUnauthorizedResponse, isAdminRequest } from "@/lib/adminAuth";
 import { createSupabaseServerClient, hasSupabaseServerConfig } from "@/lib/supabaseServer";
-import type { LeanCanvasDraft, LeanCanvasSubmission, ParticipantInput } from "@/lib/types";
+import type { LeanCanvasDraft, LeanCanvasSubmission, ParticipantInput, PdfStatus } from "@/lib/types";
 
 interface SubmissionRequest {
   participant: ParticipantInput;
@@ -13,6 +13,9 @@ interface SubmissionRow {
   created_at: string;
   participant: ParticipantInput;
   canvas: LeanCanvasDraft;
+  pdf_status?: string | null;
+  pdf_error_message?: string | null;
+  pdf_generated_at?: string | null;
 }
 
 function toSubmission(row: SubmissionRow): LeanCanvasSubmission {
@@ -22,8 +25,14 @@ function toSubmission(row: SubmissionRow): LeanCanvasSubmission {
     participant: row.participant,
     canvas: row.canvas,
     submissionStatus: "submitted",
-    pdfStatus: "success"
+    pdfStatus: normalizePdfStatus(row.pdf_status),
+    pdfErrorMessage: row.pdf_error_message ?? "",
+    pdfGeneratedAt: row.pdf_generated_at ?? undefined
   };
+}
+
+function normalizePdfStatus(value: unknown): PdfStatus {
+  return value === "generating" || value === "success" || value === "failed" || value === "idle" ? value : "idle";
 }
 
 function validateSubmission(body: SubmissionRequest) {
@@ -82,7 +91,7 @@ export async function POST(request: Request) {
         participant: body.participant,
         canvas: body.canvas
       })
-      .select("id, created_at, participant, canvas")
+      .select("*")
       .single<SubmissionRow>();
 
     if (error) {
@@ -122,7 +131,7 @@ export async function GET(request: Request) {
     const supabase = createSupabaseServerClient();
     const { data, error } = await supabase
       .from("lean_canvas_submissions")
-      .select("id, created_at, participant, canvas")
+      .select("*")
       .order("created_at", { ascending: false })
       .returns<SubmissionRow[]>();
 

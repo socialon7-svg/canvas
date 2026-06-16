@@ -24,7 +24,7 @@ function getAdminSubmissionStatus(submission: LeanCanvasSubmission): SubmissionS
 }
 
 function getAdminPdfStatus(submission: LeanCanvasSubmission): PdfStatus {
-  return submission.pdfStatus ?? "success";
+  return submission.pdfStatus ?? "idle";
 }
 
 function formatSubmissionStatus(status: SubmissionStatus) {

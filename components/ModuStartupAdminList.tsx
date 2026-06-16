@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import type { ModuStartupSubmission } from "@/lib/types";
+import type { ModuStartupSubmission, PdfStatus } from "@/lib/types";
 import { deleteModuStartupSubmission, loadModuStartupSubmissions } from "@/lib/storage";
 
 type ModuReviewFilter = "all" | "needsEvidence" | "needsPolicy" | "noVideo";
@@ -20,6 +20,28 @@ function escapeCsv(value: unknown) {
   return /[",\n\r]/.test(escaped) ? `"${escaped}"` : escaped;
 }
 
+function getPdfStatus(submission: ModuStartupSubmission): PdfStatus {
+  return submission.pdfStatus ?? "idle";
+}
+
+function formatPdfStatus(status: PdfStatus) {
+  const labels: Record<PdfStatus, string> = {
+    idle: "PDF 대기",
+    generating: "PDF 생성 중",
+    success: "PDF 정상",
+    failed: "PDF 오류"
+  };
+  return labels[status];
+}
+
+function getPdfStatusClassName(status: PdfStatus) {
+  const base = "inline-flex rounded-full px-2.5 py-1 text-xs font-bold";
+  if (status === "success") return `${base} bg-green-50 text-green-700 ring-1 ring-green-200`;
+  if (status === "failed") return `${base} bg-red-50 text-red-700 ring-1 ring-red-200`;
+  if (status === "generating") return `${base} bg-amber-50 text-amber-800 ring-1 ring-amber-200`;
+  return `${base} bg-gray-100 text-gray-700 ring-1 ring-gray-200`;
+}
+
 function downloadCsv(submissions: ModuStartupSubmission[]) {
   const headers = [
     "제출일",
@@ -30,6 +52,7 @@ function downloadCsv(submissions: ModuStartupSubmission[]) {
     "분야",
     "정책키워드",
     "증거문장",
+    "PDF상태",
     "미리보기경로"
   ];
   const rows = submissions.map((submission) => [
@@ -41,6 +64,7 @@ function downloadCsv(submissions: ModuStartupSubmission[]) {
     submission.input.category || "",
     submission.draft.policyKeywords.join(" / "),
     submission.draft.evidenceLines.join(" / "),
+    formatPdfStatus(getPdfStatus(submission)),
     `/modu-startup/preview/${submission.id}`
   ]);
   const csv = [headers, ...rows].map((row) => row.map(escapeCsv).join(",")).join("\n");
@@ -381,7 +405,7 @@ export default function ModuStartupAdminList() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1040px] border-collapse text-left text-sm">
+            <table className="w-full min-w-[1120px] border-collapse text-left text-sm">
               <thead className="bg-gray-100 text-gray-700">
                 <tr>
                   <th className="px-4 py-3">제출일</th>
@@ -392,6 +416,7 @@ export default function ModuStartupAdminList() {
                   <th className="px-4 py-3">증거</th>
                   <th className="px-4 py-3">정책키워드</th>
                   <th className="px-4 py-3">영상</th>
+                  <th className="px-4 py-3">PDF상태</th>
                   <th className="px-4 py-3">열람</th>
                   <th className="px-4 py-3">삭제</th>
                 </tr>
@@ -411,6 +436,9 @@ export default function ModuStartupAdminList() {
                     <td className="px-4 py-3">{submission.draft.evidenceLines.length}개</td>
                     <td className="px-4 py-3">{submission.draft.policyKeywords.join(", ") || "-"}</td>
                     <td className="px-4 py-3">{submission.input.videoUrl ? "있음" : "없음"}</td>
+                    <td className="px-4 py-3">
+                      <span className={getPdfStatusClassName(getPdfStatus(submission))}>{formatPdfStatus(getPdfStatus(submission))}</span>
+                    </td>
                     <td className="px-4 py-3">
                       <Link className="font-semibold text-blue-700 underline" href={`/modu-startup/preview/${submission.id}`}>
                         미리보기

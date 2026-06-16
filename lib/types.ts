@@ -46,6 +46,7 @@ export interface LeanCanvasSubmission {
   submissionStatus?: SubmissionStatus;
   pdfStatus?: PdfStatus;
   pdfErrorMessage?: string;
+  pdfGeneratedAt?: string;
   adminCheckedAt?: string;
 }
 
@@ -239,5 +240,7 @@ export interface ModuStartupSubmission {
   draft: ModuStartupDraft;
   submissionStatus?: SubmissionStatus;
   pdfStatus?: PdfStatus;
+  pdfErrorMessage?: string;
+  pdfGeneratedAt?: string;
   adminCheckedAt?: string;
 }

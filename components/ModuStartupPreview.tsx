@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import type { ModuStartupSubmission } from "@/lib/types";
-import { getModuStartupSubmission } from "@/lib/storage";
+import StatusBadge from "@/components/StatusBadge";
+import type { ModuStartupSubmission, PdfStatus } from "@/lib/types";
+import { getModuStartupSubmission, updateModuStartupSubmissionPdfStatus } from "@/lib/storage";
 
 const sections = [
   ["첫 문장 훅", "openingHook"],
@@ -50,6 +51,8 @@ export default function ModuStartupPreview({ id }: { id: string }) {
   const [actionNotice, setActionNotice] = useState("");
   const [actionError, setActionError] = useState("");
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfStatus, setPdfStatus] = useState<PdfStatus>("idle");
+  const [pdfErrorMessage, setPdfErrorMessage] = useState("");
   const text = useMemo(() => (submission ? formatSubmission(submission) : ""), [submission]);
 
   useEffect(() => {
@@ -59,6 +62,8 @@ export default function ModuStartupPreview({ id }: { id: string }) {
       const local = getModuStartupSubmission(id);
       if (local) {
         setSubmission(local);
+        setPdfStatus(local.pdfStatus || "idle");
+        setPdfErrorMessage(local.pdfErrorMessage || "");
         setLoading(false);
         return;
       }
@@ -74,7 +79,11 @@ export default function ModuStartupPreview({ id }: { id: string }) {
           throw new Error(data.error || "모두의창업 제출물을 찾을 수 없습니다.");
         }
 
-        if (!cancelled) setSubmission(data.submission);
+        if (!cancelled) {
+          setSubmission(data.submission);
+          setPdfStatus(data.submission.pdfStatus || "idle");
+          setPdfErrorMessage(data.submission.pdfErrorMessage || "");
+        }
       } catch (caught) {
         if (!cancelled) setError(caught instanceof Error ? caught.message : "제출물 조회 중 오류가 발생했습니다.");
       } finally {
@@ -107,12 +116,35 @@ export default function ModuStartupPreview({ id }: { id: string }) {
       .replace(/\s+/g, "_")
       .slice(0, 40);
 
+  const persistPdfStatus = async (nextStatus: PdfStatus, message = "") => {
+    setPdfStatus(nextStatus);
+    setPdfErrorMessage(nextStatus === "failed" ? message : "");
+    updateModuStartupSubmissionPdfStatus(id, nextStatus, message);
+
+    try {
+      const response = await fetch(`/api/modu-startup-submissions/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pdfStatus: nextStatus, pdfErrorMessage: message })
+      });
+      const data = (await response.json()) as { submission?: ModuStartupSubmission };
+      if (response.ok && data.submission) {
+        setSubmission(data.submission);
+        setPdfStatus(data.submission.pdfStatus || nextStatus);
+        setPdfErrorMessage(data.submission.pdfErrorMessage || "");
+      }
+    } catch {
+      // localStorage fallback already reflects the latest PDF status.
+    }
+  };
+
   const downloadPdf = async () => {
     if (!submission || !printRef.current) return;
 
     setPdfLoading(true);
     setActionNotice("");
     setActionError("");
+    await persistPdfStatus("generating");
     try {
       const html2pdf = (await import("html2pdf.js")).default;
       const fileName = `${safeFilePart(submission.input.teamName || "팀")}_${safeFilePart(
@@ -141,9 +173,12 @@ export default function ModuStartupPreview({ id }: { id: string }) {
         .from(printRef.current)
         .save();
 
+      await persistPdfStatus("success");
       setActionNotice("PDF 다운로드를 완료했습니다.");
     } catch (caught) {
-      setActionError(caught instanceof Error ? caught.message : "PDF 다운로드에 실패했습니다. 바로 인쇄를 이용해주세요.");
+      const message = caught instanceof Error ? caught.message : "PDF 다운로드에 실패했습니다. 바로 인쇄를 이용해주세요.";
+      await persistPdfStatus("failed", message);
+      setActionError(message);
     } finally {
       setPdfLoading(false);
     }
@@ -177,6 +212,9 @@ export default function ModuStartupPreview({ id }: { id: string }) {
             {submission.input.teamName || "-"} · {submission.input.participantName || "-"} ·{" "}
             {new Date(submission.createdAt).toLocaleString("ko-KR")}
           </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <StatusBadge type="pdf" value={pdfStatus} />
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" onClick={copyText} type="button">
@@ -188,7 +226,7 @@ export default function ModuStartupPreview({ id }: { id: string }) {
             onClick={downloadPdf}
             type="button"
           >
-            {pdfLoading ? "PDF 생성 중..." : "PDF 다운로드"}
+            {pdfLoading ? "PDF 생성 중..." : pdfStatus === "failed" ? "PDF 다시 생성" : pdfStatus === "success" ? "PDF 다운로드" : "PDF 생성하기"}
           </button>
           <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white" onClick={() => window.print()} type="button">
             바로 인쇄
@@ -206,6 +244,11 @@ export default function ModuStartupPreview({ id }: { id: string }) {
       {actionError ? (
         <p className="no-print mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
           {actionError}
+        </p>
+      ) : null}
+      {pdfStatus === "failed" && pdfErrorMessage && !actionError ? (
+        <p className="no-print mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+          PDF 생성 실패 기록: {pdfErrorMessage}
         </p>
       ) : null}
 

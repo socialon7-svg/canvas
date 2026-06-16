@@ -88,7 +88,25 @@ export default function ParticipantPortal() {
   const participant = state.participants.find((item) => item.id === participantId);
   const team = state.teams.find((item) => item.id === participant?.teamId);
   const feedback = findFeedback(state, participant?.latestSubmissionId);
-  const latestPdfStatus = latestSubmission?.pdfStatus ?? "success";
+  const latestPdfStatus = latestSubmission?.pdfStatus ?? "idle";
+  const latestPdfLabel =
+    latestPdfStatus === "success"
+      ? "PDF 정상"
+      : latestPdfStatus === "failed"
+        ? "PDF 오류"
+        : latestPdfStatus === "generating"
+          ? "PDF 생성 중"
+          : "PDF 대기";
+  const latestPdfClassName =
+    latestPdfStatus === "success"
+      ? "font-bold text-green-700"
+      : latestPdfStatus === "failed"
+        ? "font-bold text-red-700"
+        : latestPdfStatus === "generating"
+          ? "font-bold text-amber-700"
+          : "font-bold text-gray-700";
+  const latestPdfButtonLabel =
+    latestPdfStatus === "failed" ? "PDF 다시 생성" : latestPdfStatus === "success" ? "PDF 다운로드" : "PDF 생성하기";
   const latestSubmissionCode = latestSubmission?.id.slice(0, 8).toUpperCase();
   const hasProfile = Boolean(participant?.name?.trim());
   const hasLeanCanvasSubmission = Boolean(participant?.latestSubmissionId || latestSubmission);
@@ -128,14 +146,21 @@ export default function ParticipantPortal() {
     },
     {
       label: "PDF 상태",
-      value: !hasAnySubmission ? "대기" : latestPdfStatus === "failed" ? "오류" : "정상",
-      hint: latestPdfStatus === "failed" ? "미리보기에서 다시 생성하세요." : "제출물 열람에서 다운로드할 수 있습니다.",
+      value: !hasAnySubmission ? "대기" : latestPdfLabel,
+      hint:
+        latestPdfStatus === "failed"
+          ? "미리보기에서 다시 생성하세요."
+          : latestPdfStatus === "success"
+            ? "제출물 열람에서 다운로드할 수 있습니다."
+            : "PDF 버튼을 눌러 생성하면 상태가 정상으로 바뀝니다.",
       className:
         !hasAnySubmission
           ? "border-gray-200 bg-gray-50 text-gray-700"
-          : latestPdfStatus === "failed"
-            ? "border-red-200 bg-red-50 text-red-900"
-            : "border-blue-200 bg-blue-50 text-blue-900"
+          : latestPdfStatus === "success"
+            ? "border-blue-200 bg-blue-50 text-blue-900"
+            : latestPdfStatus === "failed"
+              ? "border-red-200 bg-red-50 text-red-900"
+              : "border-amber-200 bg-amber-50 text-amber-900"
     },
     {
       label: "피드백",
@@ -634,8 +659,8 @@ export default function ParticipantPortal() {
                     <p>
                       <span className="font-semibold">PDF 상태</span>
                       <br />
-                      <span className={latestPdfStatus === "failed" ? "font-bold text-red-700" : "font-bold text-green-700"}>
-                        {latestPdfStatus === "failed" ? "PDF 오류" : "PDF 정상"}
+                      <span className={latestPdfClassName}>
+                        {latestPdfLabel}
                       </span>
                     </p>
                     <p>
@@ -813,12 +838,16 @@ export default function ParticipantPortal() {
                     </button>
                     <button
                       className={`rounded-md border px-4 py-2 text-sm font-bold ${
-                        latestPdfStatus === "failed" ? "border-red-200 bg-red-50 text-red-700" : "border-blue-200 bg-white text-blue-800"
+                        latestPdfStatus === "failed"
+                          ? "border-red-200 bg-red-50 text-red-700"
+                          : latestPdfStatus === "success"
+                            ? "border-blue-200 bg-white text-blue-800"
+                            : "border-amber-200 bg-amber-50 text-amber-800"
                       }`}
                       onClick={() => router.push(`/preview/${latestSubmission.id}?download=1`)}
                       type="button"
                     >
-                      {latestPdfStatus === "failed" ? "PDF 다시 생성" : "PDF 다운로드"}
+                      {latestPdfButtonLabel}
                     </button>
                   </>
                 ) : (
@@ -857,8 +886,8 @@ export default function ParticipantPortal() {
                   </div>
                   <div className="rounded-md bg-gray-50 p-3">
                     <p className="text-xs font-semibold text-gray-500">PDF</p>
-                    <p className={`mt-1 font-bold ${latestPdfStatus === "failed" ? "text-red-700" : "text-green-700"}`}>
-                      {latestPdfStatus === "failed" ? "오류, 다시 생성 필요" : "다운로드 가능"}
+                    <p className={`mt-1 ${latestPdfClassName}`}>
+                      {latestPdfLabel}
                     </p>
                   </div>
                 </div>

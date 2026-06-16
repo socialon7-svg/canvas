@@ -43,5 +43,5 @@ export function getFeedbackProgressStatus(feedback?: HighViewFeedback): Feedback
 }
 
 export function getPdfStatus(submission?: LeanCanvasSubmission): PdfStatus {
-  return submission?.pdfStatus || (submission ? "success" : "idle");
+  return submission?.pdfStatus || "idle";
 }

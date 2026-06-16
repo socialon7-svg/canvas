@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import PrintableCanvas from "@/components/PrintableCanvas";
 import StatusBadge from "@/components/StatusBadge";
 import type { LeanCanvasSubmission, PdfStatus } from "@/lib/types";
-import { getSubmission } from "@/lib/storage";
+import { getSubmission, updateSubmissionPdfStatus } from "@/lib/storage";
 import { getFeedbackProgressStatus, getSubmissionStatus } from "@/lib/status";
 
 export default function PreviewClient({ id }: { id: string }) {
@@ -17,7 +17,7 @@ export default function PreviewClient({ id }: { id: string }) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
   const [pdfLoading, setPdfLoading] = useState(false);
-  const [pdfStatus, setPdfStatus] = useState<PdfStatus>("success");
+  const [pdfStatus, setPdfStatus] = useState<PdfStatus>("idle");
   const [pdfErrorMessage, setPdfErrorMessage] = useState("");
   const [fallbackNotice, setFallbackNotice] = useState("");
   const [autoDownloadStarted, setAutoDownloadStarted] = useState(false);
@@ -38,14 +38,16 @@ export default function PreviewClient({ id }: { id: string }) {
 
         if (response.ok && data.submission) {
           setSubmission(data.submission);
-          setPdfStatus(data.submission.pdfStatus || "success");
+          setPdfStatus(data.submission.pdfStatus || "idle");
+          setPdfErrorMessage(data.submission.pdfErrorMessage || "");
           return;
         }
 
         const localSubmission = getSubmission(id);
         if (localSubmission) {
           setSubmission(localSubmission);
-          setPdfStatus(localSubmission.pdfStatus || "success");
+          setPdfStatus(localSubmission.pdfStatus || "idle");
+          setPdfErrorMessage(localSubmission.pdfErrorMessage || "");
           if (response.status === 503 && (data.code === "SUPABASE_NOT_CONFIGURED" || data.code === "SUPABASE_TABLE_NOT_READY")) {
             setFallbackNotice("중앙 저장소가 아직 설정되지 않아 이 브라우저의 임시 제출물을 표시합니다.");
           }
@@ -57,7 +59,8 @@ export default function PreviewClient({ id }: { id: string }) {
         const localSubmission = getSubmission(id);
         if (localSubmission) {
           setSubmission(localSubmission);
-          setPdfStatus(localSubmission.pdfStatus || "success");
+          setPdfStatus(localSubmission.pdfStatus || "idle");
+          setPdfErrorMessage(localSubmission.pdfErrorMessage || "");
           setFallbackNotice("서버 제출물 조회에 실패해 이 브라우저의 임시 제출물을 표시합니다.");
         } else {
           setError(err instanceof Error ? err.message : "제출물을 불러오지 못했습니다.");
@@ -81,12 +84,33 @@ export default function PreviewClient({ id }: { id: string }) {
     submission?.participant.ideaName || "린캔버스"
   )}.pdf`;
 
+  const persistPdfStatus = async (nextStatus: PdfStatus, message = "") => {
+    setPdfStatus(nextStatus);
+    setPdfErrorMessage(nextStatus === "failed" ? message : "");
+    updateSubmissionPdfStatus(id, nextStatus, message);
+
+    try {
+      const response = await fetch(`/api/submissions/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pdfStatus: nextStatus, pdfErrorMessage: message })
+      });
+      const data = (await response.json()) as { submission?: LeanCanvasSubmission };
+      if (response.ok && data.submission) {
+        setSubmission(data.submission);
+        setPdfStatus(data.submission.pdfStatus || nextStatus);
+        setPdfErrorMessage(data.submission.pdfErrorMessage || "");
+      }
+    } catch {
+      // localStorage fallback already reflects the latest PDF status.
+    }
+  };
+
   const downloadPdf = async () => {
     if (!printRef.current) return;
 
     setPdfLoading(true);
-    setPdfStatus("generating");
-    setPdfErrorMessage("");
+    await persistPdfStatus("generating");
     try {
       const html2pdf = (await import("html2pdf.js")).default;
 
@@ -111,10 +135,9 @@ export default function PreviewClient({ id }: { id: string }) {
         })
         .from(printRef.current)
         .save();
-      setPdfStatus("success");
+      await persistPdfStatus("success");
     } catch (err) {
-      setPdfStatus("failed");
-      setPdfErrorMessage(err instanceof Error ? err.message : "브라우저 PDF 생성에 실패했습니다.");
+      await persistPdfStatus("failed", err instanceof Error ? err.message : "브라우저 PDF 생성에 실패했습니다.");
     } finally {
       setPdfLoading(false);
     }
@@ -207,7 +230,7 @@ export default function PreviewClient({ id }: { id: string }) {
             disabled={pdfLoading}
             onClick={downloadPdf}
           >
-            {pdfLoading ? "PDF 생성 중..." : pdfStatus === "failed" ? "PDF 다시 생성" : "PDF 다운로드"}
+            {pdfLoading ? "PDF 생성 중..." : pdfStatus === "failed" ? "PDF 다시 생성" : pdfStatus === "success" ? "PDF 다운로드" : "PDF 생성하기"}
           </button>
           <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold transition-colors hover:bg-gray-50" onClick={print}>
             바로 인쇄

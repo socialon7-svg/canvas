@@ -6,6 +6,7 @@ import type {
   ModuStartupDraft,
   ModuStartupInput,
   ModuStartupSubmission,
+  PdfStatus,
   ParticipantInput
 } from "@/lib/types";
 
@@ -149,7 +150,7 @@ export function saveSubmission(participant: ParticipantInput, canvas: LeanCanvas
     participant,
     canvas,
     submissionStatus: "submitted",
-    pdfStatus: "success"
+    pdfStatus: "idle"
   };
   const submissions = [submission, ...loadSubmissions()];
   writeLocalStorage(SUBMISSIONS_KEY, JSON.stringify(submissions));
@@ -166,6 +167,24 @@ export function deleteSubmission(id: string) {
   const submissions = loadSubmissions().filter((submission) => submission.id !== id);
   writeLocalStorage(SUBMISSIONS_KEY, JSON.stringify(submissions));
   return submissions;
+}
+
+export function updateSubmissionPdfStatus(id: string, status: PdfStatus, errorMessage = "") {
+  const submissions = loadSubmissions();
+  const generatedAt = status === "success" ? new Date().toISOString() : undefined;
+  const updated = submissions.map((submission) =>
+    submission.id === id
+      ? {
+          ...submission,
+          pdfStatus: status,
+          pdfErrorMessage: status === "failed" ? errorMessage : "",
+          pdfGeneratedAt: generatedAt ?? submission.pdfGeneratedAt
+        }
+      : submission
+  );
+
+  writeLocalStorage(SUBMISSIONS_KEY, JSON.stringify(updated));
+  return updated.find((submission) => submission.id === id) ?? null;
 }
 
 export function loadModuStartupSubmissions(): ModuStartupSubmission[] {
@@ -186,7 +205,7 @@ export function saveModuStartupSubmission(input: ModuStartupInput, draft: ModuSt
     input,
     draft,
     submissionStatus: "submitted",
-    pdfStatus: "success"
+    pdfStatus: "idle"
   };
   const submissions = [submission, ...loadModuStartupSubmissions()];
   writeLocalStorage(MODU_STARTUP_SUBMISSIONS_KEY, JSON.stringify(submissions));
@@ -202,4 +221,22 @@ export function deleteModuStartupSubmission(id: string) {
   const submissions = loadModuStartupSubmissions().filter((submission) => submission.id !== id);
   writeLocalStorage(MODU_STARTUP_SUBMISSIONS_KEY, JSON.stringify(submissions));
   return submissions;
+}
+
+export function updateModuStartupSubmissionPdfStatus(id: string, status: PdfStatus, errorMessage = "") {
+  const submissions = loadModuStartupSubmissions();
+  const generatedAt = status === "success" ? new Date().toISOString() : undefined;
+  const updated = submissions.map((submission) =>
+    submission.id === id
+      ? {
+          ...submission,
+          pdfStatus: status,
+          pdfErrorMessage: status === "failed" ? errorMessage : "",
+          pdfGeneratedAt: generatedAt ?? submission.pdfGeneratedAt
+        }
+      : submission
+  );
+
+  writeLocalStorage(MODU_STARTUP_SUBMISSIONS_KEY, JSON.stringify(updated));
+  return updated.find((submission) => submission.id === id) ?? null;
 }
