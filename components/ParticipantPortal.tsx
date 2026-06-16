@@ -93,6 +93,7 @@ export default function ParticipantPortal() {
   const hasProfile = Boolean(participant?.name?.trim());
   const hasLeanCanvasSubmission = Boolean(participant?.latestSubmissionId || latestSubmission);
   const hasModuStartupSubmission = Boolean(participant?.latestModuStartupSubmissionId || participant?.moduStartupSubmittedAt);
+  const hasAnySubmission = hasLeanCanvasSubmission || hasModuStartupSubmission;
   const visibleModules = getParticipantVisibleModules(program);
   const getModuleProgressStatus = (module: StartupModule): ParticipantModuleProgressStatus => {
     if (module.slug === "lean-canvas" && hasLeanCanvasSubmission) return "completed";
@@ -100,46 +101,89 @@ export default function ParticipantPortal() {
     return participant?.moduleProgress?.[module.slug]?.status || "not_started";
   };
   const completedModuleCount = visibleModules.filter((module) => getModuleProgressStatus(module) === "completed").length;
+  const moduleProgressPercent = visibleModules.length ? Math.round((completedModuleCount / visibleModules.length) * 100) : 0;
   const nextIncompleteModule = visibleModules.find((module) => getModuleProgressStatus(module) !== "completed");
-  const fullProgressSteps = [
+  const studentProgressSteps = [
     { label: "입장", done: Boolean(program && participant), hint: "코드 확인" },
     { label: "내 정보", done: hasProfile, hint: "이름/소속" },
     {
-      label: "선택 모듈",
+      label: "모듈 진행",
       done: visibleModules.length > 0 && completedModuleCount === visibleModules.length,
       hint: `${completedModuleCount}/${visibleModules.length || 0}개`
     },
-    { label: "피드백", done: Boolean(feedback), hint: "운영진 확인" }
+    {
+      label: "제출 확인",
+      done: hasAnySubmission,
+      hint: hasAnySubmission ? "접수 완료" : "제출 전"
+    }
   ];
-  const fullCompletedSteps = fullProgressSteps.filter((step) => step.done).length;
-  const fullProgressPercent = Math.round((fullCompletedSteps / fullProgressSteps.length) * 100);
-  const nextAction = !hasProfile
-    ? {
+  const studentCompletedSteps = studentProgressSteps.filter((step) => step.done).length;
+  const studentProgressPercent = Math.round((studentCompletedSteps / studentProgressSteps.length) * 100);
+  const statusCards = [
+    {
+      label: "제출 상태",
+      value: hasAnySubmission ? "접수 완료" : "제출 전",
+      hint: latestSubmissionCode ? `제출번호 ${latestSubmissionCode}` : "최종 제출 후 번호가 표시됩니다.",
+      className: hasAnySubmission ? "border-green-200 bg-green-50 text-green-900" : "border-amber-200 bg-amber-50 text-amber-900"
+    },
+    {
+      label: "PDF 상태",
+      value: !hasAnySubmission ? "대기" : latestPdfStatus === "failed" ? "오류" : "정상",
+      hint: latestPdfStatus === "failed" ? "미리보기에서 다시 생성하세요." : "제출물 열람에서 다운로드할 수 있습니다.",
+      className:
+        !hasAnySubmission
+          ? "border-gray-200 bg-gray-50 text-gray-700"
+          : latestPdfStatus === "failed"
+            ? "border-red-200 bg-red-50 text-red-900"
+            : "border-blue-200 bg-blue-50 text-blue-900"
+    },
+    {
+      label: "피드백",
+      value: feedback ? "도착" : hasAnySubmission ? "검토 대기" : "제출 후 표시",
+      hint: feedback?.nextAction || (hasAnySubmission ? "운영진 검토가 끝나면 표시됩니다." : "제출 후 운영진이 확인합니다."),
+      className: feedback ? "border-green-200 bg-green-50 text-green-900" : "border-gray-200 bg-gray-50 text-gray-700"
+    }
+  ];
+  const nextAction = (() => {
+    if (!hasProfile) {
+      return {
         title: "내 정보를 먼저 확인해주세요",
         description: "이름, 연락처, 소속이 맞아야 운영진이 제출 현황을 정확히 확인할 수 있습니다.",
         action: "내 정보 확인",
         onClick: () => setTab("profile")
-      }
-    : nextIncompleteModule
-      ? {
-          title: `${nextIncompleteModule.title}이 남았습니다`,
-          description: "운영진이 배정한 모듈만 순서대로 표시됩니다. 시작 전인 모듈부터 차례로 진행하세요.",
-          action: "모듈 목록 보기",
-          onClick: () => setTab("write")
-        }
-      : feedback
-          ? {
-              title: "피드백이 도착했습니다",
-              description: "운영진 코멘트와 다음 행동을 확인하고 필요하면 다시 보완해주세요.",
-              action: "피드백 보기",
-              onClick: () => setTab("feedback")
-            }
-          : {
-              title: "제출이 접수되었습니다",
-              description: "운영진 확인 대기 중입니다. 제출물은 언제든 다시 열람할 수 있습니다.",
-              action: "제출물 확인",
-              onClick: () => (latestSubmission ? router.push(`/preview/${latestSubmission.id}`) : setTab("home"))
-            };
+      };
+    }
+    if (nextIncompleteModule) {
+      return {
+        title: `${nextIncompleteModule.title}이 남았습니다`,
+        description: "운영진이 배정한 모듈만 순서대로 표시됩니다. 시작 전인 모듈부터 차례로 진행하세요.",
+        action: "모듈 목록 보기",
+        onClick: () => setTab("write")
+      };
+    }
+    if (feedback) {
+      return {
+        title: "피드백이 도착했습니다",
+        description: "운영진 코멘트와 다음 행동을 확인하고 필요하면 다시 보완해주세요.",
+        action: "피드백 보기",
+        onClick: () => setTab("feedback")
+      };
+    }
+    if (hasAnySubmission) {
+      return {
+        title: "제출이 접수되었습니다",
+        description: "운영진 확인 대기 중입니다. 제출물은 언제든 다시 열람할 수 있습니다.",
+        action: "제출물 확인",
+        onClick: () => (latestSubmission ? router.push(`/preview/${latestSubmission.id}`) : setTab("home"))
+      };
+    }
+    return {
+      title: "배정된 모듈을 모두 확인했습니다",
+      description: "최종 제출이 필요한 모듈이 있다면 제출물 열람 또는 모듈 목록에서 제출 상태를 다시 확인해주세요.",
+      action: "모듈 목록 보기",
+      onClick: () => setTab("write")
+    };
+  })();
 
   useEffect(() => {
     let cancelled = false;
@@ -374,10 +418,10 @@ export default function ParticipantPortal() {
       <section className="mb-5 rounded-lg border border-blue-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-blue-700">나의 진행 상황</p>
-            <h2 className="mt-1 text-2xl font-bold text-gray-950">{fullProgressPercent}% 완료</h2>
+            <p className="text-sm font-semibold text-blue-700">내가 해야 할 일</p>
+            <h2 className="mt-1 text-2xl font-bold text-gray-950">{studentProgressPercent}% 완료</h2>
             <p className="mt-2 text-sm leading-6 text-gray-600">
-              {fullCompletedSteps}/{fullProgressSteps.length}단계 완료 · {nextAction.title}
+              {studentCompletedSteps}/{studentProgressSteps.length}단계 완료 · {nextAction.title}
             </p>
           </div>
           <button
@@ -389,10 +433,10 @@ export default function ParticipantPortal() {
           </button>
         </div>
         <div className="mt-4 h-3 overflow-hidden rounded-full bg-gray-100">
-          <div className="h-full rounded-full bg-blue-700 transition-all" style={{ width: `${fullProgressPercent}%` }} />
+          <div className="h-full rounded-full bg-blue-700 transition-all" style={{ width: `${studentProgressPercent}%` }} />
         </div>
         <div className="mt-4 grid gap-2 sm:grid-cols-4">
-          {fullProgressSteps.map((step) => (
+          {studentProgressSteps.map((step) => (
             <div
               key={step.label}
               className={`rounded-md border px-3 py-2 text-sm ${
@@ -404,7 +448,18 @@ export default function ParticipantPortal() {
             </div>
           ))}
         </div>
-        <p className="mt-3 rounded-md bg-blue-50 px-3 py-2 text-sm leading-6 text-blue-900">{nextAction.description}</p>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          {statusCards.map((card) => (
+            <div key={card.label} className={`rounded-md border px-4 py-3 ${card.className}`}>
+              <p className="text-xs font-bold opacity-80">{card.label}</p>
+              <strong className="mt-1 block text-lg">{card.value}</strong>
+              <p className="mt-1 line-clamp-2 text-xs leading-5 opacity-80">{card.hint}</p>
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 rounded-md bg-blue-50 px-3 py-2 text-sm leading-6 text-blue-900">
+          {nextAction.description}
+        </p>
       </section>
 
       {tab === "home" ? (
@@ -442,13 +497,18 @@ export default function ParticipantPortal() {
                   관리자 설정에 따라 필요한 모듈만 표시됩니다. 숨겨진 모듈은 교육생 화면에 나타나지 않습니다.
                 </p>
               </div>
-              <button
-                className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-800"
-                onClick={() => setTab("write")}
-                type="button"
-              >
-                전체 모듈 보기
-              </button>
+              <div className="min-w-[180px]">
+                <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+                  <div className="h-full rounded-full bg-blue-700" style={{ width: `${moduleProgressPercent}%` }} />
+                </div>
+                <button
+                  className="mt-3 w-full rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-800"
+                  onClick={() => setTab("write")}
+                  type="button"
+                >
+                  전체 모듈 보기
+                </button>
+              </div>
             </div>
             {visibleModules.length ? (
               <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
@@ -568,7 +628,7 @@ export default function ParticipantPortal() {
           <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm md:col-span-3">
             <h2 className="text-lg font-bold text-gray-950">사용 순서</h2>
             <p className="mt-2 text-sm leading-6 text-gray-600">
-              내 정보 입력 → 린캔버스 과제 작성 → 수정 후 제출 → 피드백 확인 → 필요하면 다시 작성
+              내 정보 확인 → 배정 모듈 수행 → 최종 제출 확인 → 피드백 확인 → 필요하면 다시 보완
             </p>
           </section>
         </main>
