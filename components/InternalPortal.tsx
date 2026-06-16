@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import StartupModuleSelector from "@/components/StartupModuleSelector";
 import StatusBadge from "@/components/StatusBadge";
 import type {
@@ -44,6 +45,10 @@ type InternalTab = "dashboard" | "programs" | "participants" | "teams" | "submis
 type SubmissionFilter = "all" | "notEntered" | "submitted" | "notSubmitted" | "feedbackPending" | "feedbackDone" | "pdfFailed";
 type ModuleReviewFilter = "needsReview" | "inProgress" | "completed" | "all";
 type UiTone = "gray" | "blue" | "green" | "amber" | "red";
+
+const internalTabs: InternalTab[] = ["dashboard", "programs", "participants", "teams", "submissions", "moduleReviews", "report"];
+const submissionFilters: SubmissionFilter[] = ["all", "notEntered", "submitted", "notSubmitted", "feedbackPending", "feedbackDone", "pdfFailed"];
+const moduleReviewFilters: ModuleReviewFilter[] = ["needsReview", "inProgress", "completed", "all"];
 
 type FocusInfo = {
   title: string;
@@ -178,19 +183,49 @@ function getBrowserOrigin() {
   return typeof window === "undefined" ? "" : window.location.origin;
 }
 
+function isInternalTab(value: string | null): value is InternalTab {
+  return internalTabs.includes(value as InternalTab);
+}
+
+function isSubmissionFilter(value: string | null): value is SubmissionFilter {
+  return submissionFilters.includes(value as SubmissionFilter);
+}
+
+function isModuleReviewFilter(value: string | null): value is ModuleReviewFilter {
+  return moduleReviewFilters.includes(value as ModuleReviewFilter);
+}
+
 export default function InternalPortal() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const searchParamString = searchParams.toString();
+  const initialUrlStateRef = useRef({
+    programId: searchParams.get("programId") || "",
+    selectedParticipantId: searchParams.get("selectedParticipantId") || ""
+  });
+  const applyingUrlStateRef = useRef(false);
   const [state, setState] = useState<HighViewOperationsState>(() => defaultOperationsState());
-  const [currentProgramId, setCurrentProgramId] = useState("");
-  const [tab, setTab] = useState<InternalTab>("dashboard");
+  const [currentProgramId, setCurrentProgramId] = useState(() => searchParams.get("programId") || "");
+  const [tab, setTab] = useState<InternalTab>(() => {
+    const value = searchParams.get("tab");
+    return isInternalTab(value) ? value : "dashboard";
+  });
   const [authorized, setAuthorized] = useState(false);
   const [password, setPassword] = useState("");
   const [submissions, setSubmissions] = useState<LeanCanvasSubmission[]>([]);
   const [fallbackMode, setFallbackMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [submissionFilter, setSubmissionFilter] = useState<SubmissionFilter>("all");
-  const [moduleReviewFilter, setModuleReviewFilter] = useState<ModuleReviewFilter>("needsReview");
-  const [selectedParticipantId, setSelectedParticipantId] = useState("");
+  const [submissionFilter, setSubmissionFilter] = useState<SubmissionFilter>(() => {
+    const value = searchParams.get("submissionFilter");
+    return isSubmissionFilter(value) ? value : "all";
+  });
+  const [moduleReviewFilter, setModuleReviewFilter] = useState<ModuleReviewFilter>(() => {
+    const value = searchParams.get("moduleReviewFilter");
+    return isModuleReviewFilter(value) ? value : "needsReview";
+  });
+  const [selectedParticipantId, setSelectedParticipantId] = useState(() => searchParams.get("selectedParticipantId") || "");
   const [newProgramModuleIds, setNewProgramModuleIds] = useState<number[]>(DEFAULT_STARTUP_MODULE_IDS);
   const [currentProgramModuleDraftIds, setCurrentProgramModuleDraftIds] = useState<number[]>(DEFAULT_STARTUP_MODULE_IDS);
   const [error, setError] = useState("");
@@ -198,8 +233,13 @@ export default function InternalPortal() {
 
   useEffect(() => {
     const loaded = loadOperationsState();
+    const initialProgramId = initialUrlStateRef.current.programId;
+    const nextProgramId = loaded.programs.some((program) => program.id === initialProgramId)
+      ? initialProgramId
+      : loaded.programs[0]?.id || "";
     setState(loaded);
-    setCurrentProgramId(loaded.programs[0]?.id || "");
+    setCurrentProgramId(nextProgramId);
+    setSelectedParticipantId(initialUrlStateRef.current.selectedParticipantId);
 
     setRefreshing(true);
     loadServerSubmissions()
@@ -243,6 +283,107 @@ export default function InternalPortal() {
   );
   const selectedParticipantForEdit =
     programParticipants.find((participant) => participant.id === selectedParticipantId) || programParticipants[0];
+
+  useEffect(() => {
+    let changed = false;
+    const requestedTab = searchParams.get("tab");
+    const requestedProgramId = searchParams.get("programId");
+    const requestedSubmissionFilter = searchParams.get("submissionFilter");
+    const requestedModuleReviewFilter = searchParams.get("moduleReviewFilter");
+    const requestedParticipantId = searchParams.get("selectedParticipantId");
+    const nextTab = isInternalTab(requestedTab) ? requestedTab : "dashboard";
+    const nextSubmissionFilter = isSubmissionFilter(requestedSubmissionFilter) ? requestedSubmissionFilter : "all";
+    const nextModuleReviewFilter = isModuleReviewFilter(requestedModuleReviewFilter) ? requestedModuleReviewFilter : "needsReview";
+    const nextProgramId =
+      requestedProgramId && state.programs.some((program) => program.id === requestedProgramId)
+        ? requestedProgramId
+        : currentProgramId;
+    const nextParticipantId =
+      requestedParticipantId && state.participants.some((participant) => participant.id === requestedParticipantId)
+        ? requestedParticipantId
+        : "";
+
+    if (nextTab !== tab) {
+      setTab(nextTab);
+      changed = true;
+    }
+    if (nextProgramId && nextProgramId !== currentProgramId) {
+      setCurrentProgramId(nextProgramId);
+      changed = true;
+    }
+    if (nextSubmissionFilter !== submissionFilter) {
+      setSubmissionFilter(nextSubmissionFilter);
+      changed = true;
+    }
+    if (nextModuleReviewFilter !== moduleReviewFilter) {
+      setModuleReviewFilter(nextModuleReviewFilter);
+      changed = true;
+    }
+    if (nextParticipantId !== selectedParticipantId) {
+      setSelectedParticipantId(nextParticipantId);
+      changed = true;
+    }
+
+    if (!changed) return;
+
+    applyingUrlStateRef.current = true;
+    const timer = window.setTimeout(() => {
+      applyingUrlStateRef.current = false;
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    currentProgramId,
+    moduleReviewFilter,
+    searchParamString,
+    searchParams,
+    selectedParticipantId,
+    state.participants,
+    state.programs,
+    submissionFilter,
+    tab
+  ]);
+
+  useEffect(() => {
+    if (applyingUrlStateRef.current) return;
+
+    const params = new URLSearchParams(searchParamString);
+    const syncedParticipantId =
+      selectedParticipantId && programParticipants.some((participant) => participant.id === selectedParticipantId)
+        ? selectedParticipantId
+        : "";
+
+    if (tab === "dashboard") params.delete("tab");
+    else params.set("tab", tab);
+
+    if (currentProgram?.id) params.set("programId", currentProgram.id);
+    else params.delete("programId");
+
+    if (submissionFilter === "all") params.delete("submissionFilter");
+    else params.set("submissionFilter", submissionFilter);
+
+    if (moduleReviewFilter === "needsReview") params.delete("moduleReviewFilter");
+    else params.set("moduleReviewFilter", moduleReviewFilter);
+
+    if (syncedParticipantId) params.set("selectedParticipantId", syncedParticipantId);
+    else params.delete("selectedParticipantId");
+
+    const nextSearchParamString = params.toString();
+    if (nextSearchParamString === searchParamString) return;
+
+    router.replace(`${pathname}${nextSearchParamString ? `?${nextSearchParamString}` : ""}`, { scroll: false });
+  }, [
+    currentProgram?.id,
+    moduleReviewFilter,
+    pathname,
+    programParticipants,
+    router,
+    searchParamString,
+    selectedParticipantId,
+    submissionFilter,
+    tab
+  ]);
+
   const programSubmissions = useMemo(
     () =>
       currentProgram

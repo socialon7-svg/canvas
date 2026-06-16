@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import InternalPortal from "@/components/InternalPortal";
 
 export const metadata: Metadata = {
@@ -6,5 +7,9 @@ export const metadata: Metadata = {
 };
 
 export default function InternalPage() {
-  return <InternalPortal />;
+  return (
+    <Suspense fallback={<div className="px-5 py-10 text-sm text-gray-600">내부직원 화면을 불러오는 중입니다...</div>}>
+      <InternalPortal />
+    </Suspense>
+  );
 }
