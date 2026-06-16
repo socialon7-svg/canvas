@@ -885,6 +885,69 @@ export default function InternalPortal() {
     }
   };
 
+  const copyModuleIncompleteMessage = async () => {
+    if (!currentProgram) return;
+    const rows = moduleProgressRows.filter((row) => row.total > 0 && row.completed < row.total);
+    const participantUrl = typeof window === "undefined" ? "/participant" : `${window.location.origin}/participant`;
+    const lines = rows.map((row) => {
+      const team = programTeams.find((item) => item.id === row.participant.teamId);
+      const remainingModules = currentProgramVisibleModules
+        .filter((startupModule) => row.participant.moduleProgress?.[startupModule.slug]?.status !== "completed")
+        .slice(0, 3)
+        .map((startupModule) => startupModule.title)
+        .join(", ");
+      return `${team?.name || "미배정"} / ${row.participant.name || "미등록"} / ${row.participant.code} / ${row.completed}/${row.total}개 완료 / 남은 모듈: ${remainingModules || "확인 필요"}`;
+    });
+    const text = lines.length
+      ? [
+          `[${currentProgram.name}] 모듈 미완료 안내`,
+          `배정된 모듈을 아직 완료하지 않은 참여자 ${lines.length}명입니다.`,
+          "",
+          `참여자 페이지: ${participantUrl}`,
+          `프로그램 코드: ${currentProgram.programCode}`,
+          "",
+          "대상:",
+          ...lines.map((line) => `- ${line}`),
+          "",
+          "안내문:",
+          "참여자 페이지에 입장한 뒤 모듈 탭에서 남은 과제를 완료해주세요. 완료 또는 제출 확인 화면이 보여야 정상 반영됩니다."
+        ].join("\n")
+      : "모듈 미완료자가 없습니다.";
+    try {
+      await navigator.clipboard.writeText(text);
+      setNotice("모듈 미완료 안내문을 클립보드에 복사했습니다.");
+    } catch {
+      setNotice(text);
+    }
+  };
+
+  const copyModuleReviewMessage = async () => {
+    if (!currentProgram) return;
+    const rows = moduleReviewRows.filter((row) => row.status === "needs_review");
+    const lines = rows.map((row) => {
+      const memo = row.progress?.outputData?.trim() || row.progress?.inputData?.trim() || "";
+      return `${row.team?.name || "미배정"} / ${row.participant.name || row.participant.code} / ${row.module.order}. ${row.module.title}${memo ? ` / 메모: ${memo.slice(0, 80)}` : ""}`;
+    });
+    const text = lines.length
+      ? [
+          `[${currentProgram.name}] 모듈 검토 필요 목록`,
+          `운영진 확인이 필요한 모듈 기록 ${lines.length}건입니다.`,
+          "",
+          "대상:",
+          ...lines.map((line) => `- ${line}`),
+          "",
+          "운영 안내:",
+          "내부직원 포털의 모듈검토 탭에서 각 항목의 운영진 코멘트와 검토 상태를 저장해주세요."
+        ].join("\n")
+      : "검토 필요한 모듈 기록이 없습니다.";
+    try {
+      await navigator.clipboard.writeText(text);
+      setNotice("모듈 검토 필요 목록을 클립보드에 복사했습니다.");
+    } catch {
+      setNotice(text);
+    }
+  };
+
   const copyReportSummary = async () => {
     try {
       await navigator.clipboard.writeText(reportPackText);
@@ -2310,13 +2373,29 @@ export default function InternalPortal() {
                   교육생이 작성한 모듈 입력/결과 메모를 확인하고, 운영진 코멘트와 상태를 저장합니다.
                 </p>
               </div>
-              <button
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-bold"
-                onClick={downloadModuleProgressCsv}
-                type="button"
-              >
-                모듈 CSV 다운로드
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-bold text-amber-900"
+                  onClick={copyModuleIncompleteMessage}
+                  type="button"
+                >
+                  미완료 안내문 복사
+                </button>
+                <button
+                  className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-800"
+                  onClick={copyModuleReviewMessage}
+                  type="button"
+                >
+                  검토 필요 목록 복사
+                </button>
+                <button
+                  className="rounded-md border border-gray-300 px-4 py-2 text-sm font-bold"
+                  onClick={downloadModuleProgressCsv}
+                  type="button"
+                >
+                  모듈 CSV 다운로드
+                </button>
+              </div>
             </div>
             <div className="mt-4 grid gap-3 md:grid-cols-4">
               <MetricCard
