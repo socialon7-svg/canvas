@@ -78,6 +78,7 @@ export function defaultOperationsState(): HighViewOperationsState {
         id: uuid("participant"),
         programId,
         code: "P-DEMO1",
+        joinToken: uuid("join"),
         name: "김민지",
         email: "minji@example.com",
         phone: "",
@@ -92,6 +93,7 @@ export function defaultOperationsState(): HighViewOperationsState {
         id: uuid("participant"),
         programId,
         code: "P-DEMO2",
+        joinToken: uuid("join"),
         name: "이준호",
         email: "junho@example.com",
         phone: "",
@@ -106,6 +108,7 @@ export function defaultOperationsState(): HighViewOperationsState {
         id: uuid("participant"),
         programId,
         code: "P-DEMO3",
+        joinToken: uuid("join"),
         name: "",
         email: "",
         phone: "",
@@ -140,6 +143,7 @@ export function normalizeOperationsState(value: unknown): HighViewOperationsStat
     participants: Array.isArray(state.participants)
       ? state.participants.map((participant) => ({
           ...participant,
+          joinToken: participant.joinToken || uuid("join"),
           moduleProgress:
             participant.moduleProgress && typeof participant.moduleProgress === "object"
               ? participant.moduleProgress
@@ -160,7 +164,9 @@ export function loadOperationsState() {
     return initial;
   }
   try {
-    return normalizeOperationsState(JSON.parse(raw));
+    const normalized = normalizeOperationsState(JSON.parse(raw));
+    saveOperationsState(normalized);
+    return normalized;
   } catch {
     const initial = defaultOperationsState();
     saveOperationsState(initial);
@@ -203,6 +209,7 @@ export function createParticipant(programId: string, school = "") {
     id: uuid("participant"),
     programId,
     code: makeCode("P"),
+    joinToken: uuid("join"),
     name: "",
     email: "",
     phone: "",

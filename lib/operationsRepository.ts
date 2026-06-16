@@ -113,6 +113,14 @@ function throwIfError(error: unknown) {
   }
 }
 
+function requireData<T>(data: T | null, message: string) {
+  if (!data) {
+    throw new Error(message);
+  }
+
+  return data;
+}
+
 export async function listPrograms() {
   const supabase = getClient();
   const { data, error } = await supabase
@@ -123,6 +131,30 @@ export async function listPrograms() {
 
   throwIfError(error);
   return data ?? [];
+}
+
+export async function getProgram(programId: string) {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from("programs")
+    .select("*")
+    .eq("id", programId)
+    .maybeSingle<OperationsProgramRow>();
+
+  throwIfError(error);
+  return data ?? null;
+}
+
+export async function getProgramByCode(programCode: string) {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from("programs")
+    .select("*")
+    .eq("program_code", programCode)
+    .maybeSingle<OperationsProgramRow>();
+
+  throwIfError(error);
+  return data ?? null;
 }
 
 export async function createProgram(input: {
@@ -150,7 +182,7 @@ export async function createProgram(input: {
     .single<OperationsProgramRow>();
 
   throwIfError(error);
-  return data;
+  return requireData(data, "프로그램 생성 결과가 없습니다.");
 }
 
 export async function listParticipants(programId: string) {
@@ -164,6 +196,19 @@ export async function listParticipants(programId: string) {
 
   throwIfError(error);
   return data ?? [];
+}
+
+export async function getParticipantByCode(programId: string, participantCode: string) {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from("participants")
+    .select("*")
+    .eq("program_id", programId)
+    .eq("participant_code", participantCode)
+    .maybeSingle<OperationsParticipantRow>();
+
+  throwIfError(error);
+  return data ?? null;
 }
 
 export async function createParticipant(input: {
@@ -195,7 +240,45 @@ export async function createParticipant(input: {
     .single<OperationsParticipantRow>();
 
   throwIfError(error);
-  return data;
+  return requireData(data, "참여자 생성 결과가 없습니다.");
+}
+
+export async function createParticipants(
+  inputs: Array<{
+    programId: string;
+    teamId?: string | null;
+    participantCode: string;
+    name?: string;
+    email?: string;
+    phone?: string;
+    school?: string;
+    major?: string;
+    role?: string;
+  }>
+) {
+  if (!inputs.length) return [];
+
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from("participants")
+    .insert(
+      inputs.map((input) => ({
+        program_id: input.programId,
+        team_id: input.teamId ?? null,
+        participant_code: input.participantCode,
+        name: input.name ?? input.participantCode,
+        email: input.email ?? "",
+        phone: input.phone ?? "",
+        school: input.school ?? "",
+        major: input.major ?? "",
+        role: input.role ?? "participant"
+      }))
+    )
+    .select("*")
+    .returns<OperationsParticipantRow[]>();
+
+  throwIfError(error);
+  return data ?? [];
 }
 
 export async function getParticipantByJoinToken(joinToken: string) {
@@ -223,7 +306,34 @@ export async function touchParticipantSeen(participantId: string, joined = false
     .single<OperationsParticipantRow>();
 
   throwIfError(error);
-  return data;
+  return requireData(data, "참여자 접속 상태 저장 결과가 없습니다.");
+}
+
+export async function listTeams(programId: string) {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from("teams")
+    .select("*")
+    .eq("program_id", programId)
+    .order("created_at", { ascending: true })
+    .returns<OperationsTeamRow[]>();
+
+  throwIfError(error);
+  return data ?? [];
+}
+
+export async function getTeam(teamId: string | null | undefined) {
+  if (!teamId) return null;
+
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from("teams")
+    .select("*")
+    .eq("id", teamId)
+    .maybeSingle<OperationsTeamRow>();
+
+  throwIfError(error);
+  return data ?? null;
 }
 
 export async function listProgramModules(programId: string) {
@@ -278,7 +388,7 @@ export async function upsertModuleDraft(input: {
     .single<ModuleDraftRow>();
 
   throwIfError(error);
-  return data;
+  return requireData(data, "모듈 draft 저장 결과가 없습니다.");
 }
 
 export async function upsertModuleProgress(input: {
@@ -314,7 +424,7 @@ export async function upsertModuleProgress(input: {
     .single();
 
   throwIfError(error);
-  return data;
+  return requireData(data, "모듈 진행 상태 저장 결과가 없습니다.");
 }
 
 export async function createModuleSubmission(input: {
@@ -346,7 +456,7 @@ export async function createModuleSubmission(input: {
     .single<ModuleSubmissionRow>();
 
   throwIfError(error);
-  return data;
+  return requireData(data, "모듈 제출 저장 결과가 없습니다.");
 }
 
 export async function listModuleSubmissions(filters: { programId?: string; moduleSlug?: string; status?: string }) {
@@ -387,5 +497,5 @@ export async function createFeedback(input: {
     .single<FeedbackRow>();
 
   throwIfError(error);
-  return data;
+  return requireData(data, "피드백 저장 결과가 없습니다.");
 }

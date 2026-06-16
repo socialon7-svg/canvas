@@ -150,6 +150,7 @@ export interface HighViewParticipant {
   id: string;
   programId: string;
   code: string;
+  joinToken?: string;
   name: string;
   email: string;
   phone: string;

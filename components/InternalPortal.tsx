@@ -7,11 +7,13 @@ import StatusBadge from "@/components/StatusBadge";
 import type {
   FeedbackStatus,
   HighViewOperationsState,
+  HighViewParticipant,
   LeanCanvasSubmission,
   ParticipantModuleProgressStatus,
   ProgramStatus
 } from "@/lib/types";
 import { deleteSubmission, loadSubmissions } from "@/lib/storage";
+import { getParticipantJoinUrl } from "@/lib/joinLink";
 import {
   DEFAULT_STARTUP_MODULE_IDS,
   getProgramModuleIds,
@@ -170,6 +172,10 @@ function downloadCsv(filename: string, rows: Array<Array<unknown>>) {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function getBrowserOrigin() {
+  return typeof window === "undefined" ? "" : window.location.origin;
 }
 
 export default function InternalPortal() {
@@ -812,9 +818,13 @@ export default function InternalPortal() {
     if (!currentProgram) return;
     const rows = programStatusRows.filter((row) => row.participantStatus === "invited");
     const participantUrl = typeof window === "undefined" ? "/participant" : `${window.location.origin}/participant`;
+    const origin = getBrowserOrigin();
     const lines = rows.map((row) => {
       const team = programTeams.find((item) => item.id === row.participant.teamId);
-      return `${team?.name || "미배정"} / ${row.participant.name || "미등록"} / 참여자 코드: ${row.participant.code}`;
+      const joinUrl = getParticipantJoinUrl(origin, row.participant.joinToken);
+      return `${team?.name || "미배정"} / ${row.participant.name || "미등록"} / 참여자 코드: ${row.participant.code}${
+        joinUrl ? ` / 입장 링크: ${joinUrl}` : ""
+      }`;
     });
     const text = lines.length
       ? [
@@ -828,12 +838,38 @@ export default function InternalPortal() {
           ...lines.map((line) => `- ${line}`),
           "",
           "안내문:",
-          "참여자 페이지에서 프로그램 코드와 본인 참여자 코드를 입력해 입장해주세요. 입장 후 내 정보가 맞는지 확인하고 배정된 모듈을 진행하면 됩니다."
+          "가능하면 개별 입장 링크를 눌러 바로 입장해주세요. 링크가 열리지 않으면 참여자 페이지에서 프로그램 코드와 본인 참여자 코드를 입력하면 됩니다."
         ].join("\n")
       : "미입장자가 없습니다.";
     try {
       await navigator.clipboard.writeText(text);
       setNotice("참여자 입장 안내문을 클립보드에 복사했습니다.");
+    } catch {
+      setNotice(text);
+    }
+  };
+
+  const copyParticipantJoinLink = async (participant: HighViewParticipant) => {
+    if (!currentProgram) return;
+    const joinUrl = getParticipantJoinUrl(getBrowserOrigin(), participant.joinToken);
+    const text = joinUrl
+      ? [
+          `[${currentProgram.name}] 참여자 입장 링크`,
+          `${participant.name || "참여자"}님, 아래 링크로 바로 입장해주세요.`,
+          joinUrl,
+          "",
+          `링크가 열리지 않으면 프로그램 코드 ${currentProgram.programCode}, 참여자 코드 ${participant.code}로 입장할 수 있습니다.`
+        ].join("\n")
+      : [
+          `[${currentProgram.name}] 참여자 입장 안내`,
+          `참여자 페이지: ${getBrowserOrigin()}/participant`,
+          `프로그램 코드: ${currentProgram.programCode}`,
+          `참여자 코드: ${participant.code}`
+        ].join("\n");
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setNotice(`${participant.name || participant.code} 입장 안내를 클립보드에 복사했습니다.`);
     } catch {
       setNotice(text);
     }
@@ -1866,6 +1902,13 @@ export default function InternalPortal() {
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <button
+                    className="rounded-md border border-blue-200 bg-white px-4 py-2 text-sm font-bold text-blue-800"
+                    onClick={() => copyParticipantJoinLink(selectedParticipantForEdit)}
+                    type="button"
+                  >
+                    입장 링크 복사
+                  </button>
                   <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white" type="submit">
                     참여자 저장
                   </button>
@@ -1950,7 +1993,7 @@ export default function InternalPortal() {
             </section>
           )}
           <section className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
-            <table className="w-full min-w-[1040px] text-left text-sm">
+            <table className="w-full min-w-[1120px] text-left text-sm">
               <thead className="bg-gray-100 text-gray-700">
                 <tr>
                   <th className="px-4 py-3">코드</th>
@@ -1960,6 +2003,7 @@ export default function InternalPortal() {
                   <th className="px-4 py-3">상태</th>
                   <th className="px-4 py-3">제출</th>
                   <th className="px-4 py-3">모듈 진행</th>
+                  <th className="px-4 py-3">입장 링크</th>
                   <th className="px-4 py-3">관리</th>
                 </tr>
               </thead>
@@ -1988,6 +2032,15 @@ export default function InternalPortal() {
                         ) : (
                           "-"
                         )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-800"
+                          onClick={() => copyParticipantJoinLink(participant)}
+                          type="button"
+                        >
+                          링크 복사
+                        </button>
                       </td>
                       <td className="px-4 py-3">
                         <button

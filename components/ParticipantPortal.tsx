@@ -15,6 +15,12 @@ import { getSubmission, saveModuStartupPrefill, saveParticipantPrefill } from "@
 import { getParticipantVisibleModules } from "@/lib/startupModules";
 import { normalizeAccessCode, validateAccessCodeInput } from "@/lib/normalize";
 import {
+  clearParticipantSession,
+  mergeParticipantEntryIntoOperationsState,
+  readParticipantSession,
+  writeParticipantSession
+} from "@/lib/participantSession";
+import {
   defaultOperationsState,
   findFeedback,
   loadOperationsState,
@@ -25,31 +31,11 @@ import {
 
 type ParticipantTab = "home" | "profile" | "write" | "feedback";
 
-const PROGRAM_SESSION_KEY = "highviewlab-participant-program-id";
-const PARTICIPANT_SESSION_KEY = "highviewlab-participant-id";
-
-function readSessionValue(key: string) {
-  try {
-    return window.sessionStorage?.getItem(key) || "";
-  } catch {
-    return "";
-  }
-}
-
-function writeSessionValue(key: string, value: string) {
-  try {
-    window.sessionStorage?.setItem(key, value);
-  } catch {
-    // Session storage can be blocked in embedded browser contexts.
-  }
-}
-
-function removeSessionValue(key: string) {
-  try {
-    window.sessionStorage?.removeItem(key);
-  } catch {
-    // Ignore storage failures.
-  }
+interface ParticipantJoinResponse {
+  program?: HighViewOperationsState["programs"][number];
+  participant?: HighViewParticipant;
+  team?: HighViewOperationsState["teams"][number] | null;
+  error?: string;
 }
 
 const moduleStatusLabels: Record<ParticipantModuleProgressStatus, string> = {
@@ -92,9 +78,10 @@ export default function ParticipantPortal() {
 
   useEffect(() => {
     const loaded = loadOperationsState();
+    const session = readParticipantSession();
     setState(loaded);
-    setProgramId(readSessionValue(PROGRAM_SESSION_KEY));
-    setParticipantId(readSessionValue(PARTICIPANT_SESSION_KEY));
+    setProgramId(session.programId);
+    setParticipantId(session.participantId);
   }, []);
 
   const program = state.programs.find((item) => item.id === programId);
@@ -228,12 +215,22 @@ export default function ParticipantPortal() {
     };
   }, [participant?.latestSubmissionId]);
 
+  useEffect(() => {
+    if (!participant?.id || participant.id.startsWith("participant_")) return;
+
+    fetch(`/api/participants/${participant.id}/last-seen`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ joined: false })
+    }).catch(() => null);
+  }, [participant?.id]);
+
   const persistState = (nextState: HighViewOperationsState) => {
     saveOperationsState(nextState);
     setState({ ...nextState });
   };
 
-  const login = (event: React.FormEvent<HTMLFormElement>) => {
+  const login = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     const validation = validateAccessCodeInput({
@@ -245,6 +242,35 @@ export default function ParticipantPortal() {
       return;
     }
     const { programCode: submittedProgramCode, participantCode: submittedParticipantCode } = validation.value;
+
+    try {
+      const response = await fetch("/api/participants/join", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          programCode: submittedProgramCode,
+          participantCode: submittedParticipantCode
+        })
+      });
+      const data = (await response.json()) as ParticipantJoinResponse;
+
+      if (response.ok && data.program && data.participant) {
+        const nextState = mergeParticipantEntryIntoOperationsState({
+          program: data.program,
+          participant: data.participant,
+          team: data.team || null
+        });
+        setState(nextState);
+        setProgramId(data.program.id);
+        setParticipantId(data.participant.id);
+        setError("");
+        setNotice("입장했습니다. 내 정보를 확인한 뒤 배정된 모듈을 진행하세요.");
+        return;
+      }
+    } catch {
+      // Supabase 운영 모드가 준비되지 않은 경우 아래 localStorage fallback을 사용합니다.
+    }
+
     const matchedProgram = state.programs.find(
       (item) => normalizeAccessCode(item.programCode) === submittedProgramCode
     );
@@ -266,8 +292,7 @@ export default function ParticipantPortal() {
     matchedParticipant.joinedAt ||= new Date().toISOString();
     matchedParticipant.lastSeenAt = new Date().toISOString();
     persistState(state);
-    writeSessionValue(PROGRAM_SESSION_KEY, matchedProgram.id);
-    writeSessionValue(PARTICIPANT_SESSION_KEY, matchedParticipant.id);
+    writeParticipantSession(matchedProgram.id, matchedParticipant.id);
     setProgramId(matchedProgram.id);
     setParticipantId(matchedParticipant.id);
     setError("");
@@ -275,8 +300,7 @@ export default function ParticipantPortal() {
   };
 
   const logout = () => {
-    removeSessionValue(PROGRAM_SESSION_KEY);
-    removeSessionValue(PARTICIPANT_SESSION_KEY);
+    clearParticipantSession();
     setProgramId("");
     setParticipantId("");
     setProgramCode("");
