@@ -488,10 +488,71 @@ export default function InternalPortal() {
   const selectedStatusRow =
     filteredStatusRows.find((row) => row.participant.id === selectedParticipantId) || filteredStatusRows[0];
   const activeSubmissionFilterLabel = submissionFilterLabels[submissionFilter];
+  const moduleReportRows = useMemo(
+    () =>
+      currentProgramVisibleModules.map((module) => {
+        const rows = programParticipants.map((participant) => participant.moduleProgress?.[module.slug]);
+        const completed = rows.filter((progress) => progress?.status === "completed").length;
+        const inProgress = rows.filter((progress) => progress?.status === "in_progress").length;
+        const needsReview = rows.filter((progress) => progress?.status === "needs_review").length;
+        const outputCount = rows.filter((progress) => Boolean(progress?.outputData?.trim())).length;
+        return {
+          module,
+          assigned: programParticipants.length,
+          completed,
+          inProgress,
+          needsReview,
+          outputCount,
+          completionRate: programParticipants.length ? Math.round((completed / programParticipants.length) * 100) : 0
+        };
+      }),
+    [currentProgramVisibleModules, programParticipants]
+  );
+  const moduleReportHighlights = useMemo(
+    () =>
+      moduleReviewRows
+        .filter((row) => row.progress?.outputData?.trim() || row.progress?.adminComment?.trim())
+        .sort((a, b) => {
+          const left = a.status === "completed" ? 0 : a.status === "needs_review" ? 1 : 2;
+          const right = b.status === "completed" ? 0 : b.status === "needs_review" ? 1 : 2;
+          return left - right || a.module.order - b.module.order;
+        })
+        .slice(0, 8),
+    [moduleReviewRows]
+  );
   const reportSummary = useMemo(() => {
     if (!currentProgram) return "";
-    return `${currentProgram.name} 운영 현황: 참여자 ${operationalMetrics.totalParticipants}명 중 ${operationalMetrics.entered}명이 입장했고, ${operationalMetrics.submitted}명이 제출했습니다. 미제출 ${operationalMetrics.notSubmitted}명, 피드백 대기 ${operationalMetrics.feedbackPending}건, PDF 오류 ${operationalMetrics.pdfFailed}건입니다.`;
-  }, [currentProgram, operationalMetrics]);
+    return `${currentProgram.name} 운영 현황: 참여자 ${operationalMetrics.totalParticipants}명 중 ${operationalMetrics.entered}명이 입장했고, ${operationalMetrics.submitted}명이 린캔버스를 제출했습니다. 배정 모듈은 ${currentParticipantVisibleModuleCount}개이며 전체 모듈 완료율은 ${moduleProgressMetrics.completionRate}%입니다. 모듈 검토 필요 ${moduleReviewCounts.needsReview}건, 피드백 대기 ${operationalMetrics.feedbackPending}건, PDF 오류 ${operationalMetrics.pdfFailed}건입니다.`;
+  }, [
+    currentParticipantVisibleModuleCount,
+    currentProgram,
+    moduleProgressMetrics.completionRate,
+    moduleReviewCounts.needsReview,
+    operationalMetrics
+  ]);
+  const reportPackText = useMemo(() => {
+    if (!currentProgram) return reportSummary;
+    const moduleLines = moduleReportRows
+      .slice(0, 10)
+      .map(
+        (row) =>
+          `- ${row.module.order}. ${row.module.title}: 완료 ${row.completed}/${row.assigned}명, 결과메모 ${row.outputCount}건, 검토필요 ${row.needsReview}건`
+      );
+    const highlightLines = moduleReportHighlights.slice(0, 5).map((row) => {
+      const memo = row.progress?.outputData?.trim() || row.progress?.adminComment?.trim() || "";
+      return `- ${row.participant.name || row.participant.code} / ${row.module.title}: ${memo.slice(0, 120)}`;
+    });
+    return [
+      reportSummary,
+      "",
+      "[모듈 수행 요약]",
+      ...(moduleLines.length ? moduleLines : ["- 아직 모듈 수행 기록이 없습니다."]),
+      "",
+      "[대표 결과 메모]",
+      ...(highlightLines.length ? highlightLines : ["- 아직 대표 결과 메모가 없습니다."])
+    ].join("\n");
+  }, [currentProgram, moduleReportHighlights, moduleReportRows, reportSummary]);
+  const moduleReportOutputCount = moduleReportRows.reduce((sum, row) => sum + row.outputCount, 0);
   const operationsFocus: FocusInfo =
     moduleReviewCounts.needsReview > 0
       ? {
@@ -719,10 +780,10 @@ export default function InternalPortal() {
 
   const copyReportSummary = async () => {
     try {
-      await navigator.clipboard.writeText(reportSummary);
-      setNotice("결과보고 요약을 클립보드에 복사했습니다.");
+      await navigator.clipboard.writeText(reportPackText);
+      setNotice("결과보고 요약과 모듈 수행 메모를 클립보드에 복사했습니다.");
     } catch {
-      setNotice(reportSummary);
+      setNotice(reportPackText);
     }
   };
 
@@ -2191,6 +2252,9 @@ export default function InternalPortal() {
               <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-bold" onClick={downloadReportCsv}>
                 결과 CSV 다운로드
               </button>
+              <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-bold" onClick={downloadModuleProgressCsv}>
+                모듈 CSV 다운로드
+              </button>
               <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white" onClick={() => window.print()}>
                 결과보고 인쇄
               </button>
@@ -2203,9 +2267,123 @@ export default function InternalPortal() {
                 <p className="mt-2 text-sm leading-6 text-blue-950">{reportSummary}</p>
               </div>
               <button className="no-print rounded-md border border-blue-200 bg-white px-3 py-2 text-sm font-bold text-blue-800" onClick={copyReportSummary}>
-                요약 복사
+                보고서 팩 복사
               </button>
             </div>
+          </section>
+          <section className="mt-5 grid gap-3 md:grid-cols-4">
+            <MetricCard
+              label="모듈 완료율"
+              value={moduleProgressMetrics.completionRate + "%"}
+              hint={`${moduleProgressMetrics.completedTasks}/${moduleProgressMetrics.totalTasks}개 과제 완료`}
+              tone={moduleProgressMetrics.completionRate >= 80 ? "green" : "amber"}
+            />
+            <MetricCard label="결과 메모" value={moduleReportOutputCount} hint="교육생이 남긴 모듈 결과" tone="blue" />
+            <MetricCard
+              label="검토 필요"
+              value={moduleReviewCounts.needsReview}
+              hint="운영진 확인 대상"
+              tone={moduleReviewCounts.needsReview > 0 ? "amber" : "green"}
+            />
+            <MetricCard label="대표 메모" value={moduleReportHighlights.length} hint="보고서에 바로 옮길 후보" />
+          </section>
+          <section className="mt-5 rounded-lg border border-gray-200 bg-white">
+            <div className="flex flex-col gap-1 border-b border-gray-200 px-4 py-3 md:flex-row md:items-end md:justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-950">모듈 수행 요약</h3>
+                <p className="text-sm text-gray-600">배정된 모듈별 완료율과 검토 필요 건수를 확인합니다.</p>
+              </div>
+              <p className="text-sm font-semibold text-gray-700">배정 모듈 {moduleReportRows.length}개</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] text-left text-sm">
+                <thead className="bg-gray-100 text-gray-700">
+                  <tr>
+                    <th className="px-4 py-3">모듈</th>
+                    <th className="px-4 py-3">완료</th>
+                    <th className="px-4 py-3">진행 중</th>
+                    <th className="px-4 py-3">검토 필요</th>
+                    <th className="px-4 py-3">결과 메모</th>
+                    <th className="px-4 py-3">완료율</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {moduleReportRows.length ? (
+                    moduleReportRows.map((row) => (
+                      <tr key={row.module.slug} className="border-t border-gray-200">
+                        <td className="px-4 py-3">
+                          <span className="block font-semibold text-gray-950">
+                            {row.module.order}. {row.module.title}
+                          </span>
+                          <span className="text-xs text-gray-500">{row.module.category}</span>
+                        </td>
+                        <td className="px-4 py-3 font-semibold text-green-700">
+                          {row.completed}/{row.assigned}
+                        </td>
+                        <td className="px-4 py-3">{row.inProgress}</td>
+                        <td className={`px-4 py-3 font-semibold ${row.needsReview > 0 ? "text-amber-700" : "text-gray-500"}`}>
+                          {row.needsReview}
+                        </td>
+                        <td className="px-4 py-3">{row.outputCount}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-gray-950">{row.completionRate}%</span>
+                            <span className="h-2 w-24 overflow-hidden rounded-full bg-gray-200">
+                              <span className="block h-full rounded-full bg-blue-600" style={{ width: `${row.completionRate}%` }} />
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td className="px-4 py-8 text-center text-gray-500" colSpan={6}>
+                        아직 선택된 모듈이 없습니다. 프로그램 설정에서 모듈을 배정하면 이곳에 요약됩니다.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+          <section className="mt-5 rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <div className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-950">대표 결과 메모</h3>
+                <p className="text-sm text-gray-600">결과보고서에 옮겨 쓸 만한 교육생 결과와 운영진 코멘트입니다.</p>
+              </div>
+              <button className="no-print text-sm font-bold text-blue-700 underline" onClick={copyReportSummary}>
+                전체 복사
+              </button>
+            </div>
+            {moduleReportHighlights.length ? (
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {moduleReportHighlights.map((row) => {
+                  const memo = row.progress?.outputData?.trim() || row.progress?.adminComment?.trim() || "";
+                  return (
+                    <article key={`${row.participant.id}-${row.module.slug}`} className="rounded-lg border border-gray-200 bg-white p-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-bold text-blue-800">
+                          {row.module.order}. {row.module.title}
+                        </span>
+                        <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700">
+                          {moduleProgressStatusLabels[row.status]}
+                        </span>
+                      </div>
+                      <p className="mt-3 text-sm font-bold text-gray-950">
+                        {row.participant.name || row.participant.code}
+                        {row.team ? ` · ${row.team.name}` : ""}
+                      </p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-700">{memo}</p>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="mt-4 rounded-lg border border-dashed border-gray-300 bg-white p-5 text-sm text-gray-500">
+                아직 보고서에 넣을 모듈 결과 메모가 없습니다. 교육생이 모듈을 저장하거나 운영진이 검토 코멘트를 남기면 표시됩니다.
+              </p>
+            )}
           </section>
           <div className="mt-5 overflow-x-auto">
             <table className="w-full min-w-[760px] text-left text-sm">
