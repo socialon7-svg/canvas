@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { emptyParticipantInput, type LeanCanvasDraft, type ParticipantInput } from "@/lib/types";
+import { useDebouncedServerDraft } from "@/hooks/useDebouncedServerDraft";
+import { loadModuleDraft } from "@/lib/moduleDraftClient";
 import {
   clearParticipantPrefill,
   loadDraftSession,
@@ -155,30 +157,62 @@ export default function InputForm({ requireParticipantSession = false }: { requi
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<ParticipantTextFieldKey, string>>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [draftNotice, setDraftNotice] = useState("");
   const [accessChecked, setAccessChecked] = useState(!requireParticipantSession);
+  const serverDraftData = useMemo(() => ({ participant: input }), [input]);
+  const draftSave = useDebouncedServerDraft({
+    programId: input.operation?.programId,
+    participantId: input.operation?.participantId,
+    moduleSlug: "lean-canvas",
+    draftData: serverDraftData,
+    currentStep: 0,
+    enabled: accessChecked,
+    shouldSave: Boolean(input.operation?.programId && input.operation?.participantId),
+    debounceMs: 900
+  });
 
   useEffect(() => {
+    let cancelled = false;
     const prefill = loadParticipantPrefill();
     const draft = loadDraftSession();
 
+    const restoreServerDraft = async (baseInput: ParticipantInput) => {
+      const operation = baseInput.operation;
+      if (!operation?.programId || !operation.participantId) return;
+
+      const savedDraft = await loadModuleDraft<{ participant?: ParticipantInput }>({
+        programId: operation.programId,
+        participantId: operation.participantId,
+        moduleSlug: "lean-canvas"
+      });
+
+      if (cancelled || !savedDraft?.draftData?.participant) return;
+
+      setInput({ ...emptyParticipantInput, ...baseInput, ...savedDraft.draftData.participant });
+      setDraftNotice(
+        `${savedDraft.fallback ? "이 브라우저" : "서버"}에 저장된 작성 중 내용을 불러왔습니다.`
+      );
+    };
+
     if (prefill) {
-      setInput({ ...emptyParticipantInput, ...prefill });
+      const nextInput = { ...emptyParticipantInput, ...prefill };
+      setInput(nextInput);
       setAccessChecked(true);
-      return;
-    }
-
-    if (requireParticipantSession && draft?.participant.operation?.participantCode) {
-      setInput({ ...emptyParticipantInput, ...draft.participant });
+      void restoreServerDraft(nextInput);
+    } else if (requireParticipantSession && draft?.participant.operation?.participantCode) {
+      const nextInput = { ...emptyParticipantInput, ...draft.participant };
+      setInput(nextInput);
       setAccessChecked(true);
-      return;
-    }
-
-    if (requireParticipantSession) {
+      void restoreServerDraft(nextInput);
+    } else if (requireParticipantSession) {
       router.replace("/participant");
-      return;
+    } else {
+      setAccessChecked(true);
     }
 
-    setAccessChecked(true);
+    return () => {
+      cancelled = true;
+    };
   }, [requireParticipantSession, router]);
 
   const updateValue = (key: ParticipantTextFieldKey, value: string) => {
@@ -252,6 +286,7 @@ export default function InputForm({ requireParticipantSession = false }: { requi
             placeholder={field.placeholder}
             value={input[field.key]}
             onChange={(event) => updateValue(field.key, event.target.value)}
+            onBlur={draftSave.saveNow}
           />
         ) : (
           <input
@@ -262,6 +297,7 @@ export default function InputForm({ requireParticipantSession = false }: { requi
             placeholder={field.placeholder}
             value={input[field.key]}
             onChange={(event) => updateValue(field.key, event.target.value)}
+            onBlur={draftSave.saveNow}
           />
         )}
         {hasError ? <span className="mt-1 block text-xs font-semibold text-red-600">{fieldErrors[field.key]}</span> : null}
@@ -293,6 +329,15 @@ export default function InputForm({ requireParticipantSession = false }: { requi
           참여자 포털에서 불러온 정보입니다. 참여자 코드{" "}
           <span className="font-bold">{input.operation.participantCode}</span>, 프로그램 코드{" "}
           <span className="font-bold">{input.operation.programCode}</span>
+          <span className="mt-1 block text-xs">
+            {draftSave.status === "saving"
+              ? "작성 내용을 자동저장 중입니다."
+              : draftSave.status === "saved" && draftSave.lastSavedAt
+                ? `${draftSave.fallbackMode ? "이 브라우저에" : "서버에"} 자동저장됨 · ${new Date(draftSave.lastSavedAt).toLocaleTimeString("ko-KR")}`
+                : draftSave.status === "error"
+                  ? `자동저장 실패: ${draftSave.error}`
+                  : draftNotice || "작성 내용은 자동저장됩니다."}
+          </span>
         </div>
       ) : null}
 

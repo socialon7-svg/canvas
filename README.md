@@ -321,8 +321,20 @@ P0 Phase 2에서 다음 서버 API를 추가했습니다.
 - `GET /api/participants/join-token/[token]`
 - `POST /api/participants/join`
 - `PATCH /api/participants/[id]/last-seen`
+- `GET /api/module-drafts?programId=&participantId=&moduleSlug=`
+- `PUT /api/module-drafts`
 
 프로그램/참여자 관리 API는 관리자 httpOnly cookie 인증을 사용합니다. 참여자 입장 API는 프로그램 코드+참여자 코드 또는 `join_token`으로 참여자를 확인하고, 정상 입장 시 `joined_at`, `last_seen_at`을 갱신합니다. Supabase 운영 테이블이 준비되지 않은 경우 기존 localStorage 데모 흐름으로 fallback합니다.
+
+### 9.5 서버 draft 자동저장
+
+린캔버스와 모두의창업 작성 화면은 참여자 세션이 있을 때 `module_drafts`에 작성 중 데이터를 자동저장합니다.
+
+- 저장 기준: `program_id`, `participant_id`, `module_slug`
+- 저장 타이밍: 입력 변경 후 약 900ms debounce, 입력창 blur 시 즉시 저장
+- 상태 표시: 자동저장 중, 서버에 자동저장됨, 이 브라우저에 자동저장됨, 자동저장 실패
+- fallback: Supabase 환경변수 또는 테이블이 준비되지 않으면 기존 localStorage draft를 사용합니다.
+- 적용 모듈: `lean-canvas`, `modu-startup-application`
 
 ## 10. 현재 MVP의 한계
 

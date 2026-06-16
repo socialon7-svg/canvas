@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useDebouncedServerDraft } from "@/hooks/useDebouncedServerDraft";
+import { loadModuleDraft } from "@/lib/moduleDraftClient";
 import {
   canvasLabels,
   emptyCanvasDraft,
@@ -39,16 +41,64 @@ export default function CanvasEditor() {
   const [submitError, setSubmitError] = useState("");
   const [fallbackNotice, setFallbackNotice] = useState("");
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [serverDraftNotice, setServerDraftNotice] = useState("");
+  const serverDraftData = useMemo<Record<string, unknown>>(() => ({ participant, canvas }), [canvas, participant]);
+  const draftSave = useDebouncedServerDraft({
+    programId: participant.operation?.programId,
+    participantId: participant.operation?.participantId,
+    moduleSlug: "lean-canvas",
+    draftData: serverDraftData,
+    currentStep: 1,
+    enabled: loaded,
+    shouldSave: Boolean(participant.operation?.programId && participant.operation?.participantId),
+    debounceMs: 900
+  });
 
   useEffect(() => {
+    let cancelled = false;
+
     const draft = loadDraftSession();
     if (!draft) {
       router.replace("/participant");
       return;
     }
-    setParticipant(draft.participant);
-    setCanvas(draft.canvas);
+    const loadedDraft = draft;
+    setParticipant(loadedDraft.participant);
+    setCanvas(loadedDraft.canvas);
     setLoaded(true);
+
+    async function restoreServerDraft() {
+      const operation = loadedDraft.participant.operation;
+      if (!operation?.programId || !operation.participantId) return;
+
+      const savedDraft = await loadModuleDraft<{
+        participant?: ParticipantInput;
+        canvas?: LeanCanvasDraft;
+      }>({
+        programId: operation.programId,
+        participantId: operation.participantId,
+        moduleSlug: "lean-canvas"
+      });
+
+      if (cancelled || !savedDraft?.draftData) return;
+
+      if (savedDraft.draftData.participant) {
+        setParticipant({ ...emptyParticipantInput, ...loadedDraft.participant, ...savedDraft.draftData.participant });
+      }
+      if (savedDraft.draftData.canvas) {
+        setCanvas({ ...emptyCanvasDraft, ...loadedDraft.canvas, ...savedDraft.draftData.canvas });
+      }
+      if (savedDraft.draftData.canvas || savedDraft.draftData.participant) {
+        setServerDraftNotice(
+          `${savedDraft.fallback ? "이 브라우저" : "서버"}에 저장된 수정 중 내용을 불러왔습니다.`
+        );
+      }
+    }
+
+    void restoreServerDraft();
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   const updateField = (key: CanvasFieldKey, value: string) => {
@@ -135,7 +185,16 @@ export default function CanvasEditor() {
       <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
         AI 초안은 완성본이 아닙니다. 팀 상황에 맞게 문장을 직접 수정한 뒤 제출하세요.
         <span className="mt-1 block text-xs">
-          {lastSavedAt ? `마지막 임시저장: ${lastSavedAt.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}` : "수정 내용은 입력 즉시 이 브라우저에 임시저장됩니다."}
+          {draftSave.status === "saving"
+            ? "수정 내용을 자동저장 중입니다."
+            : draftSave.status === "saved" && draftSave.lastSavedAt
+              ? `${draftSave.fallbackMode ? "이 브라우저에" : "서버에"} 자동저장됨 · ${new Date(draftSave.lastSavedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}`
+              : draftSave.status === "error"
+                ? `자동저장 실패: ${draftSave.error}`
+                : serverDraftNotice ||
+                  (lastSavedAt
+                    ? `마지막 임시저장: ${lastSavedAt.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}`
+                    : "수정 내용은 입력 즉시 이 브라우저에 임시저장됩니다.")}
         </span>
       </div>
       {submitError ? (
@@ -155,6 +214,7 @@ export default function CanvasEditor() {
               className="min-h-36 w-full resize-y rounded-md border border-gray-300 px-3 py-2 text-sm leading-6 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
               value={toText(canvas[key])}
               onChange={(event) => updateField(key, event.target.value)}
+              onBlur={draftSave.saveNow}
             />
           </label>
         ))}

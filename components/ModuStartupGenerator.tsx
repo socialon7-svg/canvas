@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { ModuStartupDraft, ModuStartupInput, ModuStartupSubmission } from "@/lib/types";
+import { useDebouncedServerDraft } from "@/hooks/useDebouncedServerDraft";
+import { loadModuleDraft } from "@/lib/moduleDraftClient";
 import {
   clearModuStartupPrefill,
   loadModuStartupPrefill,
@@ -292,13 +294,26 @@ export default function ModuStartupGenerator() {
   const [notice, setNotice] = useState("");
 
   const printableText = useMemo(() => (draft ? formatDraft(input, draft) : ""), [draft, input]);
+  const serverDraftData = useMemo<Record<string, unknown>>(() => ({ input, draft }), [draft, input]);
   const currentStepMeta = moduStartupSteps[currentStep];
   const currentStepId: ModuStartupStepId = currentStepMeta.id;
   const progressPercent = Math.round(((currentStep + 1) / moduStartupSteps.length) * 100);
+  const draftSave = useDebouncedServerDraft({
+    programId: input.operation?.programId,
+    participantId: input.operation?.participantId,
+    moduleSlug: "modu-startup-application",
+    draftData: serverDraftData,
+    currentStep,
+    enabled: draftReady && !submittedSubmission,
+    shouldSave: Boolean(input.operation?.programId && input.operation?.participantId && hasMeaningfulInput(input)),
+    debounceMs: 900
+  });
 
   useEffect(() => {
+    let cancelled = false;
     const prefill = loadModuStartupPrefill();
     const savedDraft = loadModuStartupDraftFromLocal();
+    let baseInput = prefill ? { ...initialInput, ...prefill } : initialInput;
 
     if (savedDraft) {
       const resume = window.confirm(
@@ -306,18 +321,53 @@ export default function ModuStartupGenerator() {
       );
 
       if (resume) {
-        setInput((current) => ({ ...current, ...savedDraft.input }));
+        baseInput = { ...baseInput, ...savedDraft.input };
+        setInput(baseInput);
         setLastSavedAt(savedDraft.savedAt);
         setNotice("이전에 작성하던 내용을 불러왔습니다.");
       } else {
         clearModuStartupDraftFromLocal();
-        if (prefill) setInput((current) => ({ ...current, ...prefill }));
+        if (prefill) setInput(baseInput);
       }
     } else if (prefill) {
-      setInput((current) => ({ ...current, ...prefill }));
+      setInput(baseInput);
     }
 
-    setDraftReady(true);
+    async function restoreServerDraft() {
+      const operation = baseInput.operation;
+      if (!operation?.programId || !operation.participantId) {
+        setDraftReady(true);
+        return;
+      }
+
+      const savedServerDraft = await loadModuleDraft<{
+        input?: ModuStartupInput;
+        draft?: ModuStartupDraft | null;
+      }>({
+        programId: operation.programId,
+        participantId: operation.participantId,
+        moduleSlug: "modu-startup-application"
+      });
+
+      if (cancelled) return;
+
+      if (savedServerDraft?.draftData) {
+        if (savedServerDraft.draftData.input) {
+          setInput({ ...baseInput, ...savedServerDraft.draftData.input });
+        }
+        if (savedServerDraft.draftData.draft) {
+          setDraft(savedServerDraft.draftData.draft);
+        }
+        setCurrentStep(savedServerDraft.currentStep);
+        setNotice(`${savedServerDraft.fallback ? "이 브라우저" : "서버"}에 저장된 모두의창업 작성 중 내용을 불러왔습니다.`);
+      }
+      setDraftReady(true);
+    }
+
+    void restoreServerDraft();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -681,7 +731,7 @@ export default function ModuStartupGenerator() {
       ) : null}
 
       <div className="grid gap-5 lg:grid-cols-[420px_1fr]">
-        <section className="no-print rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+        <section className="no-print rounded-lg border border-gray-200 bg-white p-5 shadow-sm" onBlurCapture={draftSave.saveNow}>
           <h2 className="text-lg font-bold text-gray-950">입력 정보</h2>
           <p className="mt-2 text-sm leading-6 text-gray-600">
             내용이 부족해도 생성은 가능하지만, 숫자 2개 이상과 직접 경험 한 문장을 넣으면 결과가 좋아집니다.
@@ -741,9 +791,15 @@ export default function ModuStartupGenerator() {
 
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs text-gray-500">
-                {lastSavedAt
-                  ? `임시저장됨 · ${new Date(lastSavedAt).toLocaleTimeString("ko-KR")}`
-                  : "작성 내용은 이 브라우저에 임시저장됩니다."}
+                {draftSave.status === "saving"
+                  ? "자동저장 중..."
+                  : draftSave.status === "saved" && draftSave.lastSavedAt
+                    ? `${draftSave.fallbackMode ? "이 브라우저에" : "서버에"} 자동저장됨 · ${new Date(draftSave.lastSavedAt).toLocaleTimeString("ko-KR")}`
+                    : draftSave.status === "error"
+                      ? `자동저장 실패: ${draftSave.error}`
+                      : lastSavedAt
+                        ? `임시저장됨 · ${new Date(lastSavedAt).toLocaleTimeString("ko-KR")}`
+                        : "작성 내용은 이 브라우저에 임시저장됩니다."}
               </p>
               <div className="flex gap-2">
                 <button
@@ -767,7 +823,7 @@ export default function ModuStartupGenerator() {
           </div>
         </section>
 
-        <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+        <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm" onBlurCapture={draftSave.saveNow}>
           <div className="no-print flex flex-col gap-3 border-b border-gray-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-semibold text-blue-700">생성 결과 수정</p>
