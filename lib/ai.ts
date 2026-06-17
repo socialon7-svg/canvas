@@ -1,5 +1,7 @@
 import {
   emptyCanvasDraft,
+  type IdeaDiagnosisDraft,
+  type IdeaDiagnosisInput,
   type LeanCanvasDraft,
   type ModuStartupDraft,
   type ModuStartupInput,
@@ -60,6 +62,25 @@ const oneLineIdeaDraftSchema = z.object({
   pitchTip: oneLineIdeaTextSchema,
   nextQuestions: z.array(oneLineIdeaTextSchema).min(2).max(5),
   mentorComment: oneLineIdeaTextSchema
+});
+
+const diagnosisTextSchema = z.string().trim().min(1).max(260);
+const ideaDiagnosisScoreSchema = z.object({
+  score: z.number().int().min(0).max(100),
+  reason: diagnosisTextSchema,
+  improvement: diagnosisTextSchema
+});
+const ideaDiagnosisDraftSchema = z.object({
+  overallScore: z.number().int().min(0).max(100),
+  summary: diagnosisTextSchema,
+  problemFit: ideaDiagnosisScoreSchema,
+  customerFit: ideaDiagnosisScoreSchema,
+  marketFit: ideaDiagnosisScoreSchema,
+  feasibility: ideaDiagnosisScoreSchema,
+  strengths: z.array(diagnosisTextSchema).min(2).max(4),
+  risks: z.array(diagnosisTextSchema).min(2).max(4),
+  nextActions: z.array(diagnosisTextSchema).min(3).max(5),
+  mentorComment: diagnosisTextSchema
 });
 
 function truncateByCharacters(value: string, maxLength: number) {
@@ -145,6 +166,12 @@ function normalizeText(value: unknown, fallback = "추가 작성 필요") {
   if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean).join("\n") || fallback;
   if (typeof value === "string") return value.trim() || fallback;
   return fallback;
+}
+
+function normalizeScore(value: unknown, fallback = 50) {
+  const numeric = typeof value === "number" ? value : Number(String(value ?? "").replace(/[^0-9.-]/g, ""));
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(numeric)));
 }
 
 function getAiConfig() {
@@ -282,6 +309,124 @@ export function createMockOneLineIdeaDraft(input: OneLineIdeaInput): OneLineIdea
     pitchTip: "첫 문장은 고객, 문제, 해결책 순서로 짧게 말하세요.",
     nextQuestions: ["가장 절박한 고객은 누구인가요?", "고객이 지금 쓰는 대안은 무엇인가요?", "첫 검증은 어떻게 할 수 있나요?"],
     mentorComment: "고객 범위를 한 단계 더 좁히면 한 줄 문장이 더 강해집니다."
+  };
+}
+
+export function buildIdeaDiagnosisPrompt(input: IdeaDiagnosisInput) {
+  return [
+    "너는 창업교육 현장에서 초기 아이디어를 사전진단하는 멘토다.",
+    "참가자의 아이디어를 문제성, 고객성, 시장성, 실현가능성 기준으로 진단하라.",
+    "진단은 참가자가 바로 다음 행동을 정할 수 있게 구체적이어야 한다.",
+    "아이디어가 부족해도 합리적으로 가정하되, 참가자 입력과 무관한 새 아이템으로 바꾸지 마라.",
+    "반드시 JSON만 반환하라. 설명, 마크다운, 코드블록, 주석은 포함하지 마라.",
+    "점수는 0~100 정수로 작성하라. 너무 후하게 주지 말고 초기 아이디어 기준으로 현실적으로 평가하라.",
+    "reason은 왜 그 점수인지, improvement는 무엇을 보완해야 하는지 한 문장으로 작성하라.",
+    "strengths, risks, nextActions는 발표와 멘토링에서 바로 쓸 수 있는 짧은 문장으로 작성하라.",
+    "",
+    "반환 JSON 형식:",
+    JSON.stringify(
+      {
+        overallScore: 68,
+        summary: "아이디어의 현재 진단 요약",
+        problemFit: { score: 70, reason: "문제성 판단 이유", improvement: "문제성 보완 액션" },
+        customerFit: { score: 65, reason: "고객성 판단 이유", improvement: "고객성 보완 액션" },
+        marketFit: { score: 60, reason: "시장성 판단 이유", improvement: "시장성 보완 액션" },
+        feasibility: { score: 72, reason: "실현가능성 판단 이유", improvement: "실현가능성 보완 액션" },
+        strengths: ["강점 1", "강점 2"],
+        risks: ["위험요소 1", "위험요소 2"],
+        nextActions: ["다음 행동 1", "다음 행동 2", "다음 행동 3"],
+        mentorComment: "멘토 코멘트"
+      },
+      null,
+      2
+    ),
+    "",
+    "참가자 입력:",
+    JSON.stringify(input, null, 2)
+  ].join("\n");
+}
+
+function normalizeDiagnosisScore(
+  value: unknown,
+  fallback: { score: number; reason: string; improvement: string }
+): IdeaDiagnosisDraft["problemFit"] {
+  const source = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  return {
+    score: normalizeScore(source.score, fallback.score),
+    reason: truncateByCharacters(normalizeText(source.reason, fallback.reason), 220),
+    improvement: truncateByCharacters(normalizeText(source.improvement, fallback.improvement), 220)
+  };
+}
+
+export function parseIdeaDiagnosisJson(raw: string): IdeaDiagnosisDraft {
+  const jsonText = extractJsonObject(raw);
+  const parsed = JSON.parse(jsonText) as Partial<Record<keyof IdeaDiagnosisDraft, unknown>>;
+  const draft: IdeaDiagnosisDraft = {
+    overallScore: normalizeScore(parsed.overallScore, 60),
+    summary: truncateByCharacters(normalizeText(parsed.summary, "초기 아이디어로서 고객과 문제를 더 구체화해야 합니다."), 220),
+    problemFit: normalizeDiagnosisScore(parsed.problemFit, {
+      score: 60,
+      reason: "문제가 존재하지만 구체적인 상황이 더 필요합니다.",
+      improvement: "고객이 언제, 왜 불편한지 사례를 3개 모으세요."
+    }),
+    customerFit: normalizeDiagnosisScore(parsed.customerFit, {
+      score: 60,
+      reason: "고객군이 보이지만 범위가 넓습니다.",
+      improvement: "가장 먼저 만날 고객을 한 문장으로 좁히세요."
+    }),
+    marketFit: normalizeDiagnosisScore(parsed.marketFit, {
+      score: 55,
+      reason: "시장 가능성은 있으나 규모와 대안 확인이 필요합니다.",
+      improvement: "현재 대안과 지불 의사를 빠르게 확인하세요."
+    }),
+    feasibility: normalizeDiagnosisScore(parsed.feasibility, {
+      score: 65,
+      reason: "작게 실험할 수 있는 가능성이 있습니다.",
+      improvement: "1주 안에 만들 수 있는 MVP 범위를 정하세요."
+    }),
+    strengths: normalizeStringArray(parsed.strengths, ["문제 접근이 쉽습니다.", "초기 실험을 설계하기 좋습니다."], 4, 180),
+    risks: normalizeStringArray(parsed.risks, ["고객 범위가 넓을 수 있습니다.", "실제 지불 의사 확인이 필요합니다."], 4, 180),
+    nextActions: normalizeStringArray(
+      parsed.nextActions,
+      ["핵심 고객 5명을 인터뷰하세요.", "현재 대안을 조사하세요.", "1주 MVP 실험을 정하세요."],
+      5,
+      180
+    ),
+    mentorComment: truncateByCharacters(normalizeText(parsed.mentorComment, "고객과 문제를 더 좁히면 다음 단계로 진행하기 좋습니다."), 220)
+  };
+
+  return ideaDiagnosisDraftSchema.parse(draft);
+}
+
+export function createMockIdeaDiagnosisDraft(input: IdeaDiagnosisInput): IdeaDiagnosisDraft {
+  const idea = input.oneLineIdea || input.ideaMemo || "초기 창업 아이디어";
+  return {
+    overallScore: 64,
+    summary: `${truncateByCharacters(idea, 42)}은 초기 검증 가능성이 있으나 고객 범위와 지불 의사 확인이 필요합니다.`,
+    problemFit: {
+      score: 68,
+      reason: "불편 상황은 보이지만 빈도와 강도가 아직 명확하지 않습니다.",
+      improvement: "고객이 겪은 최근 사례와 손실 시간을 숫자로 모으세요."
+    },
+    customerFit: {
+      score: 62,
+      reason: "대상 고객은 보이지만 첫 고객군이 넓게 잡혀 있습니다.",
+      improvement: "가장 절박한 고객 1명을 직업, 상황, 행동 기준으로 좁히세요."
+    },
+    marketFit: {
+      score: 58,
+      reason: "수요 가능성은 있으나 대안과 지불 방식 확인이 필요합니다.",
+      improvement: "유사 서비스 3개와 고객이 현재 쓰는 대안을 비교하세요."
+    },
+    feasibility: {
+      score: 70,
+      reason: "작은 실험으로 검증할 수 있는 형태입니다.",
+      improvement: "첫 주에는 자동화 전체보다 핵심 결과물 1개만 만들어 테스트하세요."
+    },
+    strengths: ["문제 상황을 설명하기 쉽습니다.", "작은 MVP로 빠르게 검증할 수 있습니다."],
+    risks: ["고객군이 넓으면 메시지가 흐려질 수 있습니다.", "실제 지불 의사를 확인하지 않으면 취미 수준으로 남을 수 있습니다."],
+    nextActions: ["핵심 고객 5명을 인터뷰하세요.", "현재 대안과 가격을 조사하세요.", "1주 안에 보여줄 MVP 결과물을 정하세요."],
+    mentorComment: "지금은 아이디어보다 고객의 반복 문제를 더 좁히는 것이 우선입니다."
   };
 }
 
@@ -519,6 +664,37 @@ export async function generateOneLineIdeaDraft(input: OneLineIdeaInput): Promise
     });
 
     return parseOneLineIdeaJson(content);
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");
+    }
+    throw error;
+  }
+}
+
+export async function generateIdeaDiagnosisDraft(input: IdeaDiagnosisInput): Promise<IdeaDiagnosisDraft> {
+  if (process.env.AI_MOCK === "true") {
+    return createMockIdeaDiagnosisDraft(input);
+  }
+
+  try {
+    const content = await fetchChatCompletionContent({
+      temperature: 0.25,
+      timeoutMs: 50000,
+      messages: [
+        {
+          role: "system",
+          content:
+            "너는 JSON만 반환하는 창업교육 아이디어 사전진단 멘토다. 설명, 마크다운, 코드블록 없이 JSON 객체만 반환한다."
+        },
+        {
+          role: "user",
+          content: buildIdeaDiagnosisPrompt(input)
+        }
+      ]
+    });
+
+    return parseIdeaDiagnosisJson(content);
   } catch (error) {
     if (isAbortError(error)) {
       throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");

@@ -44,6 +44,34 @@ export interface OneLineIdeaDraft {
   mentorComment: string;
 }
 
+export interface IdeaDiagnosisInput {
+  programName: string;
+  teamName: string;
+  participantName: string;
+  ideaMemo: string;
+  oneLineIdea?: string;
+  operation?: ParticipantOperationContext;
+}
+
+export interface IdeaDiagnosisScore {
+  score: number;
+  reason: string;
+  improvement: string;
+}
+
+export interface IdeaDiagnosisDraft {
+  overallScore: number;
+  summary: string;
+  problemFit: IdeaDiagnosisScore;
+  customerFit: IdeaDiagnosisScore;
+  marketFit: IdeaDiagnosisScore;
+  feasibility: IdeaDiagnosisScore;
+  strengths: string[];
+  risks: string[];
+  nextActions: string[];
+  mentorComment: string;
+}
+
 export interface LeanCanvasDraft {
   problem: string[];
   existingAlternatives: string[];
