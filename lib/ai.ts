@@ -11,6 +11,7 @@ import { z } from "zod";
 
 const requiredKeys = Object.keys(emptyCanvasDraft) as Array<keyof LeanCanvasDraft>;
 const DEFAULT_AI_MODEL = "gpt-5.4";
+const DEFAULT_NVIDIA_FALLBACK_MODEL = "openai/gpt-oss-120b";
 const MAX_CANVAS_BULLET_LENGTH = 35;
 
 const canvasBulletArraySchema = z.array(z.string().trim().min(1).max(MAX_CANVAS_BULLET_LENGTH)).min(1).max(3);
@@ -150,12 +151,24 @@ function getAiConfig() {
   const apiKey = process.env.AI_API_KEY;
   const baseUrl = process.env.AI_BASE_URL;
   const model = process.env.AI_MODEL_NAME || DEFAULT_AI_MODEL;
+  const fallbackModel =
+    process.env.AI_FALLBACK_MODEL_NAME ||
+    (baseUrl?.includes("integrate.api.nvidia.com") ? DEFAULT_NVIDIA_FALLBACK_MODEL : "");
 
   if (!apiKey || !baseUrl) {
     throw new Error(".env.local에 AI_API_KEY, AI_BASE_URL을 설정하세요.");
   }
 
-  return { apiKey, baseUrl, model };
+  return { apiKey, baseUrl, model, fallbackModel };
+}
+
+function getChatCompletionsUrl(baseUrl: string) {
+  const trimmed = baseUrl.replace(/\/$/, "");
+  return trimmed.endsWith("/chat/completions") ? trimmed : `${trimmed}/chat/completions`;
+}
+
+function getModelCandidates(model: string, fallbackModel?: string) {
+  return [model, fallbackModel].filter((item, index, items): item is string => Boolean(item) && items.indexOf(item) === index);
 }
 
 export function parseCanvasJson(raw: string): LeanCanvasDraft {
@@ -193,6 +206,8 @@ export function buildOneLineIdeaPrompt(input: OneLineIdeaInput) {
   return [
     "너는 창업교육 현장에서 참가자의 아이디어를 발표 가능한 한 줄 문장으로 다듬는 멘토다.",
     "참가자가 적은 메모가 부족해도 합리적인 가정을 사용해 구체적인 초안을 만들어라.",
+    "단, 참가자 입력에 없는 전혀 다른 산업, 고객, 제품으로 바꾸지 마라.",
+    "rawIdea에 포함된 핵심 명사와 의도는 반드시 결과에 반영하라.",
     "반드시 JSON만 반환하라. 설명, 마크다운, 코드블록, 주석은 포함하지 마라.",
     "문장은 한국어로 작성하고, 추상적인 표현보다 고객, 문제, 해결 방식이 드러나게 써라.",
     "primaryOneLine은 '무엇을 누구에게 어떻게 제공하는지'가 한 문장에 보이게 60자 안팎으로 작성하라.",
@@ -385,54 +400,92 @@ function isAbortError(error: unknown) {
   return error instanceof Error && error.name === "AbortError";
 }
 
+async function fetchChatCompletionContent(input: {
+  messages: Array<{ role: "system" | "user"; content: string }>;
+  temperature: number;
+  timeoutMs: number;
+}) {
+  const { apiKey, baseUrl, model, fallbackModel } = getAiConfig();
+  const endpoint = getChatCompletionsUrl(baseUrl);
+  const modelCandidates = getModelCandidates(model, fallbackModel);
+  let lastError: Error | undefined;
+
+  for (const currentModel of modelCandidates) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), input.timeoutMs);
+
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: currentModel,
+          temperature: input.temperature,
+          response_format: { type: "json_object" },
+          messages: input.messages
+        })
+      });
+
+      if (!response.ok) {
+        const detail = await response.text();
+        const message = `AI API 호출 실패: ${response.status} ${detail || response.statusText}`;
+
+        if (response.status === 404 && currentModel === model && modelCandidates.length > 1) {
+          lastError = new Error(message);
+          continue;
+        }
+
+        throw new Error(message);
+      }
+
+      const data = (await response.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      const content = data.choices?.[0]?.message?.content;
+      if (!content) {
+        throw new Error("AI 응답 본문이 비어 있습니다.");
+      }
+
+      return content;
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");
+      }
+      lastError = error instanceof Error ? error : new Error("AI 호출 중 알 수 없는 오류가 발생했습니다.");
+      throw lastError;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  throw lastError || new Error("AI 호출에 실패했습니다.");
+}
+
 export async function generateLeanCanvas(input: ParticipantInput): Promise<LeanCanvasDraft> {
   if (process.env.AI_MOCK === "true") {
     return createMockCanvas(input);
   }
 
-  const { apiKey, baseUrl, model } = getAiConfig();
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45000);
-
   try {
-    const response = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.3,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content:
-              "너는 JSON만 반환하는 창업교육 린캔버스 작성 도우미다. 설명, 마크다운, 코드블록 없이 JSON만 반환한다."
-          },
-          {
-            role: "user",
-            content: buildLeanCanvasPrompt(input)
-          }
-        ]
-      })
+    const content = await fetchChatCompletionContent({
+      temperature: 0.3,
+      timeoutMs: 45000,
+      messages: [
+        {
+          role: "system",
+          content:
+            "너는 JSON만 반환하는 창업교육 린캔버스 작성 도우미다. 설명, 마크다운, 코드블록 없이 JSON만 반환한다."
+        },
+        {
+          role: "user",
+          content: buildLeanCanvasPrompt(input)
+        }
+      ]
     });
-
-    if (!response.ok) {
-      const detail = await response.text();
-      throw new Error(`AI API 호출 실패: ${response.status} ${detail}`);
-    }
-
-    const data = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) {
-      throw new Error("AI 응답 본문이 비어 있습니다.");
-    }
 
     return parseCanvasJson(content);
   } catch (error) {
@@ -440,8 +493,6 @@ export async function generateLeanCanvas(input: ParticipantInput): Promise<LeanC
       throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");
     }
     throw error;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
@@ -450,48 +501,22 @@ export async function generateOneLineIdeaDraft(input: OneLineIdeaInput): Promise
     return createMockOneLineIdeaDraft(input);
   }
 
-  const { apiKey, baseUrl, model } = getAiConfig();
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45000);
-
   try {
-    const response = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.35,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content:
-              "너는 JSON만 반환하는 창업교육 아이디어 문장화 도우미다. 설명, 마크다운, 코드블록 없이 JSON 객체만 반환한다."
-          },
-          {
-            role: "user",
-            content: buildOneLineIdeaPrompt(input)
-          }
-        ]
-      })
+    const content = await fetchChatCompletionContent({
+      temperature: 0.35,
+      timeoutMs: 45000,
+      messages: [
+        {
+          role: "system",
+          content:
+            "너는 JSON만 반환하는 창업교육 아이디어 문장화 도우미다. 설명, 마크다운, 코드블록 없이 JSON 객체만 반환한다."
+        },
+        {
+          role: "user",
+          content: buildOneLineIdeaPrompt(input)
+        }
+      ]
     });
-
-    if (!response.ok) {
-      const detail = await response.text();
-      throw new Error(`AI API 호출 실패: ${response.status} ${detail}`);
-    }
-
-    const data = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) {
-      throw new Error("AI 응답 본문이 비어 있습니다.");
-    }
 
     return parseOneLineIdeaJson(content);
   } catch (error) {
@@ -499,8 +524,6 @@ export async function generateOneLineIdeaDraft(input: OneLineIdeaInput): Promise
       throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");
     }
     throw error;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
@@ -509,48 +532,22 @@ export async function generateModuStartupDraft(input: ModuStartupInput): Promise
     return createMockModuStartupDraft(input);
   }
 
-  const { apiKey, baseUrl, model } = getAiConfig();
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60000);
-
   try {
-    const response = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.35,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content:
-              "너는 JSON만 반환하는 창업지원사업 신청서 초안 작성 도우미다. 설명, 마크다운, 코드블록 없이 JSON만 반환한다."
-          },
-          {
-            role: "user",
-            content: buildModuStartupPrompt(input)
-          }
-        ]
-      })
+    const content = await fetchChatCompletionContent({
+      temperature: 0.35,
+      timeoutMs: 60000,
+      messages: [
+        {
+          role: "system",
+          content:
+            "너는 JSON만 반환하는 창업지원사업 신청서 초안 작성 도우미다. 설명, 마크다운, 코드블록 없이 JSON만 반환한다."
+        },
+        {
+          role: "user",
+          content: buildModuStartupPrompt(input)
+        }
+      ]
     });
-
-    if (!response.ok) {
-      const detail = await response.text();
-      throw new Error(`AI API 호출 실패: ${response.status} ${detail}`);
-    }
-
-    const data = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) {
-      throw new Error("AI 응답 본문이 비어 있습니다.");
-    }
 
     return parseModuStartupJson(content);
   } catch (error) {
@@ -558,7 +555,5 @@ export async function generateModuStartupDraft(input: ModuStartupInput): Promise
       throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");
     }
     throw error;
-  } finally {
-    clearTimeout(timeout);
   }
 }
