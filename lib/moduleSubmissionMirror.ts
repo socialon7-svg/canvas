@@ -1,5 +1,6 @@
 import {
   createModuleSubmission,
+  updateModuleSubmissionPdfStatusBySource,
   upsertModuleProgress,
   type ModuleSubmissionRow
 } from "@/lib/operationsRepository";
@@ -8,7 +9,8 @@ import type {
   ModuStartupDraft,
   ModuStartupInput,
   ParticipantInput,
-  ParticipantOperationContext
+  ParticipantOperationContext,
+  PdfStatus
 } from "@/lib/types";
 
 type MirrorResult =
@@ -130,5 +132,23 @@ export async function mirrorModuStartupSubmission(input: {
   } catch (error) {
     console.warn("[module-submission-mirror] modu startup sync failed", getErrorMessage(error));
     return { ok: false, reason: "mirror_failed", error: getErrorMessage(error) };
+  }
+}
+
+export async function mirrorPdfStatusToModuleSubmission(input: {
+  source: "lean_canvas_submissions" | "modu_startup_submissions";
+  sourceSubmissionId: string;
+  pdfStatus: PdfStatus;
+  pdfErrorMessage?: string;
+}) {
+  try {
+    await updateModuleSubmissionPdfStatusBySource({
+      source: input.source,
+      sourceSubmissionId: input.sourceSubmissionId,
+      pdfStatus: input.pdfStatus,
+      pdfErrorMessage: input.pdfErrorMessage
+    });
+  } catch (error) {
+    console.warn("[module-submission-mirror] pdf status sync failed", getErrorMessage(error));
   }
 }

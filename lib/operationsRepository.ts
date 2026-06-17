@@ -508,6 +508,31 @@ export async function updateModuleSubmissionPdfStatus(input: {
   return requireData(data, "모듈 제출 PDF 상태 저장 결과가 없습니다.");
 }
 
+export async function updateModuleSubmissionPdfStatusBySource(input: {
+  source: string;
+  sourceSubmissionId: string;
+  pdfStatus: "idle" | "generating" | "success" | "failed";
+  pdfErrorMessage?: string;
+}) {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from("module_submissions")
+    .update({
+      pdf_status: input.pdfStatus,
+      pdf_error_message: input.pdfStatus === "failed" ? (input.pdfErrorMessage ?? "") : null,
+      pdf_generated_at: input.pdfStatus === "success" ? new Date().toISOString() : null
+    })
+    .contains("input_data", {
+      source: input.source,
+      sourceSubmissionId: input.sourceSubmissionId
+    })
+    .select("*")
+    .returns<ModuleSubmissionRow[]>();
+
+  throwIfError(error);
+  return data ?? [];
+}
+
 export async function createFeedback(input: {
   programId: string;
   participantId: string;

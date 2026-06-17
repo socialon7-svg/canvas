@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { mirrorPdfStatusToModuleSubmission } from "@/lib/moduleSubmissionMirror";
 import { createSupabaseServerClient, hasSupabaseServerConfig } from "@/lib/supabaseServer";
 import type { ModuStartupDraft, ModuStartupInput, ModuStartupSubmission, PdfStatus } from "@/lib/types";
 
@@ -123,6 +124,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<unkn
       }
       return NextResponse.json({ error: "PDF 상태를 저장하지 못했습니다." }, { status: 404 });
     }
+
+    await mirrorPdfStatusToModuleSubmission({
+      source: "modu_startup_submissions",
+      sourceSubmissionId: id,
+      pdfStatus: body.pdfStatus,
+      pdfErrorMessage: body.pdfErrorMessage
+    });
 
     return NextResponse.json({ submission: toSubmission(data) });
   } catch (error) {
