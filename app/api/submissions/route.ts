@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminUnauthorizedResponse, isAdminRequest } from "@/lib/adminAuth";
+import { mirrorLeanCanvasSubmission } from "@/lib/moduleSubmissionMirror";
 import { createSupabaseServerClient, hasSupabaseServerConfig } from "@/lib/supabaseServer";
 import type { LeanCanvasDraft, LeanCanvasSubmission, ParticipantInput, PdfStatus } from "@/lib/types";
 
@@ -105,7 +106,17 @@ export async function POST(request: Request) {
       return missingTableResponse();
     }
 
-    return NextResponse.json({ submission: toSubmission(data) });
+    const submission = toSubmission(data);
+    const mirror = await mirrorLeanCanvasSubmission({
+      submissionId: submission.id,
+      participant: submission.participant,
+      canvas: submission.canvas
+    });
+
+    return NextResponse.json({
+      submission,
+      moduleSubmissionId: mirror.ok ? mirror.moduleSubmission.id : undefined
+    });
   } catch (error) {
     if (isMissingTableError(error)) {
       return missingTableResponse();
