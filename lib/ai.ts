@@ -1,6 +1,8 @@
 import {
   type CustomerPersonaDraft,
   type CustomerPersonaInput,
+  type CustomerJourneyDraft,
+  type CustomerJourneyInput,
   emptyCanvasDraft,
   type IdeaDiagnosisDraft,
   type IdeaDiagnosisInput,
@@ -99,6 +101,25 @@ const customerPersonaDraftSchema = z.object({
   channels: z.array(personaTextSchema).min(2).max(5),
   interviewQuestions: z.array(personaTextSchema).min(4).max(7),
   mentorComment: personaTextSchema
+});
+
+const journeyTextSchema = z.string().trim().min(1).max(260);
+const customerJourneyStepSchema = z.object({
+  stage: journeyTextSchema,
+  customerAction: journeyTextSchema,
+  touchpoint: journeyTextSchema,
+  emotion: journeyTextSchema,
+  painPoint: journeyTextSchema,
+  opportunity: journeyTextSchema
+});
+const customerJourneyDraftSchema = z.object({
+  personaSummary: journeyTextSchema,
+  journeyScenario: journeyTextSchema,
+  journeySteps: z.array(customerJourneyStepSchema).min(4).max(6),
+  highestPainMoment: journeyTextSchema,
+  serviceOpportunities: z.array(journeyTextSchema).min(3).max(5),
+  validationQuestions: z.array(journeyTextSchema).min(3).max(6),
+  mentorComment: journeyTextSchema
 });
 
 function truncateByCharacters(value: string, maxLength: number) {
@@ -535,6 +556,143 @@ export function createMockCustomerPersonaDraft(input: CustomerPersonaInput): Cus
   };
 }
 
+export function buildCustomerJourneyPrompt(input: CustomerJourneyInput) {
+  return [
+    "너는 창업교육 현장에서 고객 여정지도를 만드는 멘토다.",
+    "고객 페르소나와 아이디어를 바탕으로 고객이 문제를 인식하고 해결책을 선택하기까지의 흐름을 단계별로 정리하라.",
+    "여정은 실제 인터뷰와 발표에 바로 쓸 수 있게 구체적인 행동, 접점, 감정, 고통, 기회로 나누어 작성하라.",
+    "참가자 입력, 한 줄 아이디어, 사전진단 리포트, 페르소나 결과가 있으면 모두 반영하라.",
+    "입력이 부족해도 합리적으로 가정하되, 참가자 입력과 무관한 새 아이템이나 새 고객군으로 바꾸지 마라.",
+    "반드시 JSON만 반환하라. 설명, 마크다운, 코드블록, 주석은 포함하지 마라.",
+    "journeySteps는 4~6단계로 작성하라. 각 단계는 짧고 구체적인 한국어 문장으로 작성하라.",
+    "",
+    "반환 JSON 형식:",
+    JSON.stringify(
+      {
+        personaSummary: "이 여정의 기준이 되는 고객 요약",
+        journeyScenario: "고객이 문제를 겪는 대표 시나리오",
+        journeySteps: [
+          {
+            stage: "문제 인식",
+            customerAction: "고객 행동",
+            touchpoint: "접점",
+            emotion: "감정",
+            painPoint: "고통점",
+            opportunity: "서비스 기회"
+          }
+        ],
+        highestPainMoment: "가장 고통이 큰 순간",
+        serviceOpportunities: ["기회 1", "기회 2", "기회 3"],
+        validationQuestions: ["검증 질문 1", "검증 질문 2", "검증 질문 3"],
+        mentorComment: "멘토 코멘트"
+      },
+      null,
+      2
+    ),
+    "",
+    "참가자 입력:",
+    JSON.stringify(input, null, 2)
+  ].join("\n");
+}
+
+function normalizeJourneySteps(value: unknown): CustomerJourneyDraft["journeySteps"] {
+  const fallback = [
+    {
+      stage: "문제 인식",
+      customerAction: "반복되는 불편을 다시 경험합니다.",
+      touchpoint: "일상 상황",
+      emotion: "답답함",
+      painPoint: "현재 방법으로는 빠르게 해결하기 어렵습니다.",
+      opportunity: "문제 상황을 쉽게 기록하게 합니다."
+    },
+    {
+      stage: "대안 탐색",
+      customerAction: "검색하거나 주변에 물어봅니다.",
+      touchpoint: "검색, 커뮤니티, 지인",
+      emotion: "불확실함",
+      painPoint: "정보가 많지만 내 상황에 맞는지 모르겠습니다.",
+      opportunity: "맞춤형 비교와 추천 근거를 제공합니다."
+    },
+    {
+      stage: "첫 시도",
+      customerAction: "가장 쉬운 방법을 한번 시도합니다.",
+      touchpoint: "모바일 화면 또는 오프라인 접점",
+      emotion: "기대와 의심",
+      painPoint: "사용 전 효과를 확신하기 어렵습니다.",
+      opportunity: "작은 무료 체험이나 결과 예시를 보여줍니다."
+    },
+    {
+      stage: "선택",
+      customerAction: "시간과 비용을 비교해 사용할지 결정합니다.",
+      touchpoint: "가격, 후기, 추천",
+      emotion: "신중함",
+      painPoint: "비용 대비 효과가 불명확합니다.",
+      opportunity: "성과 기준과 후기를 명확히 제시합니다."
+    }
+  ];
+
+  if (!Array.isArray(value)) return fallback;
+  const steps = value
+    .map((item) => {
+      const source = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+      return {
+        stage: truncateByCharacters(normalizeText(source.stage, "단계"), 80),
+        customerAction: truncateByCharacters(normalizeText(source.customerAction, "고객 행동을 정리하세요."), 180),
+        touchpoint: truncateByCharacters(normalizeText(source.touchpoint, "접점"), 120),
+        emotion: truncateByCharacters(normalizeText(source.emotion, "감정"), 80),
+        painPoint: truncateByCharacters(normalizeText(source.painPoint, "고통점"), 180),
+        opportunity: truncateByCharacters(normalizeText(source.opportunity, "서비스 기회"), 180)
+      };
+    })
+    .slice(0, 6);
+
+  return steps.length >= 4 ? steps : fallback;
+}
+
+export function parseCustomerJourneyJson(raw: string): CustomerJourneyDraft {
+  const jsonText = extractJsonObject(raw);
+  const parsed = JSON.parse(jsonText) as Partial<Record<keyof CustomerJourneyDraft, unknown>>;
+  const draft: CustomerJourneyDraft = {
+    personaSummary: truncateByCharacters(normalizeText(parsed.personaSummary, "핵심 고객의 대표 상황을 정리하세요."), 220),
+    journeyScenario: truncateByCharacters(normalizeText(parsed.journeyScenario, "고객이 문제를 겪고 해결책을 찾는 흐름입니다."), 220),
+    journeySteps: normalizeJourneySteps(parsed.journeySteps),
+    highestPainMoment: truncateByCharacters(normalizeText(parsed.highestPainMoment, "대안 탐색 중 확신이 없는 순간"), 220),
+    serviceOpportunities: normalizeStringArray(
+      parsed.serviceOpportunities,
+      ["문제 상황을 빠르게 인식하게 합니다.", "대안을 비교하기 쉽게 만듭니다.", "첫 사용 장벽을 낮춥니다."],
+      5,
+      180
+    ),
+    validationQuestions: normalizeStringArray(
+      parsed.validationQuestions,
+      ["최근 이 문제를 겪은 흐름을 순서대로 말해주세요.", "가장 답답했던 순간은 언제였나요?", "현재 어떤 접점에서 대안을 찾나요?"],
+      6,
+      180
+    ),
+    mentorComment: truncateByCharacters(normalizeText(parsed.mentorComment, "가장 고통이 큰 순간을 기준으로 MVP를 설계하세요."), 220)
+  };
+
+  return customerJourneyDraftSchema.parse(draft);
+}
+
+export function createMockCustomerJourneyDraft(input: CustomerJourneyInput): CustomerJourneyDraft {
+  const persona = input.personaReport || input.oneLineIdea || input.ideaMemo || "핵심 고객";
+  return {
+    personaSummary: `${truncateByCharacters(persona, 70)}를 기준으로 고객 여정을 정리합니다.`,
+    journeyScenario: "고객이 반복 문제를 겪고 현재 대안을 찾아보다가 더 쉬운 해결책을 검토하는 흐름입니다.",
+    journeySteps: normalizeJourneySteps([]),
+    highestPainMoment: "현재 대안을 찾아도 내 상황에 맞는지 확신하지 못하는 순간입니다.",
+    serviceOpportunities: ["문제 상황을 쉽게 기록하게 합니다.", "현재 대안과 차이를 한눈에 보여줍니다.", "첫 사용 결과를 빠르게 경험하게 합니다."],
+    validationQuestions: [
+      "최근 이 문제를 겪은 하루를 순서대로 설명해주세요.",
+      "가장 답답했던 순간은 어느 단계였나요?",
+      "지금은 어떤 채널에서 해결책을 찾나요?",
+      "새 해결책을 써보려면 어떤 증거가 필요할까요?"
+    ],
+    mentorComment: "여정지도는 기능 목록보다 고객의 행동 순서를 먼저 보는 도구입니다."
+  };
+}
+
 const moduStartupKeys: Array<keyof ModuStartupDraft> = [
   "q1IdeaIntro",
   "q2BackgroundStory",
@@ -831,6 +989,37 @@ export async function generateCustomerPersonaDraft(input: CustomerPersonaInput):
     });
 
     return parseCustomerPersonaJson(content);
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");
+    }
+    throw error;
+  }
+}
+
+export async function generateCustomerJourneyDraft(input: CustomerJourneyInput): Promise<CustomerJourneyDraft> {
+  if (process.env.AI_MOCK === "true") {
+    return createMockCustomerJourneyDraft(input);
+  }
+
+  try {
+    const content = await fetchChatCompletionContent({
+      temperature: 0.3,
+      timeoutMs: 50000,
+      messages: [
+        {
+          role: "system",
+          content:
+            "너는 JSON만 반환하는 창업교육 고객 여정지도 멘토다. 설명, 마크다운, 코드블록 없이 JSON 객체만 반환한다."
+        },
+        {
+          role: "user",
+          content: buildCustomerJourneyPrompt(input)
+        }
+      ]
+    });
+
+    return parseCustomerJourneyJson(content);
   } catch (error) {
     if (isAbortError(error)) {
       throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");

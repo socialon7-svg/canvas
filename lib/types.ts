@@ -97,6 +97,36 @@ export interface CustomerPersonaDraft {
   mentorComment: string;
 }
 
+export interface CustomerJourneyInput {
+  programName: string;
+  teamName: string;
+  participantName: string;
+  ideaMemo: string;
+  oneLineIdea?: string;
+  diagnosisReport?: string;
+  personaReport?: string;
+  operation?: ParticipantOperationContext;
+}
+
+export interface CustomerJourneyStep {
+  stage: string;
+  customerAction: string;
+  touchpoint: string;
+  emotion: string;
+  painPoint: string;
+  opportunity: string;
+}
+
+export interface CustomerJourneyDraft {
+  personaSummary: string;
+  journeyScenario: string;
+  journeySteps: CustomerJourneyStep[];
+  highestPainMoment: string;
+  serviceOpportunities: string[];
+  validationQuestions: string[];
+  mentorComment: string;
+}
+
 export interface LeanCanvasDraft {
   problem: string[];
   existingAlternatives: string[];
