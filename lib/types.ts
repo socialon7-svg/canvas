@@ -72,6 +72,31 @@ export interface IdeaDiagnosisDraft {
   mentorComment: string;
 }
 
+export interface CustomerPersonaInput {
+  programName: string;
+  teamName: string;
+  participantName: string;
+  ideaMemo: string;
+  oneLineIdea?: string;
+  diagnosisReport?: string;
+  operation?: ParticipantOperationContext;
+}
+
+export interface CustomerPersonaDraft {
+  personaName: string;
+  personaSummary: string;
+  demographic: string;
+  situation: string;
+  jobToBeDone: string;
+  painPoints: string[];
+  currentAlternatives: string[];
+  buyingTriggers: string[];
+  objections: string[];
+  channels: string[];
+  interviewQuestions: string[];
+  mentorComment: string;
+}
+
 export interface LeanCanvasDraft {
   problem: string[];
   existingAlternatives: string[];

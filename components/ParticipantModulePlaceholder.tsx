@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type {
+  CustomerPersonaDraft,
+  CustomerPersonaInput,
   HighViewOperationsState,
   IdeaDiagnosisDraft,
   IdeaDiagnosisInput,
@@ -22,6 +24,7 @@ const PROGRAM_SESSION_KEY = "highviewlab-participant-program-id";
 const PARTICIPANT_SESSION_KEY = "highviewlab-participant-id";
 const ONE_LINE_IDEA_SLUG = "one-line-idea";
 const IDEA_DIAGNOSIS_SLUG = "idea-diagnosis";
+const CUSTOMER_PERSONA_SLUG = "customer-persona";
 
 function readSessionValue(key: string) {
   try {
@@ -100,6 +103,46 @@ function formatIdeaDiagnosisDraft(draft: IdeaDiagnosisDraft) {
   ].join("\n");
 }
 
+function formatCustomerPersonaDraft(draft: CustomerPersonaDraft) {
+  return [
+    "대표 페르소나",
+    draft.personaName,
+    "",
+    "한 문장 요약",
+    draft.personaSummary,
+    "",
+    "기본 특성",
+    draft.demographic,
+    "",
+    "문제를 겪는 상황",
+    draft.situation,
+    "",
+    "해결하려는 일",
+    draft.jobToBeDone,
+    "",
+    "핵심 고통점",
+    ...draft.painPoints.map((item) => `- ${item}`),
+    "",
+    "현재 대안",
+    ...draft.currentAlternatives.map((item) => `- ${item}`),
+    "",
+    "사용/구매 계기",
+    ...draft.buyingTriggers.map((item) => `- ${item}`),
+    "",
+    "망설이는 이유",
+    ...draft.objections.map((item) => `- ${item}`),
+    "",
+    "만날 수 있는 채널",
+    ...draft.channels.map((item) => `- ${item}`),
+    "",
+    "고객 인터뷰 질문",
+    ...draft.interviewQuestions.map((item) => `- ${item}`),
+    "",
+    "멘토 코멘트",
+    draft.mentorComment
+  ].join("\n");
+}
+
 export default function ParticipantModulePlaceholder({ slug }: { slug: string }) {
   const [state, setState] = useState<HighViewOperationsState>(() => defaultOperationsState());
   const [programId, setProgramId] = useState("");
@@ -134,7 +177,9 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
   const currentStatus = progress?.status || "not_started";
   const isOneLineIdeaModule = startupModule?.slug === ONE_LINE_IDEA_SLUG;
   const isIdeaDiagnosisModule = startupModule?.slug === IDEA_DIAGNOSIS_SLUG;
+  const isCustomerPersonaModule = startupModule?.slug === CUSTOMER_PERSONA_SLUG;
   const oneLineIdeaOutput = participant?.moduleProgress?.[ONE_LINE_IDEA_SLUG]?.outputData || "";
+  const ideaDiagnosisOutput = participant?.moduleProgress?.[IDEA_DIAGNOSIS_SLUG]?.outputData || "";
 
   const saveProgress = async (
     status: ParticipantModuleProgressStatus,
@@ -316,6 +361,62 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
     }
   };
 
+  const generateCustomerPersona = async () => {
+    if (!program || !participant || !startupModule || startupModule.slug !== CUSTOMER_PERSONA_SLUG) return;
+
+    const ideaMemo = inputData.trim();
+    if (!ideaMemo) {
+      setAiError("페르소나를 만들 아이디어 내용을 먼저 입력해주세요.");
+      return;
+    }
+
+    const requestBody: CustomerPersonaInput = {
+      programName: program.name,
+      teamName: team?.name || "",
+      participantName: participant.name || participant.code,
+      ideaMemo,
+      oneLineIdea: oneLineIdeaOutput,
+      diagnosisReport: ideaDiagnosisOutput,
+      operation: {
+        programId: program.id,
+        programCode: program.programCode,
+        programName: program.name,
+        participantId: participant.id,
+        participantCode: participant.code,
+        teamId: team?.id || "",
+        teamName: team?.name || "",
+        role: participant.role
+      }
+    };
+
+    setGenerating(true);
+    setAiError("");
+    setNotice("AI가 핵심 고객 페르소나를 생성하고 있습니다.");
+
+    try {
+      const response = await fetch("/api/generate-customer-persona", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody)
+      });
+      const data = (await response.json()) as { draft?: CustomerPersonaDraft; error?: string };
+
+      if (!response.ok || !data.draft) {
+        throw new Error(data.error || "고객 페르소나를 생성하지 못했습니다.");
+      }
+
+      const formattedOutput = formatCustomerPersonaDraft(data.draft);
+      setOutputData(formattedOutput);
+      await saveProgress("in_progress", { inputData: ideaMemo, outputData: formattedOutput });
+      setNotice("고객 페르소나가 생성되었습니다. 실제 인터뷰 가능한 고객인지 확인한 뒤 완료로 표시하세요.");
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "고객 페르소나 생성 중 오류가 발생했습니다.");
+      setNotice("");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   if (!startupModule) {
     return (
       <main className="mx-auto flex min-h-screen max-w-2xl items-center px-5 py-10">
@@ -368,33 +469,51 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
     ? "아이디어 메모 입력"
     : isIdeaDiagnosisModule
       ? "진단할 아이디어 입력"
-      : "모듈 입력 영역";
+      : isCustomerPersonaModule
+        ? "페르소나를 만들 아이디어 입력"
+        : "모듈 입력 영역";
   const inputDescription = isOneLineIdeaModule
     ? "고객, 문제, 해결 방식이 아직 정리되지 않아도 괜찮습니다. 적어둔 메모를 바탕으로 AI가 발표용 한 줄 초안을 만듭니다."
     : isIdeaDiagnosisModule
       ? "아이디어의 고객, 문제, 해결 방식, 현재 걱정되는 부분을 적어주세요. AI가 문제성·고객성·시장성·실현가능성을 진단합니다."
-      : "아직 AI 생성 기능은 연결하지 않았습니다. 현장에서는 이 영역에 메모를 남기고 진행 상태만 저장할 수 있습니다.";
-  const inputLabel = isOneLineIdeaModule ? "아이디어 메모" : isIdeaDiagnosisModule ? "진단 메모" : "입력 메모";
+      : isCustomerPersonaModule
+        ? "아이디어를 사용할 가능성이 가장 높은 고객을 떠올려 적어주세요. AI가 실제 인터뷰할 수 있는 한 명의 페르소나로 좁혀줍니다."
+        : "아직 AI 생성 기능은 연결하지 않았습니다. 현장에서는 이 영역에 메모를 남기고 진행 상태만 저장할 수 있습니다.";
+  const inputLabel = isOneLineIdeaModule
+    ? "아이디어 메모"
+    : isIdeaDiagnosisModule
+      ? "진단 메모"
+      : isCustomerPersonaModule
+        ? "고객·상황 메모"
+        : "입력 메모";
   const inputPlaceholder = isOneLineIdeaModule
     ? "예: 혼자 사업계획서를 쓰는 예비창업자가 막막할 때 질문에 답하면 한 줄 소개와 핵심 문장을 자동으로 정리해주는 서비스"
     : isIdeaDiagnosisModule
       ? "예: 자취생에게 국밥을 자동으로 조리해주는 기계입니다. 고객은 혼자 사는 대학생이고, 늦은 시간 따뜻한 한 끼를 쉽게 먹지 못하는 문제를 해결하고 싶습니다."
-      : "이 모듈에서 다룰 아이디어, 고객, 문제, 증거 등을 자유롭게 적어두세요.";
+      : isCustomerPersonaModule
+        ? "예: 늦은 밤 편의점 음식으로 끼니를 때우는 자취 대학생. 따뜻한 국밥을 먹고 싶지만 배달비와 조리 시간이 부담스럽다."
+        : "이 모듈에서 다룰 아이디어, 고객, 문제, 증거 등을 자유롭게 적어두세요.";
   const resultTitle = isOneLineIdeaModule
     ? "AI 생성 결과 / 수정 가능"
     : isIdeaDiagnosisModule
       ? "AI 사전진단 리포트 / 수정 가능"
-      : "결과 메모";
+      : isCustomerPersonaModule
+        ? "AI 고객 페르소나 / 수정 가능"
+        : "결과 메모";
   const resultDescription = isOneLineIdeaModule
     ? "생성된 문장은 초안입니다. 발표에 맞게 직접 고친 뒤 결과 저장 또는 완료 표시를 눌러주세요."
     : isIdeaDiagnosisModule
       ? "점수는 초안입니다. 현장 멘토링 내용에 맞게 이유와 다음 액션을 직접 수정할 수 있습니다."
-      : "AI 생성 기능이 붙기 전까지는 직접 정리한 결과를 저장하고 복사할 수 있습니다.";
+      : isCustomerPersonaModule
+        ? "페르소나는 초안입니다. 실제 만날 수 있는 고객으로 더 좁히고, 인터뷰 질문을 현장에 맞게 수정하세요."
+        : "AI 생성 기능이 붙기 전까지는 직접 정리한 결과를 저장하고 복사할 수 있습니다.";
   const resultPlaceholder = isOneLineIdeaModule
     ? "AI 생성 버튼을 누르면 대표 한 줄, 대안 문장, 고객/문제/해결책 정리가 여기에 표시됩니다."
     : isIdeaDiagnosisModule
       ? "AI 진단 버튼을 누르면 종합 점수, 4개 진단 항목, 강점, 위험요소, 다음 액션이 여기에 표시됩니다."
-      : "모듈 수행 결과, 핵심 문장, 다음에 붙일 AI 결과 초안 등을 적어두세요.";
+      : isCustomerPersonaModule
+        ? "AI 생성 버튼을 누르면 대표 페르소나, 고통점, 현재 대안, 사용 계기, 인터뷰 질문이 여기에 표시됩니다."
+        : "모듈 수행 결과, 핵심 문장, 다음에 붙일 AI 결과 초안 등을 적어두세요.";
 
   return (
     <main className="mx-auto max-w-5xl px-5 py-8">
@@ -465,6 +584,16 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
                 type="button"
               >
                 {generating ? "AI 진단 중..." : "AI 사전진단 리포트 생성"}
+              </button>
+            ) : null}
+            {isCustomerPersonaModule ? (
+              <button
+                className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
+                disabled={generating || !inputData.trim()}
+                onClick={generateCustomerPersona}
+                type="button"
+              >
+                {generating ? "AI 생성 중..." : "AI 고객 페르소나 생성"}
               </button>
             ) : null}
             <button

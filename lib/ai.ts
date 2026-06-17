@@ -1,4 +1,6 @@
 import {
+  type CustomerPersonaDraft,
+  type CustomerPersonaInput,
   emptyCanvasDraft,
   type IdeaDiagnosisDraft,
   type IdeaDiagnosisInput,
@@ -81,6 +83,22 @@ const ideaDiagnosisDraftSchema = z.object({
   risks: z.array(diagnosisTextSchema).min(2).max(4),
   nextActions: z.array(diagnosisTextSchema).min(3).max(5),
   mentorComment: diagnosisTextSchema
+});
+
+const personaTextSchema = z.string().trim().min(1).max(260);
+const customerPersonaDraftSchema = z.object({
+  personaName: personaTextSchema,
+  personaSummary: personaTextSchema,
+  demographic: personaTextSchema,
+  situation: personaTextSchema,
+  jobToBeDone: personaTextSchema,
+  painPoints: z.array(personaTextSchema).min(2).max(5),
+  currentAlternatives: z.array(personaTextSchema).min(2).max(5),
+  buyingTriggers: z.array(personaTextSchema).min(2).max(5),
+  objections: z.array(personaTextSchema).min(2).max(5),
+  channels: z.array(personaTextSchema).min(2).max(5),
+  interviewQuestions: z.array(personaTextSchema).min(4).max(7),
+  mentorComment: personaTextSchema
 });
 
 function truncateByCharacters(value: string, maxLength: number) {
@@ -430,6 +448,93 @@ export function createMockIdeaDiagnosisDraft(input: IdeaDiagnosisInput): IdeaDia
   };
 }
 
+export function buildCustomerPersonaPrompt(input: CustomerPersonaInput) {
+  return [
+    "너는 창업교육 현장에서 초기 아이디어의 핵심 고객을 한 명의 구체적인 페르소나로 좁히는 멘토다.",
+    "넓은 고객군을 만들지 말고, 실제 인터뷰할 수 있는 한 사람의 상황으로 정의하라.",
+    "참가자 입력, 한 줄 아이디어, 사전진단 리포트가 있으면 모두 반영하라.",
+    "입력이 부족해도 합리적으로 가정하되, 참가자 입력과 무관한 새 아이템이나 새 고객군으로 바꾸지 마라.",
+    "반드시 JSON만 반환하라. 설명, 마크다운, 코드블록, 주석은 포함하지 마라.",
+    "문장은 한국어로 작성하고, 창업교육 참가자가 바로 고객 인터뷰와 발표에 활용할 수 있게 구체적으로 써라.",
+    "interviewQuestions는 예/아니오 질문보다 경험과 행동을 묻는 질문으로 작성하라.",
+    "",
+    "반환 JSON 형식:",
+    JSON.stringify(
+      {
+        personaName: "페르소나 이름",
+        personaSummary: "한 문장 페르소나 요약",
+        demographic: "나이, 직업, 생활권 등 기본 특성",
+        situation: "문제를 겪는 구체적인 상황",
+        jobToBeDone: "이 고객이 해결하려는 일",
+        painPoints: ["고통점 1", "고통점 2"],
+        currentAlternatives: ["현재 대안 1", "현재 대안 2"],
+        buyingTriggers: ["구매/사용 계기 1", "구매/사용 계기 2"],
+        objections: ["도입을 망설이는 이유 1", "도입을 망설이는 이유 2"],
+        channels: ["만날 수 있는 채널 1", "만날 수 있는 채널 2"],
+        interviewQuestions: ["인터뷰 질문 1", "인터뷰 질문 2", "인터뷰 질문 3", "인터뷰 질문 4"],
+        mentorComment: "멘토 코멘트"
+      },
+      null,
+      2
+    ),
+    "",
+    "참가자 입력:",
+    JSON.stringify(input, null, 2)
+  ].join("\n");
+}
+
+export function parseCustomerPersonaJson(raw: string): CustomerPersonaDraft {
+  const jsonText = extractJsonObject(raw);
+  const parsed = JSON.parse(jsonText) as Partial<Record<keyof CustomerPersonaDraft, unknown>>;
+  const draft: CustomerPersonaDraft = {
+    personaName: truncateByCharacters(normalizeText(parsed.personaName, "첫 번째 핵심 고객"), 120),
+    personaSummary: truncateByCharacters(
+      normalizeText(parsed.personaSummary, "반복 문제를 겪고 빠른 해결책을 찾는 초기 고객입니다."),
+      220
+    ),
+    demographic: truncateByCharacters(normalizeText(parsed.demographic, "20~30대 초기 사용자, 모바일 사용에 익숙함"), 220),
+    situation: truncateByCharacters(normalizeText(parsed.situation, "문제를 반복해서 겪지만 적절한 대안을 찾지 못하는 상황"), 220),
+    jobToBeDone: truncateByCharacters(normalizeText(parsed.jobToBeDone, "시간과 시행착오를 줄이고 원하는 결과를 얻고 싶다."), 220),
+    painPoints: normalizeStringArray(parsed.painPoints, ["현재 방법이 번거롭습니다.", "결과를 확신하기 어렵습니다."], 5, 180),
+    currentAlternatives: normalizeStringArray(parsed.currentAlternatives, ["수작업으로 해결합니다.", "주변 추천이나 검색에 의존합니다."], 5, 180),
+    buyingTriggers: normalizeStringArray(parsed.buyingTriggers, ["시간이 부족할 때 사용합니다.", "반복 실패를 겪었을 때 필요를 느낍니다."], 5, 180),
+    objections: normalizeStringArray(parsed.objections, ["가격이 부담될 수 있습니다.", "실제로 편한지 확신하지 못할 수 있습니다."], 5, 180),
+    channels: normalizeStringArray(parsed.channels, ["온라인 커뮤니티", "교육 현장 또는 학교 커뮤니티"], 5, 180),
+    interviewQuestions: normalizeStringArray(
+      parsed.interviewQuestions,
+      ["최근 이 문제를 겪은 상황을 알려주세요.", "지금은 어떤 방법으로 해결하고 있나요?", "그 방법에서 가장 불편한 점은 무엇인가요?", "어떤 조건이면 새 해결책을 써볼까요?"],
+      7,
+      180
+    ),
+    mentorComment: truncateByCharacters(normalizeText(parsed.mentorComment, "첫 고객을 더 좁혀 인터뷰하면 다음 단계가 선명해집니다."), 220)
+  };
+
+  return customerPersonaDraftSchema.parse(draft);
+}
+
+export function createMockCustomerPersonaDraft(input: CustomerPersonaInput): CustomerPersonaDraft {
+  const idea = input.oneLineIdea || input.ideaMemo || "초기 창업 아이디어";
+  return {
+    personaName: "혼자 해결하려다 막히는 초기 고객",
+    personaSummary: `${truncateByCharacters(idea, 38)}에 관심이 있지만 현재 대안에 불편을 느끼는 첫 고객입니다.`,
+    demographic: "20~30대, 모바일 검색과 커뮤니티 사용에 익숙하고 비용 대비 효율을 따집니다.",
+    situation: "문제가 생길 때마다 검색하거나 주변에 묻지만 매번 시간이 오래 걸립니다.",
+    jobToBeDone: "빠르게 믿을 만한 해결책을 찾아 시행착오 없이 원하는 결과를 얻고 싶습니다.",
+    painPoints: ["현재 해결 방식이 번거롭습니다.", "시간을 써도 결과가 만족스럽지 않을 때가 많습니다.", "어떤 선택이 좋은지 확신하기 어렵습니다."],
+    currentAlternatives: ["검색으로 직접 비교합니다.", "주변 지인이나 커뮤니티 추천을 참고합니다."],
+    buyingTriggers: ["반복 실패로 시간이 아까울 때", "당장 해결해야 하는 일정이 있을 때", "무료 체험이나 실제 사례를 확인했을 때"],
+    objections: ["가격이 비싸면 직접 해결하려고 합니다.", "정말 내 상황에 맞는지 의심할 수 있습니다."],
+    channels: ["학교·지역 커뮤니티", "카카오톡 오픈채팅", "인스타그램 또는 블로그 후기"],
+    interviewQuestions: [
+      "최근 이 문제를 겪은 구체적인 상황을 말해주세요.",
+      "그때 어떤 방법으로 해결하려고 했나요?",
+      "현재 방법에서 가장 시간이 오래 걸리는 부분은 무엇인가요?",
+      "돈을 내고라도 해결하고 싶은 순간은 언제인가요?"
+    ],
+    mentorComment: "페르소나는 넓은 집단보다 실제로 만날 수 있는 한 명으로 좁혀야 검증이 빨라집니다."
+  };
+}
+
 const moduStartupKeys: Array<keyof ModuStartupDraft> = [
   "q1IdeaIntro",
   "q2BackgroundStory",
@@ -695,6 +800,37 @@ export async function generateIdeaDiagnosisDraft(input: IdeaDiagnosisInput): Pro
     });
 
     return parseIdeaDiagnosisJson(content);
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");
+    }
+    throw error;
+  }
+}
+
+export async function generateCustomerPersonaDraft(input: CustomerPersonaInput): Promise<CustomerPersonaDraft> {
+  if (process.env.AI_MOCK === "true") {
+    return createMockCustomerPersonaDraft(input);
+  }
+
+  try {
+    const content = await fetchChatCompletionContent({
+      temperature: 0.3,
+      timeoutMs: 50000,
+      messages: [
+        {
+          role: "system",
+          content:
+            "너는 JSON만 반환하는 창업교육 고객 페르소나 멘토다. 설명, 마크다운, 코드블록 없이 JSON 객체만 반환한다."
+        },
+        {
+          role: "user",
+          content: buildCustomerPersonaPrompt(input)
+        }
+      ]
+    });
+
+    return parseCustomerPersonaJson(content);
   } catch (error) {
     if (isAbortError(error)) {
       throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");
