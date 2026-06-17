@@ -24,6 +24,26 @@ export interface ParticipantOperationContext {
   role?: string;
 }
 
+export interface OneLineIdeaInput {
+  programName: string;
+  teamName: string;
+  participantName: string;
+  rawIdea: string;
+  operation?: ParticipantOperationContext;
+}
+
+export interface OneLineIdeaDraft {
+  primaryOneLine: string;
+  alternatives: string[];
+  targetCustomer: string;
+  problem: string;
+  solution: string;
+  valueProposition: string;
+  pitchTip: string;
+  nextQuestions: string[];
+  mentorComment: string;
+}
+
 export interface LeanCanvasDraft {
   problem: string[];
   existingAlternatives: string[];

@@ -3,6 +3,8 @@ import {
   type LeanCanvasDraft,
   type ModuStartupDraft,
   type ModuStartupInput,
+  type OneLineIdeaDraft,
+  type OneLineIdeaInput,
   type ParticipantInput
 } from "@/lib/types";
 import { z } from "zod";
@@ -44,6 +46,19 @@ const moduStartupDraftSchema = z.object({
   socialImpactEnding: nonEmptyTextSchema,
   finalChecklist: z.array(nonEmptyTextSchema).min(1).max(7),
   mentorComment: nonEmptyTextSchema
+});
+
+const oneLineIdeaTextSchema = z.string().trim().min(1).max(220);
+const oneLineIdeaDraftSchema = z.object({
+  primaryOneLine: oneLineIdeaTextSchema,
+  alternatives: z.array(oneLineIdeaTextSchema).min(2).max(4),
+  targetCustomer: oneLineIdeaTextSchema,
+  problem: oneLineIdeaTextSchema,
+  solution: oneLineIdeaTextSchema,
+  valueProposition: oneLineIdeaTextSchema,
+  pitchTip: oneLineIdeaTextSchema,
+  nextQuestions: z.array(oneLineIdeaTextSchema).min(2).max(5),
+  mentorComment: oneLineIdeaTextSchema
 });
 
 function truncateByCharacters(value: string, maxLength: number) {
@@ -109,6 +124,22 @@ function normalizeBulletArray(value: unknown): string[] {
   return [];
 }
 
+function normalizeStringArray(value: unknown, fallback: string[], maxItems: number, maxLength: number): string[] {
+  const items = Array.isArray(value)
+    ? value.map((item) => String(item))
+    : typeof value === "string"
+      ? value.split(/\n| - /)
+      : [];
+
+  const normalized = items
+    .map((item) => item.trim().replace(/^[-*•]\s*/, ""))
+    .filter(Boolean)
+    .map((item) => truncateByCharacters(item, maxLength))
+    .slice(0, maxItems);
+
+  return normalized.length > 0 ? normalized : fallback;
+}
+
 function normalizeText(value: unknown, fallback = "추가 작성 필요") {
   if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean).join("\n") || fallback;
   if (typeof value === "string") return value.trim() || fallback;
@@ -155,6 +186,87 @@ export function createMockCanvas(input: ParticipantInput): LeanCanvasDraft {
     keyMetrics: ["초안 생성 완료율", "제출까지 걸린 시간"],
     unfairAdvantage: [input.differentiation || "현장 맞춤 템플릿", "한글 인쇄 최적화"],
     mentorComment: ["고객 문제를 더 검증하세요", "핵심 지표를 수치화하세요"]
+  };
+}
+
+export function buildOneLineIdeaPrompt(input: OneLineIdeaInput) {
+  return [
+    "너는 창업교육 현장에서 참가자의 아이디어를 발표 가능한 한 줄 문장으로 다듬는 멘토다.",
+    "참가자가 적은 메모가 부족해도 합리적인 가정을 사용해 구체적인 초안을 만들어라.",
+    "반드시 JSON만 반환하라. 설명, 마크다운, 코드블록, 주석은 포함하지 마라.",
+    "문장은 한국어로 작성하고, 추상적인 표현보다 고객, 문제, 해결 방식이 드러나게 써라.",
+    "primaryOneLine은 '무엇을 누구에게 어떻게 제공하는지'가 한 문장에 보이게 60자 안팎으로 작성하라.",
+    "alternatives는 발표자가 고를 수 있는 다른 한 줄 문장 2~4개로 작성하라.",
+    "nextQuestions는 다음 작성 단계에서 확인할 질문 2~5개로 작성하라.",
+    "",
+    "반환 JSON 형식:",
+    JSON.stringify(
+      {
+        primaryOneLine: "대표 한 줄 아이디어",
+        alternatives: ["대안 문장 1", "대안 문장 2"],
+        targetCustomer: "핵심 고객",
+        problem: "고객의 핵심 문제",
+        solution: "우리의 해결 방식",
+        valueProposition: "고객이 얻는 핵심 가치",
+        pitchTip: "발표 때 강조할 한 문장 팁",
+        nextQuestions: ["다음에 확인할 질문 1", "다음에 확인할 질문 2"],
+        mentorComment: "멘토 코멘트"
+      },
+      null,
+      2
+    ),
+    "",
+    "참가자 입력:",
+    JSON.stringify(input, null, 2)
+  ].join("\n");
+}
+
+export function parseOneLineIdeaJson(raw: string): OneLineIdeaDraft {
+  const jsonText = extractJsonObject(raw);
+  const parsed = JSON.parse(jsonText) as Partial<Record<keyof OneLineIdeaDraft, unknown>>;
+  const draft: OneLineIdeaDraft = {
+    primaryOneLine: truncateByCharacters(normalizeText(parsed.primaryOneLine, "고객 문제를 해결하는 한 줄 아이디어"), 120),
+    alternatives: normalizeStringArray(
+      parsed.alternatives,
+      ["고객의 반복 문제를 줄이는 서비스", "현장에서 바로 쓰는 해결 도구"],
+      4,
+      120
+    ),
+    targetCustomer: truncateByCharacters(normalizeText(parsed.targetCustomer, "초기 핵심 고객"), 120),
+    problem: truncateByCharacters(normalizeText(parsed.problem, "반복해서 겪는 불편"), 140),
+    solution: truncateByCharacters(normalizeText(parsed.solution, "간단히 실행 가능한 해결책"), 140),
+    valueProposition: truncateByCharacters(normalizeText(parsed.valueProposition, "시간과 시행착오를 줄이는 가치"), 140),
+    pitchTip: truncateByCharacters(normalizeText(parsed.pitchTip, "고객과 문제를 먼저 말하세요."), 160),
+    nextQuestions: normalizeStringArray(
+      parsed.nextQuestions,
+      ["가장 먼저 만날 고객은 누구인가요?", "고객이 지금 쓰는 대안은 무엇인가요?"],
+      5,
+      140
+    ),
+    mentorComment: truncateByCharacters(normalizeText(parsed.mentorComment, "고객과 문제를 더 구체화하면 좋습니다."), 180)
+  };
+
+  return oneLineIdeaDraftSchema.parse(draft);
+}
+
+export function createMockOneLineIdeaDraft(input: OneLineIdeaInput): OneLineIdeaDraft {
+  const rawIdea = input.rawIdea.trim() || "창업교육 참가자의 아이디어";
+  const teamName = input.teamName || "우리 팀";
+  const customer = rawIdea.includes("학생") ? "과제와 진로를 준비하는 학생" : "반복 업무로 시간이 부족한 고객";
+
+  return {
+    primaryOneLine: `${teamName}은 ${customer}에게 ${truncateByCharacters(rawIdea, 28)}을 더 쉽게 실행하게 돕습니다.`,
+    alternatives: [
+      `${customer}의 반복 시행착오를 줄이는 실행 도구`,
+      `초기 사용자가 바로 이해하는 ${truncateByCharacters(rawIdea, 24)} 서비스`
+    ],
+    targetCustomer: customer,
+    problem: "현재 방법은 시간이 오래 걸리고 결과를 확신하기 어렵습니다.",
+    solution: "입력한 상황을 바탕으로 바로 실행할 초안을 제공합니다.",
+    valueProposition: "처음부터 완성도 있는 문장으로 발표 준비 시간을 줄입니다.",
+    pitchTip: "첫 문장은 고객, 문제, 해결책 순서로 짧게 말하세요.",
+    nextQuestions: ["가장 절박한 고객은 누구인가요?", "고객이 지금 쓰는 대안은 무엇인가요?", "첫 검증은 어떻게 할 수 있나요?"],
+    mentorComment: "고객 범위를 한 단계 더 좁히면 한 줄 문장이 더 강해집니다."
   };
 }
 
@@ -323,6 +435,65 @@ export async function generateLeanCanvas(input: ParticipantInput): Promise<LeanC
     }
 
     return parseCanvasJson(content);
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function generateOneLineIdeaDraft(input: OneLineIdeaInput): Promise<OneLineIdeaDraft> {
+  if (process.env.AI_MOCK === "true") {
+    return createMockOneLineIdeaDraft(input);
+  }
+
+  const { apiKey, baseUrl, model } = getAiConfig();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45000);
+
+  try {
+    const response = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.35,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content:
+              "너는 JSON만 반환하는 창업교육 아이디어 문장화 도우미다. 설명, 마크다운, 코드블록 없이 JSON 객체만 반환한다."
+          },
+          {
+            role: "user",
+            content: buildOneLineIdeaPrompt(input)
+          }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(`AI API 호출 실패: ${response.status} ${detail}`);
+    }
+
+    const data = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) {
+      throw new Error("AI 응답 본문이 비어 있습니다.");
+    }
+
+    return parseOneLineIdeaJson(content);
   } catch (error) {
     if (isAbortError(error)) {
       throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");
