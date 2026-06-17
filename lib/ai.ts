@@ -5,9 +5,50 @@ import {
   type ModuStartupInput,
   type ParticipantInput
 } from "@/lib/types";
+import { z } from "zod";
 
 const requiredKeys = Object.keys(emptyCanvasDraft) as Array<keyof LeanCanvasDraft>;
 const DEFAULT_AI_MODEL = "gpt-5.4";
+const MAX_CANVAS_BULLET_LENGTH = 35;
+
+const canvasBulletArraySchema = z.array(z.string().trim().min(1).max(MAX_CANVAS_BULLET_LENGTH)).min(1).max(3);
+const leanCanvasDraftSchema = z.object({
+  problem: canvasBulletArraySchema,
+  existingAlternatives: canvasBulletArraySchema,
+  customerSegments: canvasBulletArraySchema,
+  uniqueValueProposition: canvasBulletArraySchema,
+  solution: canvasBulletArraySchema,
+  channels: canvasBulletArraySchema,
+  revenueStreams: canvasBulletArraySchema,
+  costStructure: canvasBulletArraySchema,
+  keyMetrics: canvasBulletArraySchema,
+  unfairAdvantage: canvasBulletArraySchema,
+  mentorComment: canvasBulletArraySchema
+});
+
+const nonEmptyTextSchema = z.string().trim().min(1);
+const moduStartupDraftSchema = z.object({
+  q1IdeaIntro: nonEmptyTextSchema,
+  q2BackgroundStory: nonEmptyTextSchema,
+  q3CustomerProblem: nonEmptyTextSchema,
+  q4ExecutionPlan: nonEmptyTextSchema,
+  q5CategoryReason: nonEmptyTextSchema,
+  q6BusinessStatusCheck: nonEmptyTextSchema,
+  q7TeamIntro: nonEmptyTextSchema,
+  q8VideoPitch: nonEmptyTextSchema,
+  openingHook: nonEmptyTextSchema,
+  evidenceLines: z.array(nonEmptyTextSchema).min(1).max(5),
+  personaDefinition: nonEmptyTextSchema,
+  differentiationFocus: nonEmptyTextSchema,
+  policyKeywords: z.array(nonEmptyTextSchema).min(1).max(3),
+  socialImpactEnding: nonEmptyTextSchema,
+  finalChecklist: z.array(nonEmptyTextSchema).min(1).max(7),
+  mentorComment: nonEmptyTextSchema
+});
+
+function truncateByCharacters(value: string, maxLength: number) {
+  return Array.from(value).slice(0, maxLength).join("");
+}
 
 export function buildLeanCanvasPrompt(input: ParticipantInput) {
   return [
@@ -51,6 +92,7 @@ function normalizeBulletArray(value: unknown): string[] {
       .map((item) => String(item).trim())
       .filter(Boolean)
       .map((item) => item.replace(/^[-•]\s*/, ""))
+      .map((item) => truncateByCharacters(item, MAX_CANVAS_BULLET_LENGTH))
       .slice(0, 3);
   }
 
@@ -60,6 +102,7 @@ function normalizeBulletArray(value: unknown): string[] {
       .map((item) => item.trim())
       .filter(Boolean)
       .map((item) => item.replace(/^[-•]\s*/, ""))
+      .map((item) => truncateByCharacters(item, MAX_CANVAS_BULLET_LENGTH))
       .slice(0, 3);
   }
 
@@ -94,7 +137,7 @@ export function parseCanvasJson(raw: string): LeanCanvasDraft {
     result[key] = items.length > 0 ? items : ["추가 작성 필요"];
   }
 
-  return result;
+  return leanCanvasDraftSchema.parse(result);
 }
 
 export function createMockCanvas(input: ParticipantInput): LeanCanvasDraft {
@@ -200,7 +243,7 @@ export function parseModuStartupJson(raw: string): ModuStartupDraft {
     }
   }
 
-  return draft;
+  return moduStartupDraftSchema.parse(draft);
 }
 
 export function createMockModuStartupDraft(input: ModuStartupInput): ModuStartupDraft {
