@@ -1,4 +1,6 @@
 import {
+  type CustomerInterviewDraft,
+  type CustomerInterviewInput,
   type CustomerPersonaDraft,
   type CustomerPersonaInput,
   type CustomerJourneyDraft,
@@ -136,6 +138,26 @@ const problemStatementDraftSchema = z.object({
   presentationSentences: z.array(problemStatementTextSchema).min(2).max(4),
   validationQuestions: z.array(problemStatementTextSchema).min(3).max(6),
   mentorComment: problemStatementTextSchema
+});
+
+const interviewTextSchema = z.string().trim().min(1).max(260);
+const interviewQuestionSchema = z.object({
+  question: interviewTextSchema,
+  intent: interviewTextSchema,
+  followUp: interviewTextSchema
+});
+const customerInterviewDraftSchema = z.object({
+  interviewGoal: interviewTextSchema,
+  targetCustomer: interviewTextSchema,
+  openingScript: interviewTextSchema,
+  screeningQuestions: z.array(interviewQuestionSchema).min(2).max(4),
+  warmupQuestions: z.array(interviewQuestionSchema).min(2).max(4),
+  problemDiscoveryQuestions: z.array(interviewQuestionSchema).min(3).max(6),
+  currentAlternativeQuestions: z.array(interviewQuestionSchema).min(2).max(5),
+  willingnessToPayQuestions: z.array(interviewQuestionSchema).min(2).max(4),
+  closingQuestions: z.array(interviewQuestionSchema).min(2).max(4),
+  avoidQuestions: z.array(interviewTextSchema).min(3).max(6),
+  mentorComment: interviewTextSchema
 });
 
 function truncateByCharacters(value: string, maxLength: number) {
@@ -807,6 +829,293 @@ export function createMockProblemStatementDraft(input: ProblemStatementInput): P
   };
 }
 
+export function buildCustomerInterviewPrompt(input: CustomerInterviewInput) {
+  return [
+    "너는 창업교육 현장에서 참가자가 고객 인터뷰를 바로 진행할 수 있게 질문지를 만드는 멘토다.",
+    "참가자 입력과 이전 모듈 결과를 바탕으로 실제 고객에게 물어볼 비유도형 질문을 설계하라.",
+    "질문은 해결책을 설명하거나 구매를 유도하지 말고, 고객의 최근 경험과 현재 대안을 확인하는 방식이어야 한다.",
+    "각 질문에는 질문 의도와 바로 이어서 물을 꼬리질문을 포함하라.",
+    "문제정의문이 있으면 그 문제를 검증하는 질문을 우선하고, 없으면 참가자 메모에서 가장 구체적인 고객 문제를 기준으로 작성하라.",
+    "입력이 부족하면 합리적으로 가정하되, 참가자 입력의 고객과 문제를 임의의 다른 사업으로 바꾸지 마라.",
+    "반드시 JSON만 반환하라. 설명, 마크다운, 코드블록, 주석은 포함하지 마라.",
+    "모든 문장은 한국어로 짧고 현장 인터뷰에서 그대로 읽을 수 있게 작성하라.",
+    "",
+    "반환 JSON 형식:",
+    JSON.stringify(
+      {
+        interviewGoal: "이번 인터뷰에서 확인할 핵심 목표",
+        targetCustomer: "인터뷰할 고객 조건",
+        openingScript: "30초 오프닝 멘트",
+        screeningQuestions: [{ question: "선별 질문", intent: "질문 의도", followUp: "꼬리질문" }],
+        warmupQuestions: [{ question: "가벼운 시작 질문", intent: "질문 의도", followUp: "꼬리질문" }],
+        problemDiscoveryQuestions: [{ question: "문제 발견 질문", intent: "질문 의도", followUp: "꼬리질문" }],
+        currentAlternativeQuestions: [{ question: "현재 대안 질문", intent: "질문 의도", followUp: "꼬리질문" }],
+        willingnessToPayQuestions: [{ question: "지불의사 질문", intent: "질문 의도", followUp: "꼬리질문" }],
+        closingQuestions: [{ question: "마무리 질문", intent: "질문 의도", followUp: "꼬리질문" }],
+        avoidQuestions: ["피해야 할 질문 1", "피해야 할 질문 2", "피해야 할 질문 3"],
+        mentorComment: "인터뷰 진행 팁"
+      },
+      null,
+      2
+    ),
+    "",
+    "참가자 입력:",
+    JSON.stringify(input, null, 2)
+  ].join("\n");
+}
+
+function normalizeInterviewQuestions(
+  value: unknown,
+  fallback: CustomerInterviewDraft["screeningQuestions"],
+  minItems: number,
+  maxItems: number
+): CustomerInterviewDraft["screeningQuestions"] {
+  const normalized = Array.isArray(value)
+    ? value
+        .map((item) => {
+          if (item && typeof item === "object") {
+            const source = item as Record<string, unknown>;
+            return {
+              question: truncateByCharacters(normalizeText(source.question, "최근 이 문제를 겪은 적이 있나요?"), 180),
+              intent: truncateByCharacters(normalizeText(source.intent, "실제 경험 여부를 확인합니다."), 160),
+              followUp: truncateByCharacters(normalizeText(source.followUp, "그 상황을 조금 더 자세히 말해 주세요."), 180)
+            };
+          }
+
+          return {
+            question: truncateByCharacters(normalizeText(item, "최근 이 문제를 겪은 적이 있나요?"), 180),
+            intent: "실제 경험 여부를 확인합니다.",
+            followUp: "그 상황을 조금 더 자세히 말해 주세요."
+          };
+        })
+        .filter((item) => item.question)
+        .slice(0, maxItems)
+    : [];
+
+  return normalized.length >= minItems ? normalized : fallback;
+}
+
+export function parseCustomerInterviewJson(raw: string): CustomerInterviewDraft {
+  const jsonText = extractJsonObject(raw);
+  const parsed = JSON.parse(jsonText) as Partial<Record<keyof CustomerInterviewDraft, unknown>>;
+  const draft: CustomerInterviewDraft = {
+    interviewGoal: truncateByCharacters(normalizeText(parsed.interviewGoal, "고객 문제가 실제로 반복되는지 확인합니다."), 220),
+    targetCustomer: truncateByCharacters(normalizeText(parsed.targetCustomer, "최근 2주 안에 문제를 겪은 초기 고객"), 180),
+    openingScript: truncateByCharacters(
+      normalizeText(parsed.openingScript, "저희는 창업교육 과정에서 고객 문제를 검증하고 있습니다. 정답은 없고 최근 경험을 편하게 말씀해 주세요."),
+      240
+    ),
+    screeningQuestions: normalizeInterviewQuestions(
+      parsed.screeningQuestions,
+      [
+        {
+          question: "최근 2주 안에 이 문제를 직접 겪은 적이 있나요?",
+          intent: "인터뷰 대상 적합성을 확인합니다.",
+          followUp: "가장 최근 상황은 언제였나요?"
+        },
+        {
+          question: "그 문제를 본인이 직접 해결해야 했나요?",
+          intent: "실제 의사결정자인지 확인합니다.",
+          followUp: "누가 최종 선택을 했나요?"
+        }
+      ],
+      2,
+      4
+    ),
+    warmupQuestions: normalizeInterviewQuestions(
+      parsed.warmupQuestions,
+      [
+        {
+          question: "평소 이 상황이 생기면 가장 먼저 무엇을 하나요?",
+          intent: "자연스러운 행동 흐름을 파악합니다.",
+          followUp: "그 다음에는 어떤 선택지를 확인하나요?"
+        },
+        {
+          question: "최근 가장 기억나는 사례를 말해 주세요.",
+          intent: "구체적 경험을 끌어냅니다.",
+          followUp: "그때 어디에 있었고 누구와 있었나요?"
+        }
+      ],
+      2,
+      4
+    ),
+    problemDiscoveryQuestions: normalizeInterviewQuestions(
+      parsed.problemDiscoveryQuestions,
+      [
+        {
+          question: "그 상황에서 가장 불편했던 점은 무엇이었나요?",
+          intent: "핵심 고통을 확인합니다.",
+          followUp: "왜 그 부분이 특히 불편했나요?"
+        },
+        {
+          question: "그 문제가 얼마나 자주 반복되나요?",
+          intent: "문제 빈도를 확인합니다.",
+          followUp: "최근 한 달 기준으로 몇 번 정도였나요?"
+        },
+        {
+          question: "문제가 해결되지 않으면 어떤 손해가 생기나요?",
+          intent: "문제의 강도를 확인합니다.",
+          followUp: "시간, 비용, 감정 중 무엇이 가장 컸나요?"
+        }
+      ],
+      3,
+      6
+    ),
+    currentAlternativeQuestions: normalizeInterviewQuestions(
+      parsed.currentAlternativeQuestions,
+      [
+        {
+          question: "지금은 어떤 방법으로 해결하고 있나요?",
+          intent: "현재 대안을 확인합니다.",
+          followUp: "그 방법을 선택한 이유는 무엇인가요?"
+        },
+        {
+          question: "현재 방법에서 가장 아쉬운 점은 무엇인가요?",
+          intent: "기존 대안의 한계를 찾습니다.",
+          followUp: "그 한계를 줄이려고 해본 일이 있나요?"
+        }
+      ],
+      2,
+      5
+    ),
+    willingnessToPayQuestions: normalizeInterviewQuestions(
+      parsed.willingnessToPayQuestions,
+      [
+        {
+          question: "이 문제가 더 잘 해결된다면 어떤 결과를 기대하나요?",
+          intent: "가치 기준을 확인합니다.",
+          followUp: "그 결과를 위해 시간이나 비용을 쓸 의사가 있나요?"
+        },
+        {
+          question: "현재 해결을 위해 이미 돈이나 시간을 쓰고 있나요?",
+          intent: "실제 지불 행동을 확인합니다.",
+          followUp: "대략 어느 정도 쓰고 있나요?"
+        }
+      ],
+      2,
+      4
+    ),
+    closingQuestions: normalizeInterviewQuestions(
+      parsed.closingQuestions,
+      [
+        {
+          question: "이 문제를 겪는 다른 사람을 소개해 주실 수 있나요?",
+          intent: "추가 인터뷰 대상을 찾습니다.",
+          followUp: "어떤 분이 비슷한 상황을 자주 겪나요?"
+        },
+        {
+          question: "오늘 질문 중 더 말하고 싶은 부분이 있나요?",
+          intent: "빠진 맥락을 확인합니다.",
+          followUp: "그 부분이 중요한 이유는 무엇인가요?"
+        }
+      ],
+      2,
+      4
+    ),
+    avoidQuestions: normalizeStringArray(
+      parsed.avoidQuestions,
+      ["저희 서비스가 있으면 쓰실래요?", "이 아이디어 괜찮아 보이나요?", "얼마면 구매하시겠어요?"],
+      6,
+      160
+    ),
+    mentorComment: truncateByCharacters(
+      normalizeText(parsed.mentorComment, "인터뷰에서는 의견보다 최근 실제 행동을 묻는 질문이 더 강합니다."),
+      220
+    )
+  };
+
+  return customerInterviewDraftSchema.parse(draft);
+}
+
+export function createMockCustomerInterviewDraft(input: CustomerInterviewInput): CustomerInterviewDraft {
+  const problem = input.problemStatementReport || input.journeyReport || input.ideaMemo || "고객이 반복해서 겪는 문제";
+  const targetCustomer = problem.includes("자취") ? "최근 2주 안에 늦은 시간 식사를 고민한 자취생" : "최근 2주 안에 해당 문제를 직접 겪은 초기 고객";
+  return {
+    interviewGoal: "고객이 실제로 문제를 반복해서 겪는지, 현재 대안에 어떤 한계가 있는지 확인합니다.",
+    targetCustomer,
+    openingScript: "안녕하세요. 저희는 창업교육 과정에서 고객 문제를 검증하고 있습니다. 정답은 없고 최근 경험을 편하게 말씀해 주시면 됩니다.",
+    screeningQuestions: [
+      {
+        question: "최근 2주 안에 이 문제를 직접 겪은 적이 있나요?",
+        intent: "인터뷰 대상 적합성을 확인합니다.",
+        followUp: "가장 최근에 겪은 날은 언제였나요?"
+      },
+      {
+        question: "그 문제를 본인이 직접 해결해야 했나요?",
+        intent: "실제 의사결정자인지 확인합니다.",
+        followUp: "누가 최종 선택을 했나요?"
+      }
+    ],
+    warmupQuestions: [
+      {
+        question: "평소 이 상황이 생기면 가장 먼저 무엇을 하나요?",
+        intent: "자연스러운 행동 흐름을 파악합니다.",
+        followUp: "그 다음에는 어떤 선택지를 확인하나요?"
+      },
+      {
+        question: "최근 가장 기억나는 사례를 말해 주세요.",
+        intent: "구체적 경험을 끌어냅니다.",
+        followUp: "그때 어디에 있었고 어떤 상황이었나요?"
+      }
+    ],
+    problemDiscoveryQuestions: [
+      {
+        question: "그 상황에서 가장 불편했던 점은 무엇이었나요?",
+        intent: "핵심 고통을 확인합니다.",
+        followUp: "왜 그 부분이 특히 불편했나요?"
+      },
+      {
+        question: "이 문제가 얼마나 자주 반복되나요?",
+        intent: "문제 빈도를 확인합니다.",
+        followUp: "최근 한 달 기준으로 몇 번 정도였나요?"
+      },
+      {
+        question: "문제가 해결되지 않으면 어떤 손해가 생기나요?",
+        intent: "문제의 강도를 확인합니다.",
+        followUp: "시간, 비용, 감정 중 무엇이 가장 컸나요?"
+      }
+    ],
+    currentAlternativeQuestions: [
+      {
+        question: "지금은 어떤 방법으로 해결하고 있나요?",
+        intent: "현재 대안을 확인합니다.",
+        followUp: "그 방법을 선택한 이유는 무엇인가요?"
+      },
+      {
+        question: "현재 방법에서 가장 아쉬운 점은 무엇인가요?",
+        intent: "기존 대안의 한계를 찾습니다.",
+        followUp: "그 한계를 줄이려고 해본 일이 있나요?"
+      }
+    ],
+    willingnessToPayQuestions: [
+      {
+        question: "이 문제가 더 잘 해결된다면 어떤 결과를 기대하나요?",
+        intent: "고객이 느끼는 가치를 확인합니다.",
+        followUp: "그 결과를 위해 시간이나 비용을 쓸 의사가 있나요?"
+      },
+      {
+        question: "현재 해결을 위해 이미 돈이나 시간을 쓰고 있나요?",
+        intent: "실제 지불 행동을 확인합니다.",
+        followUp: "대략 어느 정도 쓰고 있나요?"
+      }
+    ],
+    closingQuestions: [
+      {
+        question: "이 문제를 겪는 다른 사람을 소개해 주실 수 있나요?",
+        intent: "추가 인터뷰 대상을 찾습니다.",
+        followUp: "어떤 분이 비슷한 상황을 자주 겪나요?"
+      },
+      {
+        question: "오늘 이야기 중 더 말하고 싶은 부분이 있나요?",
+        intent: "빠진 맥락을 확인합니다.",
+        followUp: "그 부분이 중요한 이유는 무엇인가요?"
+      }
+    ],
+    avoidQuestions: ["저희 서비스가 있으면 쓰실래요?", "이 아이디어 괜찮아 보이나요?", "얼마면 구매하시겠어요?"],
+    mentorComment: "인터뷰에서는 의견보다 최근 실제 행동을 물어보세요. 고객이 한 말보다 실제로 쓴 시간과 비용이 더 강한 증거입니다."
+  };
+}
+
 const moduStartupKeys: Array<keyof ModuStartupDraft> = [
   "q1IdeaIntro",
   "q2BackgroundStory",
@@ -1165,6 +1474,37 @@ export async function generateProblemStatementDraft(input: ProblemStatementInput
     });
 
     return parseProblemStatementJson(content);
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");
+    }
+    throw error;
+  }
+}
+
+export async function generateCustomerInterviewDraft(input: CustomerInterviewInput): Promise<CustomerInterviewDraft> {
+  if (process.env.AI_MOCK === "true") {
+    return createMockCustomerInterviewDraft(input);
+  }
+
+  try {
+    const content = await fetchChatCompletionContent({
+      temperature: 0.25,
+      timeoutMs: 50000,
+      messages: [
+        {
+          role: "system",
+          content:
+            "너는 JSON만 반환하는 창업교육 고객 인터뷰 질문지 멘토다. 설명, 마크다운, 코드블록 없이 JSON 객체만 반환한다."
+        },
+        {
+          role: "user",
+          content: buildCustomerInterviewPrompt(input)
+        }
+      ]
+    });
+
+    return parseCustomerInterviewJson(content);
   } catch (error) {
     if (isAbortError(error)) {
       throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");

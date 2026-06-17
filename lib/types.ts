@@ -152,6 +152,39 @@ export interface ProblemStatementDraft {
   mentorComment: string;
 }
 
+export interface CustomerInterviewInput {
+  programName: string;
+  teamName: string;
+  participantName: string;
+  ideaMemo: string;
+  oneLineIdea?: string;
+  diagnosisReport?: string;
+  personaReport?: string;
+  journeyReport?: string;
+  problemStatementReport?: string;
+  operation?: ParticipantOperationContext;
+}
+
+export interface CustomerInterviewQuestion {
+  question: string;
+  intent: string;
+  followUp: string;
+}
+
+export interface CustomerInterviewDraft {
+  interviewGoal: string;
+  targetCustomer: string;
+  openingScript: string;
+  screeningQuestions: CustomerInterviewQuestion[];
+  warmupQuestions: CustomerInterviewQuestion[];
+  problemDiscoveryQuestions: CustomerInterviewQuestion[];
+  currentAlternativeQuestions: CustomerInterviewQuestion[];
+  willingnessToPayQuestions: CustomerInterviewQuestion[];
+  closingQuestions: CustomerInterviewQuestion[];
+  avoidQuestions: string[];
+  mentorComment: string;
+}
+
 export interface LeanCanvasDraft {
   problem: string[];
   existingAlternatives: string[];

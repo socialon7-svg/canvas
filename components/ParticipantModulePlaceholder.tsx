@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type {
+  CustomerInterviewDraft,
+  CustomerInterviewInput,
   CustomerJourneyDraft,
   CustomerJourneyInput,
   CustomerPersonaDraft,
@@ -31,6 +33,7 @@ const IDEA_DIAGNOSIS_SLUG = "idea-diagnosis";
 const CUSTOMER_PERSONA_SLUG = "customer-persona";
 const CUSTOMER_JOURNEY_SLUG = "customer-journey-map";
 const PROBLEM_STATEMENT_SLUG = "problem-statement";
+const CUSTOMER_INTERVIEW_SLUG = "customer-interview-questions";
 
 function readSessionValue(key: string) {
   try {
@@ -215,6 +218,43 @@ function formatProblemStatementDraft(draft: ProblemStatementDraft) {
   ].join("\n");
 }
 
+function formatInterviewQuestionGroup(title: string, questions: CustomerInterviewDraft["screeningQuestions"]) {
+  return [
+    title,
+    ...questions.flatMap((item, index) => [
+      `${index + 1}. ${item.question}`,
+      `- 의도: ${item.intent}`,
+      `- 꼬리질문: ${item.followUp}`,
+      ""
+    ])
+  ];
+}
+
+function formatCustomerInterviewDraft(draft: CustomerInterviewDraft) {
+  return [
+    "인터뷰 목표",
+    draft.interviewGoal,
+    "",
+    "인터뷰 대상 고객",
+    draft.targetCustomer,
+    "",
+    "오프닝 멘트",
+    draft.openingScript,
+    "",
+    ...formatInterviewQuestionGroup("선별 질문", draft.screeningQuestions),
+    ...formatInterviewQuestionGroup("가벼운 시작 질문", draft.warmupQuestions),
+    ...formatInterviewQuestionGroup("문제 발견 질문", draft.problemDiscoveryQuestions),
+    ...formatInterviewQuestionGroup("현재 대안 질문", draft.currentAlternativeQuestions),
+    ...formatInterviewQuestionGroup("지불의사 질문", draft.willingnessToPayQuestions),
+    ...formatInterviewQuestionGroup("마무리 질문", draft.closingQuestions),
+    "피해야 할 질문",
+    ...draft.avoidQuestions.map((item) => `- ${item}`),
+    "",
+    "멘토 코멘트",
+    draft.mentorComment
+  ].join("\n");
+}
+
 export default function ParticipantModulePlaceholder({ slug }: { slug: string }) {
   const [state, setState] = useState<HighViewOperationsState>(() => defaultOperationsState());
   const [programId, setProgramId] = useState("");
@@ -252,10 +292,12 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
   const isCustomerPersonaModule = startupModule?.slug === CUSTOMER_PERSONA_SLUG;
   const isCustomerJourneyModule = startupModule?.slug === CUSTOMER_JOURNEY_SLUG;
   const isProblemStatementModule = startupModule?.slug === PROBLEM_STATEMENT_SLUG;
+  const isCustomerInterviewModule = startupModule?.slug === CUSTOMER_INTERVIEW_SLUG;
   const oneLineIdeaOutput = participant?.moduleProgress?.[ONE_LINE_IDEA_SLUG]?.outputData || "";
   const ideaDiagnosisOutput = participant?.moduleProgress?.[IDEA_DIAGNOSIS_SLUG]?.outputData || "";
   const customerPersonaOutput = participant?.moduleProgress?.[CUSTOMER_PERSONA_SLUG]?.outputData || "";
   const customerJourneyOutput = participant?.moduleProgress?.[CUSTOMER_JOURNEY_SLUG]?.outputData || "";
+  const problemStatementOutput = participant?.moduleProgress?.[PROBLEM_STATEMENT_SLUG]?.outputData || "";
 
   const saveProgress = async (
     status: ParticipantModuleProgressStatus,
@@ -608,6 +650,65 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
     }
   };
 
+  const generateCustomerInterview = async () => {
+    if (!program || !participant || !startupModule || startupModule.slug !== CUSTOMER_INTERVIEW_SLUG) return;
+
+    const ideaMemo = inputData.trim();
+    if (!ideaMemo) {
+      setAiError("고객 인터뷰 질문지를 만들 문제 메모를 먼저 입력해주세요.");
+      return;
+    }
+
+    const requestBody: CustomerInterviewInput = {
+      programName: program.name,
+      teamName: team?.name || "",
+      participantName: participant.name || participant.code,
+      ideaMemo,
+      oneLineIdea: oneLineIdeaOutput,
+      diagnosisReport: ideaDiagnosisOutput,
+      personaReport: customerPersonaOutput,
+      journeyReport: customerJourneyOutput,
+      problemStatementReport: problemStatementOutput,
+      operation: {
+        programId: program.id,
+        programCode: program.programCode,
+        programName: program.name,
+        participantId: participant.id,
+        participantCode: participant.code,
+        teamId: team?.id || "",
+        teamName: team?.name || "",
+        role: participant.role
+      }
+    };
+
+    setGenerating(true);
+    setAiError("");
+    setNotice("AI가 고객 인터뷰 질문지를 생성하고 있습니다.");
+
+    try {
+      const response = await fetch("/api/generate-customer-interview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody)
+      });
+      const data = (await response.json()) as { draft?: CustomerInterviewDraft; error?: string };
+
+      if (!response.ok || !data.draft) {
+        throw new Error(data.error || "고객 인터뷰 질문지를 생성하지 못했습니다.");
+      }
+
+      const formattedOutput = formatCustomerInterviewDraft(data.draft);
+      setOutputData(formattedOutput);
+      await saveProgress("in_progress", { inputData: ideaMemo, outputData: formattedOutput });
+      setNotice("고객 인터뷰 질문지가 생성되었습니다. 유도질문을 줄이고 최근 실제 경험을 묻는지 확인한 뒤 완료로 표시해주세요.");
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "고객 인터뷰 질문지 생성 중 오류가 발생했습니다.");
+      setNotice("");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   if (!startupModule) {
     return (
       <main className="mx-auto flex min-h-screen max-w-2xl items-center px-5 py-10">
@@ -734,7 +835,21 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
         resultPlaceholder:
           "AI 생성 버튼을 누르면 문제정의문, 고객, 상황, 고통, 근본 원인, 기존 대안의 한계, 검증 질문이 여기에 표시됩니다."
       }
-    : null;
+    : isCustomerInterviewModule
+      ? {
+          inputTitle: "고객 인터뷰 메모 입력",
+          inputDescription:
+            "인터뷰로 확인하고 싶은 고객 문제를 적어주세요. 문제정의문 결과가 있으면 함께 참고해 선별 질문, 문제 발견 질문, 현재 대안 질문으로 정리합니다.",
+          inputLabel: "인터뷰 준비 메모",
+          inputPlaceholder:
+            "예: 밤늦게 식사를 해결해야 하는 자취생이 실제로 배달비, 시간, 대안 부족 때문에 불편을 겪는지 확인하고 싶다.",
+          resultTitle: "AI 고객 인터뷰 질문지 / 수정 가능",
+          resultDescription:
+            "질문지는 고객의 최근 실제 행동을 확인하는 초안입니다. 해결책을 설명하거나 구매를 유도하는 질문은 삭제하고 현장 말투로 다듬으세요.",
+          resultPlaceholder:
+            "AI 생성 버튼을 누르면 인터뷰 목표, 오프닝 멘트, 선별 질문, 문제 발견 질문, 현재 대안 질문, 지불의사 질문, 피해야 할 질문이 표시됩니다."
+        }
+      : null;
   const displayInputTitle = moduleCopyOverride?.inputTitle || inputTitle;
   const displayInputDescription = moduleCopyOverride?.inputDescription || inputDescription;
   const displayInputLabel = moduleCopyOverride?.inputLabel || inputLabel;
@@ -842,6 +957,16 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
                 type="button"
               >
                 {generating ? "AI 생성 중..." : "AI 문제정의문 생성"}
+              </button>
+            ) : null}
+            {isCustomerInterviewModule ? (
+              <button
+                className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
+                disabled={generating || !inputData.trim()}
+                onClick={generateCustomerInterview}
+                type="button"
+              >
+                {generating ? "AI 생성 중..." : "AI 고객 인터뷰 질문지 생성"}
               </button>
             ) : null}
             <button
