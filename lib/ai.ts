@@ -19,7 +19,9 @@ import {
   type OneLineIdeaInput,
   type ParticipantInput,
   type ProblemStatementDraft,
-  type ProblemStatementInput
+  type ProblemStatementInput,
+  type ValidationExperimentDraft,
+  type ValidationExperimentInput
 } from "@/lib/types";
 import { z } from "zod";
 
@@ -186,6 +188,31 @@ const customerSurveyDraftSchema = z.object({
   analysisGuide: z.array(surveyTextSchema).min(3).max(6),
   avoidNotes: z.array(surveyTextSchema).min(3).max(6),
   mentorComment: surveyTextSchema
+});
+
+const experimentTextSchema = z.string().trim().min(1).max(260);
+const validationExperimentStepSchema = z.object({
+  step: experimentTextSchema,
+  action: experimentTextSchema,
+  tool: experimentTextSchema,
+  expectedOutput: experimentTextSchema
+});
+const validationExperimentDraftSchema = z.object({
+  experimentGoal: experimentTextSchema,
+  riskiestAssumption: experimentTextSchema,
+  hypothesis: experimentTextSchema,
+  experimentType: experimentTextSchema,
+  targetCustomer: experimentTextSchema,
+  samplePlan: experimentTextSchema,
+  methodSteps: z.array(validationExperimentStepSchema).min(3).max(6),
+  dataToCollect: z.array(experimentTextSchema).min(3).max(6),
+  successCriteria: z.array(experimentTextSchema).min(2).max(5),
+  failureCriteria: z.array(experimentTextSchema).min(2).max(5),
+  requiredMaterials: z.array(experimentTextSchema).min(3).max(7),
+  schedule: experimentTextSchema,
+  riskControls: z.array(experimentTextSchema).min(3).max(6),
+  nextAction: experimentTextSchema,
+  mentorComment: experimentTextSchema
 });
 
 function truncateByCharacters(value: string, maxLength: number) {
@@ -1484,6 +1511,188 @@ export function createMockCustomerSurveyDraft(input: CustomerSurveyInput): Custo
   };
 }
 
+export function buildValidationExperimentPrompt(input: ValidationExperimentInput) {
+  return [
+    "너는 창업교육 현장에서 참가자가 바로 실행할 수 있는 검증 실험을 설계하는 멘토다.",
+    "참가자 입력과 이전 모듈 결과를 바탕으로 3~7일 안에 실행 가능한 실험 계획을 작성하라.",
+    "실험은 가장 위험한 가정 1개를 먼저 검증해야 한다.",
+    "큰 개발, 큰 예산, 장기 리서치가 필요한 방식은 피하고, 랜딩페이지, 인터뷰, 설문, 수동 운영, 목업, 사전신청, 관찰 실험처럼 현장 실행 가능한 방식을 우선하라.",
+    "성공 기준과 실패 기준은 숫자, 기간, 응답 수, 전환율, 예약 수처럼 측정 가능한 기준으로 작성하라.",
+    "참가자가 오늘 바로 무엇을 해야 하는지 알 수 있도록 단계, 도구, 산출물을 구체적으로 작성하라.",
+    "입력이 부족하면 합리적으로 가정하되, 참가자 입력의 고객과 문제를 임의의 다른 사업으로 바꾸지 마라.",
+    "반드시 JSON만 반환하라. 설명, 마크다운, 코드블록, 주석은 포함하지 마라.",
+    "",
+    "반환 JSON 형식:",
+    JSON.stringify(
+      {
+        experimentGoal: "실험으로 확인할 핵심 목표",
+        riskiestAssumption: "가장 위험한 가정 1개",
+        hypothesis: "검증할 가설 문장",
+        experimentType: "실험 유형",
+        targetCustomer: "실험 대상 고객",
+        samplePlan: "모집 규모와 방법",
+        methodSteps: [
+          { step: "1단계", action: "실행 행동", tool: "사용 도구", expectedOutput: "나와야 할 산출물" }
+        ],
+        dataToCollect: ["수집 데이터 1", "수집 데이터 2", "수집 데이터 3"],
+        successCriteria: ["성공 기준 1", "성공 기준 2"],
+        failureCriteria: ["실패 기준 1", "실패 기준 2"],
+        requiredMaterials: ["준비물 1", "준비물 2", "준비물 3"],
+        schedule: "3~7일 실행 일정",
+        riskControls: ["주의점 1", "주의점 2", "주의점 3"],
+        nextAction: "오늘 바로 할 일",
+        mentorComment: "멘토 코멘트"
+      },
+      null,
+      2
+    ),
+    "",
+    "참가자 입력:",
+    JSON.stringify(input, null, 2)
+  ].join("\n");
+}
+
+function normalizeValidationExperimentSteps(
+  value: unknown,
+  fallback: ValidationExperimentDraft["methodSteps"],
+  minItems: number,
+  maxItems: number
+): ValidationExperimentDraft["methodSteps"] {
+  const normalized = Array.isArray(value)
+    ? value
+        .map((item, index) => {
+          const source = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+          const fallbackItem = fallback[Math.min(index, fallback.length - 1)] || fallback[0];
+          return {
+            step: truncateByCharacters(normalizeText(source.step, fallbackItem.step), 80),
+            action: truncateByCharacters(normalizeText(source.action, fallbackItem.action), 180),
+            tool: truncateByCharacters(normalizeText(source.tool, fallbackItem.tool), 120),
+            expectedOutput: truncateByCharacters(normalizeText(source.expectedOutput, fallbackItem.expectedOutput), 160)
+          };
+        })
+        .filter((item) => item.step && item.action)
+        .slice(0, maxItems)
+    : [];
+
+  return normalized.length >= minItems ? normalized : fallback;
+}
+
+export function parseValidationExperimentJson(raw: string): ValidationExperimentDraft {
+  const jsonText = extractJsonObject(raw);
+  const parsed = JSON.parse(jsonText) as Partial<Record<keyof ValidationExperimentDraft, unknown>>;
+  const fallbackSteps: ValidationExperimentDraft["methodSteps"] = [
+    {
+      step: "1단계",
+      action: "검증할 고객 20명을 정하고 모집 메시지를 보냅니다.",
+      tool: "카카오톡, 인스타그램, 구글폼",
+      expectedOutput: "응답 가능 고객 명단"
+    },
+    {
+      step: "2단계",
+      action: "문제 상황과 현재 대안을 묻는 짧은 설문을 배포합니다.",
+      tool: "구글폼 또는 네이버폼",
+      expectedOutput: "문제 빈도와 현재 대안 응답"
+    },
+    {
+      step: "3단계",
+      action: "강한 응답자 5명에게 후속 인터뷰나 사전신청을 요청합니다.",
+      tool: "전화, 줌, 사전신청 폼",
+      expectedOutput: "후속 인터뷰 또는 사전신청 수"
+    }
+  ];
+  const draft: ValidationExperimentDraft = {
+    experimentGoal: truncateByCharacters(normalizeText(parsed.experimentGoal, "고객 문제가 실제로 반복되고 해결 의지가 있는지 확인합니다."), 220),
+    riskiestAssumption: truncateByCharacters(normalizeText(parsed.riskiestAssumption, "고객이 이 문제를 충분히 자주 겪고 현재 대안에 불만이 있다."), 220),
+    hypothesis: truncateByCharacters(
+      normalizeText(parsed.hypothesis, "최근 2주 안에 문제를 겪은 고객은 더 나은 해결책이 있으면 사전신청이나 후속 인터뷰에 응할 것이다."),
+      240
+    ),
+    experimentType: truncateByCharacters(normalizeText(parsed.experimentType, "문제 검증 설문 + 후속 인터뷰 + 사전신청 테스트"), 160),
+    targetCustomer: truncateByCharacters(normalizeText(parsed.targetCustomer, "최근 2주 안에 해당 문제를 직접 겪은 고객"), 180),
+    samplePlan: truncateByCharacters(normalizeText(parsed.samplePlan, "핵심 고객 후보 20~30명을 모집하고 강한 응답자 5명을 후속 확인합니다."), 220),
+    methodSteps: normalizeValidationExperimentSteps(parsed.methodSteps, fallbackSteps, 3, 6),
+    dataToCollect: normalizeStringArray(
+      parsed.dataToCollect,
+      ["최근 2주 문제 경험 여부", "현재 대안과 만족도", "후속 인터뷰 또는 사전신청 의향"],
+      6,
+      180
+    ),
+    successCriteria: normalizeStringArray(
+      parsed.successCriteria,
+      ["응답자 20명 중 10명 이상이 최근 문제 경험을 답합니다.", "강한 응답자 5명 이상이 후속 인터뷰에 동의합니다."],
+      5,
+      180
+    ),
+    failureCriteria: normalizeStringArray(
+      parsed.failureCriteria,
+      ["응답자 대부분이 문제를 최근에 겪지 않았다고 답합니다.", "후속 인터뷰 또는 사전신청 의향이 2명 이하입니다."],
+      5,
+      180
+    ),
+    requiredMaterials: normalizeStringArray(
+      parsed.requiredMaterials,
+      ["모집 메시지", "3분 설문 폼", "후속 인터뷰 질문지", "응답 기록 시트"],
+      7,
+      160
+    ),
+    schedule: truncateByCharacters(normalizeText(parsed.schedule, "1일차 모집, 2~3일차 설문 수집, 4~5일차 후속 인터뷰, 6일차 결과 정리"), 200),
+    riskControls: normalizeStringArray(
+      parsed.riskControls,
+      ["해결책을 먼저 설명하지 않습니다.", "지인 응답만으로 결론내리지 않습니다.", "좋다는 의견보다 실제 행동 데이터를 우선합니다."],
+      6,
+      180
+    ),
+    nextAction: truncateByCharacters(normalizeText(parsed.nextAction, "오늘 고객 후보 20명에게 보낼 모집 메시지와 3분 설문 폼을 만듭니다."), 220),
+    mentorComment: truncateByCharacters(
+      normalizeText(parsed.mentorComment, "실험은 정답을 찾는 과정이 아니라 가장 위험한 가정을 빨리 확인하는 과정입니다."),
+      220
+    )
+  };
+
+  return validationExperimentDraftSchema.parse(draft);
+}
+
+export function createMockValidationExperimentDraft(input: ValidationExperimentInput): ValidationExperimentDraft {
+  const problem = input.problemStatementReport || input.surveyReport || input.ideaMemo || "고객이 반복해서 겪는 문제";
+  const targetCustomer = problem.includes("자취") ? "최근 2주 안에 늦은 시간 식사를 고민한 자취생" : "최근 2주 안에 해당 문제를 직접 겪은 고객";
+  return {
+    experimentGoal: "고객 문제가 실제로 반복되고 현재 대안에 불만이 있으며, 더 나은 해결책에 행동으로 반응하는지 확인합니다.",
+    riskiestAssumption: "고객이 이 문제를 충분히 자주 겪고 현재 대안보다 나은 해결책을 찾고 있다.",
+    hypothesis: `${targetCustomer} 20명 중 10명 이상은 현재 대안에 불만이 있고, 5명 이상은 후속 인터뷰나 사전신청에 응할 것이다.`,
+    experimentType: "문제 검증 설문 + 후속 인터뷰 + 사전신청 테스트",
+    targetCustomer,
+    samplePlan: "온라인 커뮤니티, 지인 소개, 캠퍼스 채널에서 고객 후보 20~30명을 모집합니다.",
+    methodSteps: [
+      {
+        step: "1단계",
+        action: "고객 후보에게 문제 상황 중심 모집 메시지를 보냅니다.",
+        tool: "카카오톡, 인스타그램, 학교 커뮤니티",
+        expectedOutput: "응답 가능 고객 20명 이상"
+      },
+      {
+        step: "2단계",
+        action: "3분 설문으로 문제 빈도, 현재 대안, 비용 부담을 확인합니다.",
+        tool: "구글폼 또는 네이버폼",
+        expectedOutput: "문제 강도와 현재 대안 데이터"
+      },
+      {
+        step: "3단계",
+        action: "강한 응답자에게 후속 인터뷰와 사전신청 의향을 요청합니다.",
+        tool: "전화, 줌, 사전신청 폼",
+        expectedOutput: "후속 인터뷰 5건 또는 사전신청 5건"
+      }
+    ],
+    dataToCollect: ["최근 2주 문제 경험 여부", "현재 대안과 만족도", "문제 해결에 쓰는 시간과 비용", "후속 인터뷰 또는 사전신청 의향"],
+    successCriteria: ["응답자 20명 중 10명 이상이 최근 문제 경험을 답합니다.", "응답자 20명 중 6명 이상이 현재 대안 불만을 답합니다.", "5명 이상이 후속 인터뷰나 사전신청에 동의합니다."],
+    failureCriteria: ["응답자 대부분이 문제를 최근에 겪지 않았다고 답합니다.", "현재 대안 만족도가 높아 불만 응답이 3명 이하입니다.", "후속 행동 의향이 2명 이하입니다."],
+    requiredMaterials: ["모집 메시지", "3분 설문 폼", "후속 인터뷰 질문지", "사전신청 폼", "응답 기록 시트"],
+    schedule: "1일차 모집, 2~3일차 설문 수집, 4~5일차 후속 인터뷰, 6일차 결과 정리",
+    riskControls: ["해결책을 먼저 설명하지 않습니다.", "지인 응답만으로 결론내리지 않습니다.", "좋다는 의견보다 후속 행동을 우선합니다."],
+    nextAction: "오늘 고객 후보 20명에게 보낼 모집 메시지와 3분 설문 폼을 만듭니다.",
+    mentorComment: "실험은 빠르게 틀릴 수 있어야 좋습니다. 숫자로 기준을 정하고 결과가 약하면 고객 범위나 문제 정의를 다시 좁히세요."
+  };
+}
+
 const moduStartupKeys: Array<keyof ModuStartupDraft> = [
   "q1IdeaIntro",
   "q2BackgroundStory",
@@ -1904,6 +2113,37 @@ export async function generateCustomerSurveyDraft(input: CustomerSurveyInput): P
     });
 
     return parseCustomerSurveyJson(content);
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");
+    }
+    throw error;
+  }
+}
+
+export async function generateValidationExperimentDraft(input: ValidationExperimentInput): Promise<ValidationExperimentDraft> {
+  if (process.env.AI_MOCK === "true") {
+    return createMockValidationExperimentDraft(input);
+  }
+
+  try {
+    const content = await fetchChatCompletionContent({
+      temperature: 0.25,
+      timeoutMs: 50000,
+      messages: [
+        {
+          role: "system",
+          content:
+            "너는 JSON만 반환하는 창업교육 검증 실험 설계 멘토다. 설명, 마크다운, 코드블록 없이 JSON 객체만 반환한다."
+        },
+        {
+          role: "user",
+          content: buildValidationExperimentPrompt(input)
+        }
+      ]
+    });
+
+    return parseValidationExperimentJson(content);
   } catch (error) {
     if (isAbortError(error)) {
       throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");

@@ -19,7 +19,9 @@ import type {
   ParticipantModuleProgress,
   ParticipantModuleProgressStatus,
   ProblemStatementDraft,
-  ProblemStatementInput
+  ProblemStatementInput,
+  ValidationExperimentDraft,
+  ValidationExperimentInput
 } from "@/lib/types";
 import {
   getParticipantVisibleModules,
@@ -37,6 +39,7 @@ const CUSTOMER_JOURNEY_SLUG = "customer-journey-map";
 const PROBLEM_STATEMENT_SLUG = "problem-statement";
 const CUSTOMER_INTERVIEW_SLUG = "customer-interview-questions";
 const CUSTOMER_SURVEY_SLUG = "survey-generator";
+const VALIDATION_EXPERIMENT_SLUG = "validation-experiment";
 
 function readSessionValue(key: string) {
   try {
@@ -301,6 +304,60 @@ function formatCustomerSurveyDraft(draft: CustomerSurveyDraft) {
   ].join("\n");
 }
 
+function formatValidationExperimentDraft(draft: ValidationExperimentDraft) {
+  return [
+    "실험 목표",
+    draft.experimentGoal,
+    "",
+    "가장 위험한 가정",
+    draft.riskiestAssumption,
+    "",
+    "검증 가설",
+    draft.hypothesis,
+    "",
+    "실험 유형",
+    draft.experimentType,
+    "",
+    "대상 고객",
+    draft.targetCustomer,
+    "",
+    "모집 계획",
+    draft.samplePlan,
+    "",
+    "실험 실행 단계",
+    ...draft.methodSteps.flatMap((item, index) => [
+      `${index + 1}. ${item.step}`,
+      `- 실행: ${item.action}`,
+      `- 도구: ${item.tool}`,
+      `- 산출물: ${item.expectedOutput}`,
+      ""
+    ]),
+    "수집할 데이터",
+    ...draft.dataToCollect.map((item) => `- ${item}`),
+    "",
+    "성공 기준",
+    ...draft.successCriteria.map((item) => `- ${item}`),
+    "",
+    "실패 기준",
+    ...draft.failureCriteria.map((item) => `- ${item}`),
+    "",
+    "준비물",
+    ...draft.requiredMaterials.map((item) => `- ${item}`),
+    "",
+    "실행 일정",
+    draft.schedule,
+    "",
+    "주의사항",
+    ...draft.riskControls.map((item) => `- ${item}`),
+    "",
+    "오늘 바로 할 일",
+    draft.nextAction,
+    "",
+    "멘토 코멘트",
+    draft.mentorComment
+  ].join("\n");
+}
+
 export default function ParticipantModulePlaceholder({ slug }: { slug: string }) {
   const [state, setState] = useState<HighViewOperationsState>(() => defaultOperationsState());
   const [programId, setProgramId] = useState("");
@@ -340,12 +397,14 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
   const isProblemStatementModule = startupModule?.slug === PROBLEM_STATEMENT_SLUG;
   const isCustomerInterviewModule = startupModule?.slug === CUSTOMER_INTERVIEW_SLUG;
   const isCustomerSurveyModule = startupModule?.slug === CUSTOMER_SURVEY_SLUG;
+  const isValidationExperimentModule = startupModule?.slug === VALIDATION_EXPERIMENT_SLUG;
   const oneLineIdeaOutput = participant?.moduleProgress?.[ONE_LINE_IDEA_SLUG]?.outputData || "";
   const ideaDiagnosisOutput = participant?.moduleProgress?.[IDEA_DIAGNOSIS_SLUG]?.outputData || "";
   const customerPersonaOutput = participant?.moduleProgress?.[CUSTOMER_PERSONA_SLUG]?.outputData || "";
   const customerJourneyOutput = participant?.moduleProgress?.[CUSTOMER_JOURNEY_SLUG]?.outputData || "";
   const problemStatementOutput = participant?.moduleProgress?.[PROBLEM_STATEMENT_SLUG]?.outputData || "";
   const customerInterviewOutput = participant?.moduleProgress?.[CUSTOMER_INTERVIEW_SLUG]?.outputData || "";
+  const customerSurveyOutput = participant?.moduleProgress?.[CUSTOMER_SURVEY_SLUG]?.outputData || "";
 
   const saveProgress = async (
     status: ParticipantModuleProgressStatus,
@@ -817,6 +876,67 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
     }
   };
 
+  const generateValidationExperiment = async () => {
+    if (!program || !participant || !startupModule || startupModule.slug !== VALIDATION_EXPERIMENT_SLUG) return;
+
+    const ideaMemo = inputData.trim();
+    if (!ideaMemo) {
+      setAiError("검증 실험을 만들 고객 문제 메모를 먼저 입력해주세요.");
+      return;
+    }
+
+    const requestBody: ValidationExperimentInput = {
+      programName: program.name,
+      teamName: team?.name || "",
+      participantName: participant.name || participant.code,
+      ideaMemo,
+      oneLineIdea: oneLineIdeaOutput,
+      diagnosisReport: ideaDiagnosisOutput,
+      personaReport: customerPersonaOutput,
+      journeyReport: customerJourneyOutput,
+      problemStatementReport: problemStatementOutput,
+      interviewReport: customerInterviewOutput,
+      surveyReport: customerSurveyOutput,
+      operation: {
+        programId: program.id,
+        programCode: program.programCode,
+        programName: program.name,
+        participantId: participant.id,
+        participantCode: participant.code,
+        teamId: team?.id || "",
+        teamName: team?.name || "",
+        role: participant.role
+      }
+    };
+
+    setGenerating(true);
+    setAiError("");
+    setNotice("AI가 검증 실험 설계안을 생성하고 있습니다.");
+
+    try {
+      const response = await fetch("/api/generate-validation-experiment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody)
+      });
+      const data = (await response.json()) as { draft?: ValidationExperimentDraft; error?: string };
+
+      if (!response.ok || !data.draft) {
+        throw new Error(data.error || "검증 실험 설계안을 생성하지 못했습니다.");
+      }
+
+      const formattedOutput = formatValidationExperimentDraft(data.draft);
+      setOutputData(formattedOutput);
+      await saveProgress("in_progress", { inputData: ideaMemo, outputData: formattedOutput });
+      setNotice("검증 실험 설계안이 생성되었습니다. 성공 기준이 숫자로 측정 가능한지 확인한 뒤 완료로 표시해주세요.");
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "검증 실험 설계안 생성 중 오류가 발생했습니다.");
+      setNotice("");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   if (!startupModule) {
     return (
       <main className="mx-auto flex min-h-screen max-w-2xl items-center px-5 py-10">
@@ -971,6 +1091,20 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
             resultPlaceholder:
               "AI 생성 버튼을 누르면 설문 목표, 안내문, 선별 문항, 문제 검증 문항, 현재 대안 문항, 지불의사 문항, 분석 기준이 표시됩니다."
           }
+        : isValidationExperimentModule
+          ? {
+              inputTitle: "검증 실험 메모 입력",
+              inputDescription:
+                "이번 주 안에 확인하고 싶은 가장 위험한 가정과 고객 문제를 적어주세요. 앞선 인터뷰·설문 결과가 있으면 함께 참고해 실행 가능한 실험으로 정리합니다.",
+              inputLabel: "실험 준비 메모",
+              inputPlaceholder:
+                "예: 자취생이 늦은 시간 따뜻한 식사를 원한다는 가정을 검증하고 싶다. 20명에게 설문을 받고, 강한 응답자 5명에게 사전신청 의향을 확인하고 싶다.",
+              resultTitle: "AI 검증 실험 설계안 / 수정 가능",
+              resultDescription:
+                "실험 설계안은 바로 실행할 초안입니다. 성공 기준과 실패 기준이 숫자로 측정 가능한지 확인하고, 오늘 할 일을 팀 상황에 맞게 줄이세요.",
+              resultPlaceholder:
+                "AI 생성 버튼을 누르면 실험 목표, 위험 가정, 가설, 실행 단계, 수집 데이터, 성공/실패 기준, 준비물, 일정이 표시됩니다."
+            }
       : null;
   const displayInputTitle = moduleCopyOverride?.inputTitle || inputTitle;
   const displayInputDescription = moduleCopyOverride?.inputDescription || inputDescription;
@@ -1099,6 +1233,16 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
                 type="button"
               >
                 {generating ? "AI 생성 중..." : "AI 고객 검증 설문지 생성"}
+              </button>
+            ) : null}
+            {isValidationExperimentModule ? (
+              <button
+                className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
+                disabled={generating || !inputData.trim()}
+                onClick={generateValidationExperiment}
+                type="button"
+              >
+                {generating ? "AI 생성 중..." : "AI 검증 실험 설계안 생성"}
               </button>
             ) : null}
             <button

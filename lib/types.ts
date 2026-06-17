@@ -224,6 +224,46 @@ export interface CustomerSurveyDraft {
   mentorComment: string;
 }
 
+export interface ValidationExperimentInput {
+  programName: string;
+  teamName: string;
+  participantName: string;
+  ideaMemo: string;
+  oneLineIdea?: string;
+  diagnosisReport?: string;
+  personaReport?: string;
+  journeyReport?: string;
+  problemStatementReport?: string;
+  interviewReport?: string;
+  surveyReport?: string;
+  operation?: ParticipantOperationContext;
+}
+
+export interface ValidationExperimentStep {
+  step: string;
+  action: string;
+  tool: string;
+  expectedOutput: string;
+}
+
+export interface ValidationExperimentDraft {
+  experimentGoal: string;
+  riskiestAssumption: string;
+  hypothesis: string;
+  experimentType: string;
+  targetCustomer: string;
+  samplePlan: string;
+  methodSteps: ValidationExperimentStep[];
+  dataToCollect: string[];
+  successCriteria: string[];
+  failureCriteria: string[];
+  requiredMaterials: string[];
+  schedule: string;
+  riskControls: string[];
+  nextAction: string;
+  mentorComment: string;
+}
+
 export interface LeanCanvasDraft {
   problem: string[];
   existingAlternatives: string[];
