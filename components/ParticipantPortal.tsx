@@ -11,7 +11,14 @@ import type {
   ParticipantModuleProgressStatus,
   StartupModule
 } from "@/lib/types";
-import { getSubmission, saveModuStartupPrefill, saveParticipantPrefill } from "@/lib/storage";
+import {
+  clearBrowserTemporaryDrafts,
+  getBrowserTemporaryStorageSummary,
+  getSubmission,
+  saveModuStartupPrefill,
+  saveParticipantPrefill,
+  type BrowserTemporaryStorageSummary
+} from "@/lib/storage";
 import { getParticipantVisibleModules } from "@/lib/startupModules";
 import { normalizeAccessCode, validateAccessCodeInput } from "@/lib/normalize";
 import {
@@ -75,6 +82,11 @@ export default function ParticipantPortal() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [latestSubmission, setLatestSubmission] = useState<LeanCanvasSubmission | null>(null);
+  const [temporaryStorage, setTemporaryStorage] = useState<BrowserTemporaryStorageSummary>({
+    draftCount: 0,
+    fallbackSubmissionCount: 0,
+    sessionPrefillCount: 0
+  });
 
   useEffect(() => {
     const loaded = loadOperationsState();
@@ -82,6 +94,7 @@ export default function ParticipantPortal() {
     setState(loaded);
     setProgramId(session.programId);
     setParticipantId(session.participantId);
+    setTemporaryStorage(getBrowserTemporaryStorageSummary());
   }, []);
 
   const program = state.programs.find((item) => item.id === programId);
@@ -112,6 +125,10 @@ export default function ParticipantPortal() {
   const hasLeanCanvasSubmission = Boolean(participant?.latestSubmissionId || latestSubmission);
   const hasModuStartupSubmission = Boolean(participant?.latestModuStartupSubmissionId || participant?.moduStartupSubmittedAt);
   const hasAnySubmission = hasLeanCanvasSubmission || hasModuStartupSubmission;
+  const hasBrowserTemporaryStorage =
+    temporaryStorage.draftCount > 0 ||
+    temporaryStorage.sessionPrefillCount > 0 ||
+    temporaryStorage.fallbackSubmissionCount > 0;
   const visibleModules = getParticipantVisibleModules(program);
   const getModuleProgressStatus = (module: StartupModule): ParticipantModuleProgressStatus => {
     if (module.slug === "lean-canvas" && hasLeanCanvasSubmission) return "completed";
@@ -334,6 +351,16 @@ export default function ParticipantPortal() {
     setNotice("");
   };
 
+  const clearTemporaryDrafts = () => {
+    const clearedCount = clearBrowserTemporaryDrafts();
+    setTemporaryStorage(getBrowserTemporaryStorageSummary());
+    setNotice(
+      clearedCount > 0
+        ? `이 브라우저에 남아 있던 임시 작성 데이터 ${clearedCount}개를 삭제했습니다. 제출 완료 기록은 유지했습니다.`
+        : "삭제할 브라우저 임시 작성 데이터가 없습니다."
+    );
+  };
+
   const updateProfile = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!participant) return;
@@ -538,6 +565,36 @@ export default function ParticipantPortal() {
           {nextAction.description}
         </p>
       </section>
+
+      {hasBrowserTemporaryStorage ? (
+        <section className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="font-bold">이 브라우저에 임시 저장 데이터가 있습니다</p>
+              <p className="mt-1 leading-6">
+                작성 중 초안 {temporaryStorage.draftCount}개
+                {temporaryStorage.sessionPrefillCount ? `, 화면 이동용 임시 정보 ${temporaryStorage.sessionPrefillCount}개` : ""}
+                {temporaryStorage.fallbackSubmissionCount
+                  ? `, 서버 미연결 상태에서 저장된 제출 기록 ${temporaryStorage.fallbackSubmissionCount}건`
+                  : ""}
+                이 감지되었습니다. 공용 PC라면 수업 종료 후 임시 작성 데이터를 삭제하세요.
+              </p>
+            </div>
+            <button
+              className="shrink-0 rounded-md border border-amber-300 bg-white px-4 py-2 text-sm font-bold text-amber-900 transition-colors hover:bg-amber-100"
+              onClick={clearTemporaryDrafts}
+              type="button"
+            >
+              임시 작성 데이터 삭제
+            </button>
+          </div>
+          {temporaryStorage.fallbackSubmissionCount ? (
+            <p className="mt-2 text-xs leading-5 text-amber-800">
+              제출 완료 기록은 운영 확인을 위해 자동 삭제하지 않습니다. 서버 저장 전 데모/오프라인 기록을 지워야 하면 운영진에게 확인하세요.
+            </p>
+          ) : null}
+        </section>
+      ) : null}
 
       {tab === "home" ? (
         <main className="grid gap-4 md:grid-cols-3">

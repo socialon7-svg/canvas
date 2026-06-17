@@ -14,7 +14,15 @@ const DRAFT_KEY = "lean-canvas-current-draft";
 const SUBMISSIONS_KEY = "lean-canvas-submissions";
 const PREFILL_KEY = "lean-canvas-participant-prefill";
 const MODU_STARTUP_SUBMISSIONS_KEY = "modu-startup-submissions";
+const MODU_STARTUP_DRAFT_KEY = "modu-startup-current-draft";
 const MODU_STARTUP_PREFILL_KEY = "modu-startup-participant-prefill";
+const MODULE_DRAFT_KEY_PREFIX = "highviewlab-module-draft-v1:";
+
+export interface BrowserTemporaryStorageSummary {
+  draftCount: number;
+  fallbackSubmissionCount: number;
+  sessionPrefillCount: number;
+}
 
 export interface DraftSession {
   participant: ParticipantInput;
@@ -76,6 +84,21 @@ const removeSessionStorage = (key: string) => {
     // Ignore storage failures in restricted browser contexts.
   }
 };
+
+const listLocalStorageKeys = () => {
+  if (!isBrowser()) return [];
+  try {
+    return Array.from({ length: window.localStorage.length }, (_, index) => window.localStorage.key(index)).filter(
+      (key): key is string => Boolean(key)
+    );
+  } catch {
+    return [];
+  }
+};
+
+const localStorageHasKey = (key: string) => readLocalStorage(key) !== null;
+
+const sessionStorageHasKey = (key: string) => readSessionStorage(key) !== null;
 
 export function saveDraftSession(draft: DraftSession) {
   if (!isBrowser()) return;
@@ -239,4 +262,35 @@ export function updateModuStartupSubmissionPdfStatus(id: string, status: PdfStat
 
   writeLocalStorage(MODU_STARTUP_SUBMISSIONS_KEY, JSON.stringify(updated));
   return updated.find((submission) => submission.id === id) ?? null;
+}
+
+export function getBrowserTemporaryStorageSummary(): BrowserTemporaryStorageSummary {
+  const localKeys = listLocalStorageKeys();
+  const moduleDraftCount = localKeys.filter((key) => key.startsWith(MODULE_DRAFT_KEY_PREFIX)).length;
+  const draftCount =
+    moduleDraftCount +
+    [DRAFT_KEY, MODU_STARTUP_DRAFT_KEY].filter((key) => localStorageHasKey(key)).length;
+
+  return {
+    draftCount,
+    fallbackSubmissionCount: loadSubmissions().length + loadModuStartupSubmissions().length,
+    sessionPrefillCount: [PREFILL_KEY, MODU_STARTUP_PREFILL_KEY].filter((key) => sessionStorageHasKey(key)).length
+  };
+}
+
+export function clearBrowserTemporaryDrafts() {
+  const localDraftKeys = Array.from(new Set([
+    DRAFT_KEY,
+    MODU_STARTUP_DRAFT_KEY,
+    ...listLocalStorageKeys().filter((key) => key.startsWith(MODULE_DRAFT_KEY_PREFIX))
+  ]));
+  const sessionPrefillKeys = [PREFILL_KEY, MODU_STARTUP_PREFILL_KEY];
+  const clearedCount =
+    localDraftKeys.filter((key) => localStorageHasKey(key)).length +
+    sessionPrefillKeys.filter((key) => sessionStorageHasKey(key)).length;
+
+  localDraftKeys.forEach(removeLocalStorage);
+  sessionPrefillKeys.forEach(removeSessionStorage);
+
+  return clearedCount;
 }
