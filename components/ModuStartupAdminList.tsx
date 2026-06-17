@@ -14,6 +14,10 @@ const REVIEW_FILTER_LABELS: Record<ModuReviewFilter, string> = {
   noVideo: "영상 없음"
 };
 
+function isModuReviewFilter(value: string | null): value is ModuReviewFilter {
+  return Boolean(value && value in REVIEW_FILTER_LABELS);
+}
+
 function escapeCsv(value: unknown) {
   const text = value == null ? "" : String(value);
   const escaped = text.replace(/"/g, '""');
@@ -113,6 +117,7 @@ export default function ModuStartupAdminList() {
   const [fallbackMode, setFallbackMode] = useState(false);
   const [query, setQuery] = useState("");
   const [reviewFilter, setReviewFilter] = useState<ModuReviewFilter>("all");
+  const [urlReady, setUrlReady] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -144,8 +149,47 @@ export default function ModuStartupAdminList() {
   }
 
   useEffect(() => {
-    void refreshList({ silentUnauthorized: true });
+    const params = new URLSearchParams(window.location.search);
+    const urlQuery = params.get("q") || "";
+    const urlFilter = params.get("reviewFilter");
+    const hasAdminError = params.get("adminError") === "1";
+
+    if (urlQuery) setQuery(urlQuery);
+    if (isModuReviewFilter(urlFilter)) setReviewFilter(urlFilter);
+    setUrlReady(true);
+
+    void refreshList({ silentUnauthorized: true }).finally(() => {
+      if (hasAdminError) setError("암호가 올바르지 않습니다.");
+    });
   }, []);
+
+  useEffect(() => {
+    if (!urlReady) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const trimmedQuery = query.trim();
+    params.delete("adminError");
+
+    if (trimmedQuery) {
+      params.set("q", trimmedQuery);
+    } else {
+      params.delete("q");
+    }
+
+    if (reviewFilter !== "all") {
+      params.set("reviewFilter", reviewFilter);
+    } else {
+      params.delete("reviewFilter");
+    }
+
+    const nextSearch = params.toString();
+    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}`;
+    const currentUrl = `${window.location.pathname}${window.location.search}`;
+
+    if (nextUrl !== currentUrl) {
+      window.history.replaceState(null, "", nextUrl);
+    }
+  }, [query, reviewFilter, urlReady]);
 
   const login = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -165,6 +209,10 @@ export default function ModuStartupAdminList() {
       setAuthorized(true);
       await refreshList();
       setPassword("");
+      const params = new URLSearchParams(window.location.search);
+      params.delete("adminError");
+      const nextSearch = params.toString();
+      window.history.replaceState(null, "", `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "로그인에 실패했습니다.");
     } finally {
@@ -172,7 +220,8 @@ export default function ModuStartupAdminList() {
     }
   };
 
-  const logout = async () => {
+  const logout = async (event?: React.FormEvent<HTMLFormElement>) => {
+    event?.preventDefault();
     await fetch("/api/admin-logout", { method: "POST", credentials: "same-origin" }).catch(() => null);
     setAuthorized(false);
     setSubmissions([]);
@@ -251,6 +300,7 @@ export default function ModuStartupAdminList() {
         return searchedSubmissions;
     }
   }, [reviewFilter, searchedSubmissions]);
+  const hasActiveListFilter = Boolean(normalizedQuery) || reviewFilter !== "all";
   const reviewFocus =
     metrics.needsEvidence > 0
       ? {
@@ -276,11 +326,13 @@ export default function ModuStartupAdminList() {
         <main className="w-full rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
           <p className="text-sm font-semibold text-blue-700">관리자</p>
           <h1 className="mt-1 text-2xl font-bold text-gray-950">모두의창업 제출 목록 로그인</h1>
-          <form className="mt-6 space-y-4" onSubmit={login}>
+          <form action="/api/admin-login" className="mt-6 space-y-4" method="post" onSubmit={login}>
+            <input name="nextPath" type="hidden" value="/admin/modu-startup" />
             <label>
               <span className="mb-1 block text-sm font-semibold text-gray-800">암호</span>
               <input
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                name="password"
                 type="password"
                 autoComplete="current-password"
                 value={password}
@@ -324,9 +376,12 @@ export default function ModuStartupAdminList() {
           <Link className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" href="/admin">
             린캔버스 목록
           </Link>
-          <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" onClick={logout} type="button">
-            로그아웃
-          </button>
+          <form action="/api/admin-logout" method="post" onSubmit={logout}>
+            <input name="nextPath" type="hidden" value="/admin/modu-startup" />
+            <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" type="submit">
+              로그아웃
+            </button>
+          </form>
         </div>
       </header>
 
@@ -400,8 +455,26 @@ export default function ModuStartupAdminList() {
       <main className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
         {filteredSubmissions.length === 0 ? (
           <div className="p-8 text-center text-sm text-gray-600">
-            <p className="font-semibold text-gray-800">표시할 모두의창업 제출물이 없습니다.</p>
-            <p className="mt-2">참여자가 모두의창업 초안을 운영 시스템에 제출하면 이 목록에 표시됩니다.</p>
+            <p className="font-semibold text-gray-800">
+              {hasActiveListFilter ? "현재 조건에 맞는 모두의창업 제출물이 없습니다." : "표시할 모두의창업 제출물이 없습니다."}
+            </p>
+            <p className="mt-2">
+              {hasActiveListFilter
+                ? "검색어 또는 검토 필터를 초기화하면 전체 제출 목록을 다시 볼 수 있습니다."
+                : "참여자가 모두의창업 초안을 운영 시스템에 제출하면 이 목록에 표시됩니다."}
+            </p>
+            {hasActiveListFilter ? (
+              <button
+                className="mt-4 rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                onClick={() => {
+                  setQuery("");
+                  setReviewFilter("all");
+                }}
+                type="button"
+              >
+                검색/필터 초기화
+              </button>
+            ) : null}
           </div>
         ) : (
           <div className="overflow-x-auto">

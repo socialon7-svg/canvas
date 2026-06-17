@@ -1,5 +1,6 @@
 import {
   createModuleSubmission,
+  deleteModuleSubmissionsBySource,
   updateModuleSubmissionPdfStatusBySource,
   upsertModuleProgress,
   type ModuleSubmissionRow
@@ -150,5 +151,16 @@ export async function mirrorPdfStatusToModuleSubmission(input: {
     });
   } catch (error) {
     console.warn("[module-submission-mirror] pdf status sync failed", getErrorMessage(error));
+  }
+}
+
+export async function deleteMirroredModuleSubmission(input: {
+  source: "lean_canvas_submissions" | "modu_startup_submissions";
+  sourceSubmissionId: string;
+}) {
+  try {
+    await deleteModuleSubmissionsBySource(input);
+  } catch (error) {
+    console.warn("[module-submission-mirror] mirrored submission delete failed", getErrorMessage(error));
   }
 }

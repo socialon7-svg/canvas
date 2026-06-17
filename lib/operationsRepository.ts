@@ -533,6 +533,19 @@ export async function updateModuleSubmissionPdfStatusBySource(input: {
   return data ?? [];
 }
 
+export async function deleteModuleSubmissionsBySource(input: { source: string; sourceSubmissionId: string }) {
+  const supabase = getClient();
+  const { error } = await supabase
+    .from("module_submissions")
+    .delete()
+    .contains("input_data", {
+      source: input.source,
+      sourceSubmissionId: input.sourceSubmissionId
+    });
+
+  throwIfError(error);
+}
+
 export async function createFeedback(input: {
   programId: string;
   participantId: string;

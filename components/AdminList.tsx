@@ -176,12 +176,15 @@ export default function AdminList() {
     const params = new URLSearchParams(window.location.search);
     const urlQuery = params.get("q") || "";
     const urlFilter = params.get("filter");
+    const hasAdminError = params.get("adminError") === "1";
 
     if (urlQuery) setQuery(urlQuery);
     if (isAdminFilter(urlFilter)) setFilter(urlFilter);
     setUrlReady(true);
 
-    void refreshList({ silentUnauthorized: true });
+    void refreshList({ silentUnauthorized: true }).finally(() => {
+      if (hasAdminError) setError("암호가 올바르지 않습니다.");
+    });
   }, []);
 
   useEffect(() => {
@@ -189,6 +192,7 @@ export default function AdminList() {
 
     const params = new URLSearchParams(window.location.search);
     const trimmedQuery = query.trim();
+    params.delete("adminError");
 
     if (trimmedQuery) {
       params.set("q", trimmedQuery);
@@ -229,6 +233,10 @@ export default function AdminList() {
       setAuthorized(true);
       await refreshList();
       setPassword("");
+      const params = new URLSearchParams(window.location.search);
+      params.delete("adminError");
+      const nextSearch = params.toString();
+      window.history.replaceState(null, "", `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "로그인에 실패했습니다.");
     } finally {
@@ -236,7 +244,8 @@ export default function AdminList() {
     }
   };
 
-  const logout = async () => {
+  const logout = async (event?: React.FormEvent<HTMLFormElement>) => {
+    event?.preventDefault();
     await fetch("/api/admin-logout", { method: "POST", credentials: "same-origin" }).catch(() => null);
     setAuthorized(false);
     setSubmissions([]);
@@ -308,11 +317,13 @@ export default function AdminList() {
         <main className="w-full rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
           <p className="text-sm font-semibold text-blue-700">관리자</p>
           <h1 className="mt-1 text-2xl font-bold text-gray-950">제출 목록 로그인</h1>
-          <form className="mt-6 space-y-4" onSubmit={login}>
+          <form action="/api/admin-login" className="mt-6 space-y-4" method="post" onSubmit={login}>
+            <input name="nextPath" type="hidden" value="/admin" />
             <label>
               <span className="mb-1 block text-sm font-semibold text-gray-800">암호</span>
               <input
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                name="password"
                 type="password"
                 autoComplete="current-password"
                 value={password}
@@ -355,12 +366,16 @@ export default function AdminList() {
             className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold disabled:bg-gray-100"
             disabled={refreshing}
             onClick={() => refreshList()}
+            type="button"
           >
             {refreshing ? "새로고침 중..." : "목록 새로고침"}
           </button>
-          <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" onClick={logout}>
-            로그아웃
-          </button>
+          <form action="/api/admin-logout" method="post" onSubmit={logout}>
+            <input name="nextPath" type="hidden" value="/admin" />
+            <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" type="submit">
+              로그아웃
+            </button>
+          </form>
           <Link className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800" href="/admin/modu-startup">
             모두의창업 목록
           </Link>
@@ -537,6 +552,7 @@ export default function AdminList() {
                       <button
                         className="rounded-md border border-red-200 px-3 py-1 text-sm font-semibold text-red-700 hover:bg-red-50"
                         onClick={() => removeSubmission(submission)}
+                        type="button"
                       >
                         삭제
                       </button>

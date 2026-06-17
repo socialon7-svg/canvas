@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminUnauthorizedResponse, isAdminRequest } from "@/lib/adminAuth";
+import { deleteMirroredModuleSubmission } from "@/lib/moduleSubmissionMirror";
 import { createSupabaseServerClient, hasSupabaseServerConfig } from "@/lib/supabaseServer";
 
 function isMissingTableError(error: unknown) {
@@ -39,6 +40,11 @@ export async function POST(request: Request, { params }: { params: Promise<unkno
       }
       throw error;
     }
+
+    await deleteMirroredModuleSubmission({
+      source: "modu_startup_submissions",
+      sourceSubmissionId: id
+    });
 
     return NextResponse.json({ ok: true });
   } catch (error) {
