@@ -9,6 +9,8 @@ import type {
   CustomerJourneyInput,
   CustomerPersonaDraft,
   CustomerPersonaInput,
+  CustomerSurveyDraft,
+  CustomerSurveyInput,
   HighViewOperationsState,
   IdeaDiagnosisDraft,
   IdeaDiagnosisInput,
@@ -34,6 +36,7 @@ const CUSTOMER_PERSONA_SLUG = "customer-persona";
 const CUSTOMER_JOURNEY_SLUG = "customer-journey-map";
 const PROBLEM_STATEMENT_SLUG = "problem-statement";
 const CUSTOMER_INTERVIEW_SLUG = "customer-interview-questions";
+const CUSTOMER_SURVEY_SLUG = "survey-generator";
 
 function readSessionValue(key: string) {
   try {
@@ -255,6 +258,49 @@ function formatCustomerInterviewDraft(draft: CustomerInterviewDraft) {
   ].join("\n");
 }
 
+function formatSurveyQuestionGroup(title: string, questions: CustomerSurveyDraft["screeningQuestions"]) {
+  return [
+    title,
+    ...questions.flatMap((item, index) => [
+      `${index + 1}. [${item.type}] ${item.question}`,
+      `- 목적: ${item.purpose}`,
+      `- 필수: ${item.required ? "예" : "아니오"}`,
+      `- 선택지: ${item.options.length ? item.options.join(" / ") : "주관식"}`,
+      ""
+    ])
+  ];
+}
+
+function formatCustomerSurveyDraft(draft: CustomerSurveyDraft) {
+  return [
+    "설문 목표",
+    draft.surveyGoal,
+    "",
+    "응답 대상",
+    draft.targetRespondent,
+    "",
+    "설문 안내문",
+    draft.introMessage,
+    "",
+    "예상 소요 시간",
+    draft.estimatedTime,
+    "",
+    ...formatSurveyQuestionGroup("선별 문항", draft.screeningQuestions),
+    ...formatSurveyQuestionGroup("문제 검증 문항", draft.problemValidationQuestions),
+    ...formatSurveyQuestionGroup("현재 대안 문항", draft.currentAlternativeQuestions),
+    ...formatSurveyQuestionGroup("지불의사 문항", draft.willingnessToPayQuestions),
+    ...formatSurveyQuestionGroup("응답자 특성 문항", draft.demographicQuestions),
+    "분석 기준",
+    ...draft.analysisGuide.map((item) => `- ${item}`),
+    "",
+    "설문 작성 주의사항",
+    ...draft.avoidNotes.map((item) => `- ${item}`),
+    "",
+    "멘토 코멘트",
+    draft.mentorComment
+  ].join("\n");
+}
+
 export default function ParticipantModulePlaceholder({ slug }: { slug: string }) {
   const [state, setState] = useState<HighViewOperationsState>(() => defaultOperationsState());
   const [programId, setProgramId] = useState("");
@@ -293,11 +339,13 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
   const isCustomerJourneyModule = startupModule?.slug === CUSTOMER_JOURNEY_SLUG;
   const isProblemStatementModule = startupModule?.slug === PROBLEM_STATEMENT_SLUG;
   const isCustomerInterviewModule = startupModule?.slug === CUSTOMER_INTERVIEW_SLUG;
+  const isCustomerSurveyModule = startupModule?.slug === CUSTOMER_SURVEY_SLUG;
   const oneLineIdeaOutput = participant?.moduleProgress?.[ONE_LINE_IDEA_SLUG]?.outputData || "";
   const ideaDiagnosisOutput = participant?.moduleProgress?.[IDEA_DIAGNOSIS_SLUG]?.outputData || "";
   const customerPersonaOutput = participant?.moduleProgress?.[CUSTOMER_PERSONA_SLUG]?.outputData || "";
   const customerJourneyOutput = participant?.moduleProgress?.[CUSTOMER_JOURNEY_SLUG]?.outputData || "";
   const problemStatementOutput = participant?.moduleProgress?.[PROBLEM_STATEMENT_SLUG]?.outputData || "";
+  const customerInterviewOutput = participant?.moduleProgress?.[CUSTOMER_INTERVIEW_SLUG]?.outputData || "";
 
   const saveProgress = async (
     status: ParticipantModuleProgressStatus,
@@ -709,6 +757,66 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
     }
   };
 
+  const generateCustomerSurvey = async () => {
+    if (!program || !participant || !startupModule || startupModule.slug !== CUSTOMER_SURVEY_SLUG) return;
+
+    const ideaMemo = inputData.trim();
+    if (!ideaMemo) {
+      setAiError("고객 검증 설문지를 만들 문제 메모를 먼저 입력해주세요.");
+      return;
+    }
+
+    const requestBody: CustomerSurveyInput = {
+      programName: program.name,
+      teamName: team?.name || "",
+      participantName: participant.name || participant.code,
+      ideaMemo,
+      oneLineIdea: oneLineIdeaOutput,
+      diagnosisReport: ideaDiagnosisOutput,
+      personaReport: customerPersonaOutput,
+      journeyReport: customerJourneyOutput,
+      problemStatementReport: problemStatementOutput,
+      interviewReport: customerInterviewOutput,
+      operation: {
+        programId: program.id,
+        programCode: program.programCode,
+        programName: program.name,
+        participantId: participant.id,
+        participantCode: participant.code,
+        teamId: team?.id || "",
+        teamName: team?.name || "",
+        role: participant.role
+      }
+    };
+
+    setGenerating(true);
+    setAiError("");
+    setNotice("AI가 고객 검증 설문지를 생성하고 있습니다.");
+
+    try {
+      const response = await fetch("/api/generate-survey", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody)
+      });
+      const data = (await response.json()) as { draft?: CustomerSurveyDraft; error?: string };
+
+      if (!response.ok || !data.draft) {
+        throw new Error(data.error || "고객 검증 설문지를 생성하지 못했습니다.");
+      }
+
+      const formattedOutput = formatCustomerSurveyDraft(data.draft);
+      setOutputData(formattedOutput);
+      await saveProgress("in_progress", { inputData: ideaMemo, outputData: formattedOutput });
+      setNotice("고객 검증 설문지가 생성되었습니다. 선택지가 편향되지 않았는지 확인한 뒤 완료로 표시해주세요.");
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "고객 검증 설문지 생성 중 오류가 발생했습니다.");
+      setNotice("");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   if (!startupModule) {
     return (
       <main className="mx-auto flex min-h-screen max-w-2xl items-center px-5 py-10">
@@ -849,6 +957,20 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
           resultPlaceholder:
             "AI 생성 버튼을 누르면 인터뷰 목표, 오프닝 멘트, 선별 질문, 문제 발견 질문, 현재 대안 질문, 지불의사 질문, 피해야 할 질문이 표시됩니다."
         }
+      : isCustomerSurveyModule
+        ? {
+            inputTitle: "고객 검증 설문 메모 입력",
+            inputDescription:
+              "설문으로 확인하고 싶은 고객 문제와 응답 대상을 적어주세요. 앞선 인터뷰 질문지가 있으면 함께 참고해 3~5분 설문지로 정리합니다.",
+            inputLabel: "설문 준비 메모",
+            inputPlaceholder:
+              "예: 늦은 시간 식사를 고민하는 자취생 30명에게 문제 빈도, 현재 대안, 비용 부담, 지불의사를 빠르게 확인하고 싶다.",
+            resultTitle: "AI 고객 검증 설문지 / 수정 가능",
+            resultDescription:
+              "설문지는 대량 신호를 보는 초안입니다. 너무 많은 주관식 문항을 줄이고 선택지 편향이 없는지 확인하세요.",
+            resultPlaceholder:
+              "AI 생성 버튼을 누르면 설문 목표, 안내문, 선별 문항, 문제 검증 문항, 현재 대안 문항, 지불의사 문항, 분석 기준이 표시됩니다."
+          }
       : null;
   const displayInputTitle = moduleCopyOverride?.inputTitle || inputTitle;
   const displayInputDescription = moduleCopyOverride?.inputDescription || inputDescription;
@@ -967,6 +1089,16 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
                 type="button"
               >
                 {generating ? "AI 생성 중..." : "AI 고객 인터뷰 질문지 생성"}
+              </button>
+            ) : null}
+            {isCustomerSurveyModule ? (
+              <button
+                className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
+                disabled={generating || !inputData.trim()}
+                onClick={generateCustomerSurvey}
+                type="button"
+              >
+                {generating ? "AI 생성 중..." : "AI 고객 검증 설문지 생성"}
               </button>
             ) : null}
             <button

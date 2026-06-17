@@ -185,6 +185,45 @@ export interface CustomerInterviewDraft {
   mentorComment: string;
 }
 
+export interface CustomerSurveyInput {
+  programName: string;
+  teamName: string;
+  participantName: string;
+  ideaMemo: string;
+  oneLineIdea?: string;
+  diagnosisReport?: string;
+  personaReport?: string;
+  journeyReport?: string;
+  problemStatementReport?: string;
+  interviewReport?: string;
+  operation?: ParticipantOperationContext;
+}
+
+export type CustomerSurveyQuestionType = "single_choice" | "multiple_choice" | "scale" | "short_answer";
+
+export interface CustomerSurveyQuestion {
+  type: CustomerSurveyQuestionType;
+  question: string;
+  purpose: string;
+  options: string[];
+  required: boolean;
+}
+
+export interface CustomerSurveyDraft {
+  surveyGoal: string;
+  targetRespondent: string;
+  introMessage: string;
+  estimatedTime: string;
+  screeningQuestions: CustomerSurveyQuestion[];
+  problemValidationQuestions: CustomerSurveyQuestion[];
+  currentAlternativeQuestions: CustomerSurveyQuestion[];
+  willingnessToPayQuestions: CustomerSurveyQuestion[];
+  demographicQuestions: CustomerSurveyQuestion[];
+  analysisGuide: string[];
+  avoidNotes: string[];
+  mentorComment: string;
+}
+
 export interface LeanCanvasDraft {
   problem: string[];
   existingAlternatives: string[];

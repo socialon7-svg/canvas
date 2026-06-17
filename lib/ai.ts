@@ -5,6 +5,10 @@ import {
   type CustomerPersonaInput,
   type CustomerJourneyDraft,
   type CustomerJourneyInput,
+  type CustomerSurveyDraft,
+  type CustomerSurveyInput,
+  type CustomerSurveyQuestion,
+  type CustomerSurveyQuestionType,
   emptyCanvasDraft,
   type IdeaDiagnosisDraft,
   type IdeaDiagnosisInput,
@@ -158,6 +162,30 @@ const customerInterviewDraftSchema = z.object({
   closingQuestions: z.array(interviewQuestionSchema).min(2).max(4),
   avoidQuestions: z.array(interviewTextSchema).min(3).max(6),
   mentorComment: interviewTextSchema
+});
+
+const surveyTextSchema = z.string().trim().min(1).max(260);
+const surveyQuestionTypeSchema = z.enum(["single_choice", "multiple_choice", "scale", "short_answer"]);
+const surveyQuestionSchema = z.object({
+  type: surveyQuestionTypeSchema,
+  question: surveyTextSchema,
+  purpose: surveyTextSchema,
+  options: z.array(surveyTextSchema).min(0).max(8),
+  required: z.boolean()
+});
+const customerSurveyDraftSchema = z.object({
+  surveyGoal: surveyTextSchema,
+  targetRespondent: surveyTextSchema,
+  introMessage: surveyTextSchema,
+  estimatedTime: surveyTextSchema,
+  screeningQuestions: z.array(surveyQuestionSchema).min(2).max(4),
+  problemValidationQuestions: z.array(surveyQuestionSchema).min(3).max(6),
+  currentAlternativeQuestions: z.array(surveyQuestionSchema).min(2).max(5),
+  willingnessToPayQuestions: z.array(surveyQuestionSchema).min(2).max(4),
+  demographicQuestions: z.array(surveyQuestionSchema).min(2).max(5),
+  analysisGuide: z.array(surveyTextSchema).min(3).max(6),
+  avoidNotes: z.array(surveyTextSchema).min(3).max(6),
+  mentorComment: surveyTextSchema
 });
 
 function truncateByCharacters(value: string, maxLength: number) {
@@ -1116,6 +1144,346 @@ export function createMockCustomerInterviewDraft(input: CustomerInterviewInput):
   };
 }
 
+export function buildCustomerSurveyPrompt(input: CustomerSurveyInput) {
+  return [
+    "너는 창업교육 현장에서 고객 검증용 설문지를 만드는 멘토다.",
+    "참가자 입력과 이전 모듈 결과를 바탕으로 실제 응답을 수집할 수 있는 짧은 설문지를 설계하라.",
+    "설문은 고객 문제의 빈도, 강도, 현재 대안, 비용/시간 지출, 지불의사를 검증해야 한다.",
+    "문항은 유도하지 말고, 응답자가 쉽게 고를 수 있는 선택지와 5점 척도를 우선하라.",
+    "전체 설문은 3~5분 안에 답할 수 있도록 구성하라.",
+    "각 문항에는 type, question, purpose, options, required를 포함하라.",
+    "type은 single_choice, multiple_choice, scale, short_answer 중 하나만 사용하라.",
+    "scale 문항 options는 반드시 ['1 전혀 아니다','2 아니다','3 보통','4 그렇다','5 매우 그렇다'] 형식을 사용하라.",
+    "short_answer 문항 options는 빈 배열로 둔다.",
+    "입력이 부족하면 합리적으로 가정하되, 참가자 입력의 고객과 문제를 임의의 다른 사업으로 바꾸지 마라.",
+    "반드시 JSON만 반환하라. 설명, 마크다운, 코드블록, 주석은 포함하지 마라.",
+    "",
+    "반환 JSON 형식:",
+    JSON.stringify(
+      {
+        surveyGoal: "설문으로 확인할 핵심 목표",
+        targetRespondent: "응답 대상 조건",
+        introMessage: "설문 시작 안내문",
+        estimatedTime: "예상 소요 시간",
+        screeningQuestions: [
+          { type: "single_choice", question: "선별 문항", purpose: "문항 목적", options: ["예", "아니오"], required: true }
+        ],
+        problemValidationQuestions: [
+          { type: "scale", question: "문제 검증 문항", purpose: "문항 목적", options: ["1 전혀 아니다", "2 아니다", "3 보통", "4 그렇다", "5 매우 그렇다"], required: true }
+        ],
+        currentAlternativeQuestions: [
+          { type: "multiple_choice", question: "현재 대안 문항", purpose: "문항 목적", options: ["대안 1", "대안 2"], required: true }
+        ],
+        willingnessToPayQuestions: [
+          { type: "single_choice", question: "지불의사 문항", purpose: "문항 목적", options: ["0원", "1천~3천원"], required: true }
+        ],
+        demographicQuestions: [
+          { type: "single_choice", question: "응답자 특성 문항", purpose: "문항 목적", options: ["선택지 1", "선택지 2"], required: false }
+        ],
+        analysisGuide: ["분석 기준 1", "분석 기준 2", "분석 기준 3"],
+        avoidNotes: ["주의점 1", "주의점 2", "주의점 3"],
+        mentorComment: "멘토 코멘트"
+      },
+      null,
+      2
+    ),
+    "",
+    "참가자 입력:",
+    JSON.stringify(input, null, 2)
+  ].join("\n");
+}
+
+function normalizeSurveyQuestionType(value: unknown, fallback: CustomerSurveyQuestionType): CustomerSurveyQuestionType {
+  const text = String(value || "").trim();
+  if (text === "single_choice" || text === "multiple_choice" || text === "scale" || text === "short_answer") {
+    return text;
+  }
+  return fallback;
+}
+
+function defaultScaleOptions() {
+  return ["1 전혀 아니다", "2 아니다", "3 보통", "4 그렇다", "5 매우 그렇다"];
+}
+
+function normalizeSurveyQuestions(
+  value: unknown,
+  fallback: CustomerSurveyQuestion[],
+  minItems: number,
+  maxItems: number
+): CustomerSurveyQuestion[] {
+  const normalized = Array.isArray(value)
+    ? value
+        .map((item, index) => {
+          const source = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+          const fallbackItem = fallback[Math.min(index, fallback.length - 1)] || fallback[0];
+          const type = normalizeSurveyQuestionType(source.type, fallbackItem.type);
+          const options =
+            type === "short_answer"
+              ? []
+              : type === "scale"
+                ? defaultScaleOptions()
+                : normalizeStringArray(source.options, fallbackItem.options.length ? fallbackItem.options : ["예", "아니오"], 8, 80);
+
+          return {
+            type,
+            question: truncateByCharacters(normalizeText(source.question, fallbackItem.question), 180),
+            purpose: truncateByCharacters(normalizeText(source.purpose, fallbackItem.purpose), 160),
+            options,
+            required: typeof source.required === "boolean" ? source.required : fallbackItem.required
+          };
+        })
+        .filter((item) => item.question)
+        .slice(0, maxItems)
+    : [];
+
+  return normalized.length >= minItems ? normalized : fallback;
+}
+
+export function parseCustomerSurveyJson(raw: string): CustomerSurveyDraft {
+  const jsonText = extractJsonObject(raw);
+  const parsed = JSON.parse(jsonText) as Partial<Record<keyof CustomerSurveyDraft, unknown>>;
+  const draft: CustomerSurveyDraft = {
+    surveyGoal: truncateByCharacters(normalizeText(parsed.surveyGoal, "고객 문제의 빈도와 현재 대안의 한계를 확인합니다."), 220),
+    targetRespondent: truncateByCharacters(normalizeText(parsed.targetRespondent, "최근 2주 안에 해당 문제를 겪은 고객"), 180),
+    introMessage: truncateByCharacters(
+      normalizeText(parsed.introMessage, "이 설문은 창업교육 과정의 고객 문제 검증을 위한 3분 설문입니다. 최근 경험을 기준으로 답해주세요."),
+      240
+    ),
+    estimatedTime: truncateByCharacters(normalizeText(parsed.estimatedTime, "3~5분"), 80),
+    screeningQuestions: normalizeSurveyQuestions(
+      parsed.screeningQuestions,
+      [
+        {
+          type: "single_choice",
+          question: "최근 2주 안에 이 문제를 직접 겪은 적이 있나요?",
+          purpose: "응답 대상 적합성을 확인합니다.",
+          options: ["예", "아니오"],
+          required: true
+        },
+        {
+          type: "single_choice",
+          question: "이 문제를 본인이 직접 해결해야 했나요?",
+          purpose: "실제 의사결정자인지 확인합니다.",
+          options: ["예", "아니오", "가족/동료가 결정"],
+          required: true
+        }
+      ],
+      2,
+      4
+    ),
+    problemValidationQuestions: normalizeSurveyQuestions(
+      parsed.problemValidationQuestions,
+      [
+        {
+          type: "scale",
+          question: "이 문제는 최근 한 달 동안 반복해서 발생했습니다.",
+          purpose: "문제 빈도를 확인합니다.",
+          options: defaultScaleOptions(),
+          required: true
+        },
+        {
+          type: "scale",
+          question: "이 문제가 생기면 시간이나 비용 부담이 큽니다.",
+          purpose: "문제 강도를 확인합니다.",
+          options: defaultScaleOptions(),
+          required: true
+        },
+        {
+          type: "short_answer",
+          question: "가장 최근 이 문제를 겪은 상황을 한 문장으로 적어주세요.",
+          purpose: "실제 사례를 수집합니다.",
+          options: [],
+          required: false
+        }
+      ],
+      3,
+      6
+    ),
+    currentAlternativeQuestions: normalizeSurveyQuestions(
+      parsed.currentAlternativeQuestions,
+      [
+        {
+          type: "multiple_choice",
+          question: "현재 이 문제를 해결할 때 사용하는 방법을 모두 선택해주세요.",
+          purpose: "현재 대안을 확인합니다.",
+          options: ["직접 검색", "주변 추천", "기존 서비스", "참고 지나감", "기타"],
+          required: true
+        },
+        {
+          type: "scale",
+          question: "현재 방법에 전반적으로 만족합니다.",
+          purpose: "기존 대안 만족도를 확인합니다.",
+          options: defaultScaleOptions(),
+          required: true
+        }
+      ],
+      2,
+      5
+    ),
+    willingnessToPayQuestions: normalizeSurveyQuestions(
+      parsed.willingnessToPayQuestions,
+      [
+        {
+          type: "single_choice",
+          question: "이 문제가 더 잘 해결된다면 비용을 지불할 의사가 있나요?",
+          purpose: "지불의사를 확인합니다.",
+          options: ["없음", "1천~3천원", "3천~5천원", "5천원 이상", "상황에 따라 다름"],
+          required: true
+        },
+        {
+          type: "single_choice",
+          question: "현재 해결을 위해 한 번에 쓰는 비용은 어느 정도인가요?",
+          purpose: "현재 지출 기준을 확인합니다.",
+          options: ["0원", "1천원 미만", "1천~3천원", "3천~5천원", "5천원 이상"],
+          required: false
+        }
+      ],
+      2,
+      4
+    ),
+    demographicQuestions: normalizeSurveyQuestions(
+      parsed.demographicQuestions,
+      [
+        {
+          type: "single_choice",
+          question: "현재 본인에게 가장 가까운 상태를 선택해주세요.",
+          purpose: "응답자 특성을 분류합니다.",
+          options: ["학생", "직장인", "자영업자", "구직/준비 중", "기타"],
+          required: false
+        },
+        {
+          type: "short_answer",
+          question: "응답자 특성을 이해하는 데 필요한 추가 정보를 적어주세요.",
+          purpose: "세부 맥락을 보완합니다.",
+          options: [],
+          required: false
+        }
+      ],
+      2,
+      5
+    ),
+    analysisGuide: normalizeStringArray(
+      parsed.analysisGuide,
+      ["문제 빈도와 강도 4점 이상 비율을 확인합니다.", "현재 대안 만족도 3점 이하 응답자를 우선 인터뷰합니다.", "지불의사와 현재 지출이 함께 있는 응답자를 핵심 후보로 봅니다."],
+      6,
+      180
+    ),
+    avoidNotes: normalizeStringArray(
+      parsed.avoidNotes,
+      ["우리 서비스 설명을 먼저 보여주지 않습니다.", "좋다/나쁘다 의견보다 최근 행동을 묻습니다.", "너무 많은 주관식 문항을 넣지 않습니다."],
+      6,
+      180
+    ),
+    mentorComment: truncateByCharacters(
+      normalizeText(parsed.mentorComment, "설문은 대량 신호를 찾는 도구입니다. 강한 응답자는 후속 인터뷰로 연결하세요."),
+      220
+    )
+  };
+
+  return customerSurveyDraftSchema.parse(draft);
+}
+
+export function createMockCustomerSurveyDraft(input: CustomerSurveyInput): CustomerSurveyDraft {
+  const problem = input.problemStatementReport || input.interviewReport || input.ideaMemo || "고객이 반복해서 겪는 문제";
+  const targetRespondent = problem.includes("자취") ? "최근 2주 안에 늦은 시간 식사를 고민한 자취생" : "최근 2주 안에 해당 문제를 직접 겪은 고객";
+  return {
+    surveyGoal: "고객 문제가 실제로 반복되는지, 현재 대안의 한계와 지불의사가 있는지 확인합니다.",
+    targetRespondent,
+    introMessage: "이 설문은 창업교육 과정의 고객 문제 검증을 위한 3분 설문입니다. 최근 경험을 기준으로 편하게 답해주세요.",
+    estimatedTime: "3~5분",
+    screeningQuestions: [
+      {
+        type: "single_choice",
+        question: "최근 2주 안에 이 문제를 직접 겪은 적이 있나요?",
+        purpose: "응답 대상 적합성을 확인합니다.",
+        options: ["예", "아니오"],
+        required: true
+      },
+      {
+        type: "single_choice",
+        question: "이 문제를 본인이 직접 해결해야 했나요?",
+        purpose: "실제 의사결정자인지 확인합니다.",
+        options: ["예", "아니오", "가족/동료가 결정"],
+        required: true
+      }
+    ],
+    problemValidationQuestions: [
+      {
+        type: "scale",
+        question: "이 문제는 최근 한 달 동안 반복해서 발생했습니다.",
+        purpose: "문제 빈도를 확인합니다.",
+        options: defaultScaleOptions(),
+        required: true
+      },
+      {
+        type: "scale",
+        question: "이 문제가 생기면 시간이나 비용 부담이 큽니다.",
+        purpose: "문제 강도를 확인합니다.",
+        options: defaultScaleOptions(),
+        required: true
+      },
+      {
+        type: "short_answer",
+        question: "가장 최근 이 문제를 겪은 상황을 한 문장으로 적어주세요.",
+        purpose: "실제 사례를 수집합니다.",
+        options: [],
+        required: false
+      }
+    ],
+    currentAlternativeQuestions: [
+      {
+        type: "multiple_choice",
+        question: "현재 이 문제를 해결할 때 사용하는 방법을 모두 선택해주세요.",
+        purpose: "현재 대안을 확인합니다.",
+        options: ["직접 검색", "주변 추천", "기존 서비스", "참고 지나감", "기타"],
+        required: true
+      },
+      {
+        type: "scale",
+        question: "현재 방법에 전반적으로 만족합니다.",
+        purpose: "기존 대안 만족도를 확인합니다.",
+        options: defaultScaleOptions(),
+        required: true
+      }
+    ],
+    willingnessToPayQuestions: [
+      {
+        type: "single_choice",
+        question: "이 문제가 더 잘 해결된다면 비용을 지불할 의사가 있나요?",
+        purpose: "지불의사를 확인합니다.",
+        options: ["없음", "1천~3천원", "3천~5천원", "5천원 이상", "상황에 따라 다름"],
+        required: true
+      },
+      {
+        type: "single_choice",
+        question: "현재 해결을 위해 한 번에 쓰는 비용은 어느 정도인가요?",
+        purpose: "현재 지출 기준을 확인합니다.",
+        options: ["0원", "1천원 미만", "1천~3천원", "3천~5천원", "5천원 이상"],
+        required: false
+      }
+    ],
+    demographicQuestions: [
+      {
+        type: "single_choice",
+        question: "현재 본인에게 가장 가까운 상태를 선택해주세요.",
+        purpose: "응답자 특성을 분류합니다.",
+        options: ["학생", "직장인", "자영업자", "구직/준비 중", "기타"],
+        required: false
+      },
+      {
+        type: "short_answer",
+        question: "응답자 특성을 이해하는 데 필요한 추가 정보를 적어주세요.",
+        purpose: "세부 맥락을 보완합니다.",
+        options: [],
+        required: false
+      }
+    ],
+    analysisGuide: ["문제 빈도와 강도 4점 이상 비율을 확인합니다.", "현재 대안 만족도 3점 이하 응답자를 우선 인터뷰합니다.", "지불의사와 현재 지출이 함께 있는 응답자를 핵심 후보로 봅니다."],
+    avoidNotes: ["우리 서비스 설명을 먼저 보여주지 않습니다.", "좋다/나쁘다 의견보다 최근 행동을 묻습니다.", "너무 많은 주관식 문항을 넣지 않습니다."],
+    mentorComment: "설문은 대량 신호를 찾는 도구입니다. 강한 응답자는 후속 인터뷰로 연결하세요."
+  };
+}
+
 const moduStartupKeys: Array<keyof ModuStartupDraft> = [
   "q1IdeaIntro",
   "q2BackgroundStory",
@@ -1505,6 +1873,37 @@ export async function generateCustomerInterviewDraft(input: CustomerInterviewInp
     });
 
     return parseCustomerInterviewJson(content);
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");
+    }
+    throw error;
+  }
+}
+
+export async function generateCustomerSurveyDraft(input: CustomerSurveyInput): Promise<CustomerSurveyDraft> {
+  if (process.env.AI_MOCK === "true") {
+    return createMockCustomerSurveyDraft(input);
+  }
+
+  try {
+    const content = await fetchChatCompletionContent({
+      temperature: 0.25,
+      timeoutMs: 50000,
+      messages: [
+        {
+          role: "system",
+          content:
+            "너는 JSON만 반환하는 창업교육 고객 검증 설문지 멘토다. 설명, 마크다운, 코드블록 없이 JSON 객체만 반환한다."
+        },
+        {
+          role: "user",
+          content: buildCustomerSurveyPrompt(input)
+        }
+      ]
+    });
+
+    return parseCustomerSurveyJson(content);
   } catch (error) {
     if (isAbortError(error)) {
       throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");
