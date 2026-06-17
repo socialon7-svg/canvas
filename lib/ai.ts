@@ -11,7 +11,9 @@ import {
   type ModuStartupInput,
   type OneLineIdeaDraft,
   type OneLineIdeaInput,
-  type ParticipantInput
+  type ParticipantInput,
+  type ProblemStatementDraft,
+  type ProblemStatementInput
 } from "@/lib/types";
 import { z } from "zod";
 
@@ -120,6 +122,20 @@ const customerJourneyDraftSchema = z.object({
   serviceOpportunities: z.array(journeyTextSchema).min(3).max(5),
   validationQuestions: z.array(journeyTextSchema).min(3).max(6),
   mentorComment: journeyTextSchema
+});
+
+const problemStatementTextSchema = z.string().trim().min(1).max(260);
+const problemStatementDraftSchema = z.object({
+  problemStatement: problemStatementTextSchema,
+  targetCustomer: problemStatementTextSchema,
+  situation: problemStatementTextSchema,
+  painPoint: problemStatementTextSchema,
+  rootCause: problemStatementTextSchema,
+  currentAlternative: problemStatementTextSchema,
+  evidenceNeeded: z.array(problemStatementTextSchema).min(3).max(5),
+  presentationSentences: z.array(problemStatementTextSchema).min(2).max(4),
+  validationQuestions: z.array(problemStatementTextSchema).min(3).max(6),
+  mentorComment: problemStatementTextSchema
 });
 
 function truncateByCharacters(value: string, maxLength: number) {
@@ -693,6 +709,104 @@ export function createMockCustomerJourneyDraft(input: CustomerJourneyInput): Cus
   };
 }
 
+export function buildProblemStatementPrompt(input: ProblemStatementInput) {
+  return [
+    "너는 창업교육 현장에서 참가자의 아이디어를 발표 가능한 문제정의문으로 정리하는 멘토다.",
+    "참가자 입력과 이전 모듈 결과를 바탕으로 고객, 상황, 고통, 원인, 기존 대안의 한계를 구체적으로 정리하라.",
+    "문제정의문은 '누가 / 어떤 상황에서 / 무엇 때문에 / 어떤 손해를 겪는지'가 한 문장 안에 드러나야 한다.",
+    "해결책을 홍보하지 말고, 고객 문제가 실제로 존재하는지 검증 가능한 형태로 작성하라.",
+    "입력이 부족하면 합리적으로 가정하되, 참가자 입력의 고객과 문제를 임의의 다른 사업으로 바꾸지 마라.",
+    "반드시 JSON만 반환하라. 설명, 마크다운, 코드블록, 주석은 포함하지 마라.",
+    "모든 문장은 한국어로 짧고 발표자가 바로 읽을 수 있게 작성하라.",
+    "",
+    "반환 JSON 형식:",
+    JSON.stringify(
+      {
+        problemStatement: "발표용 한 문장 문제정의",
+        targetCustomer: "가장 먼저 검증할 고객",
+        situation: "문제가 발생하는 구체적 상황",
+        painPoint: "고객이 겪는 핵심 고통",
+        rootCause: "문제가 반복되는 근본 원인",
+        currentAlternative: "현재 대안과 그 한계",
+        evidenceNeeded: ["확인할 증거 1", "확인할 증거 2", "확인할 증거 3"],
+        presentationSentences: ["발표 문장 1", "발표 문장 2"],
+        validationQuestions: ["검증 질문 1", "검증 질문 2", "검증 질문 3"],
+        mentorComment: "멘토 코멘트"
+      },
+      null,
+      2
+    ),
+    "",
+    "참가자 입력:",
+    JSON.stringify(input, null, 2)
+  ].join("\n");
+}
+
+export function parseProblemStatementJson(raw: string): ProblemStatementDraft {
+  const jsonText = extractJsonObject(raw);
+  const parsed = JSON.parse(jsonText) as Partial<Record<keyof ProblemStatementDraft, unknown>>;
+  const draft: ProblemStatementDraft = {
+    problemStatement: truncateByCharacters(
+      normalizeText(parsed.problemStatement, "고객이 반복해서 겪는 불편을 한 문장으로 더 구체화해야 합니다."),
+      220
+    ),
+    targetCustomer: truncateByCharacters(normalizeText(parsed.targetCustomer, "가장 먼저 만날 초기 고객"), 160),
+    situation: truncateByCharacters(normalizeText(parsed.situation, "문제가 발생하는 구체적 상황"), 180),
+    painPoint: truncateByCharacters(normalizeText(parsed.painPoint, "고객이 겪는 핵심 고통"), 180),
+    rootCause: truncateByCharacters(normalizeText(parsed.rootCause, "현재 대안으로 해결되지 않는 원인"), 180),
+    currentAlternative: truncateByCharacters(normalizeText(parsed.currentAlternative, "고객이 지금 쓰는 대안과 한계"), 180),
+    evidenceNeeded: normalizeStringArray(
+      parsed.evidenceNeeded,
+      ["문제를 최근 겪은 고객 수", "현재 대안에 쓰는 시간과 비용", "고객이 실제로 지불할 의사"],
+      5,
+      160
+    ),
+    presentationSentences: normalizeStringArray(
+      parsed.presentationSentences,
+      ["우리가 먼저 확인해야 할 문제는 고객이 반복해서 겪는 불편입니다.", "이 문제는 현재 대안으로 충분히 해결되지 않습니다."],
+      4,
+      180
+    ),
+    validationQuestions: normalizeStringArray(
+      parsed.validationQuestions,
+      ["최근 이 문제를 겪은 상황을 설명해 주세요.", "지금은 어떤 방법으로 해결하고 있나요?", "그 방법에서 가장 불편한 점은 무엇인가요?"],
+      6,
+      180
+    ),
+    mentorComment: truncateByCharacters(
+      normalizeText(parsed.mentorComment, "문제정의문은 고객 인터뷰에서 바로 검증할 수 있는 문장으로 다듬어 보세요."),
+      220
+    )
+  };
+
+  return problemStatementDraftSchema.parse(draft);
+}
+
+export function createMockProblemStatementDraft(input: ProblemStatementInput): ProblemStatementDraft {
+  const idea = input.oneLineIdea || input.ideaMemo || "초기 창업 아이디어";
+  const customer = idea.includes("자취") ? "밤늦게 식사를 해결해야 하는 자취생" : "반복되는 불편을 직접 겪는 초기 고객";
+  return {
+    problemStatement: `${customer}은 현재 대안으로 ${truncateByCharacters(idea, 32)} 문제를 빠르게 해결하지 못해 시간과 비용 부담을 겪습니다.`,
+    targetCustomer: customer,
+    situation: "문제가 반복되는 순간에 고객은 검색, 주변 추천, 임시 대안에 의존합니다.",
+    painPoint: "고객은 원하는 결과를 얻기까지 시간이 오래 걸리고 실패 가능성을 줄이기 어렵습니다.",
+    rootCause: "기존 대안은 고객의 구체적 상황과 긴급도를 충분히 반영하지 못합니다.",
+    currentAlternative: "고객은 직접 검색하거나 주변 조언을 참고하지만, 선택 기준이 분명하지 않습니다.",
+    evidenceNeeded: ["최근 7일 안에 같은 문제를 겪은 고객 수", "현재 대안에 쓰는 시간과 비용", "고객이 문제 해결을 위해 실제로 지불할 금액"],
+    presentationSentences: [
+      `${customer}은 이 문제를 해결하려고 기존 대안을 쓰지만 만족스러운 결과를 얻기 어렵습니다.`,
+      "우리는 이 문제가 얼마나 자주 반복되고, 고객이 어떤 대안에 비용을 쓰는지 먼저 검증하려 합니다."
+    ],
+    validationQuestions: [
+      "최근 이 문제를 겪은 상황을 구체적으로 말해 주세요.",
+      "그때 어떤 방법으로 해결하려고 했나요?",
+      "현재 방법에서 가장 불편하거나 아쉬운 점은 무엇인가요?",
+      "이 문제가 해결된다면 어느 정도 비용을 지불할 의사가 있나요?"
+    ],
+    mentorComment: "문제정의문은 해결책 설명보다 고객의 반복 불편과 기존 대안의 한계를 먼저 보여줄수록 강해집니다."
+  };
+}
+
 const moduStartupKeys: Array<keyof ModuStartupDraft> = [
   "q1IdeaIntro",
   "q2BackgroundStory",
@@ -1020,6 +1134,37 @@ export async function generateCustomerJourneyDraft(input: CustomerJourneyInput):
     });
 
     return parseCustomerJourneyJson(content);
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");
+    }
+    throw error;
+  }
+}
+
+export async function generateProblemStatementDraft(input: ProblemStatementInput): Promise<ProblemStatementDraft> {
+  if (process.env.AI_MOCK === "true") {
+    return createMockProblemStatementDraft(input);
+  }
+
+  try {
+    const content = await fetchChatCompletionContent({
+      temperature: 0.25,
+      timeoutMs: 50000,
+      messages: [
+        {
+          role: "system",
+          content:
+            "너는 JSON만 반환하는 창업교육 문제정의문 멘토다. 설명, 마크다운, 코드블록 없이 JSON 객체만 반환한다."
+        },
+        {
+          role: "user",
+          content: buildProblemStatementPrompt(input)
+        }
+      ]
+    });
+
+    return parseProblemStatementJson(content);
   } catch (error) {
     if (isAbortError(error)) {
       throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");

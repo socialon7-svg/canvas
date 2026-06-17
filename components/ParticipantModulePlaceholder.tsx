@@ -13,7 +13,9 @@ import type {
   OneLineIdeaDraft,
   OneLineIdeaInput,
   ParticipantModuleProgress,
-  ParticipantModuleProgressStatus
+  ParticipantModuleProgressStatus,
+  ProblemStatementDraft,
+  ProblemStatementInput
 } from "@/lib/types";
 import {
   getParticipantVisibleModules,
@@ -28,6 +30,7 @@ const ONE_LINE_IDEA_SLUG = "one-line-idea";
 const IDEA_DIAGNOSIS_SLUG = "idea-diagnosis";
 const CUSTOMER_PERSONA_SLUG = "customer-persona";
 const CUSTOMER_JOURNEY_SLUG = "customer-journey-map";
+const PROBLEM_STATEMENT_SLUG = "problem-statement";
 
 function readSessionValue(key: string) {
   try {
@@ -178,6 +181,40 @@ function formatCustomerJourneyDraft(draft: CustomerJourneyDraft) {
   ].join("\n");
 }
 
+function formatProblemStatementDraft(draft: ProblemStatementDraft) {
+  return [
+    "문제정의문",
+    draft.problemStatement,
+    "",
+    "가장 먼저 검증할 고객",
+    draft.targetCustomer,
+    "",
+    "문제가 발생하는 상황",
+    draft.situation,
+    "",
+    "핵심 고통",
+    draft.painPoint,
+    "",
+    "반복되는 근본 원인",
+    draft.rootCause,
+    "",
+    "현재 대안과 한계",
+    draft.currentAlternative,
+    "",
+    "확인해야 할 증거",
+    ...draft.evidenceNeeded.map((item) => `- ${item}`),
+    "",
+    "발표에 바로 쓸 문장",
+    ...draft.presentationSentences.map((item) => `- ${item}`),
+    "",
+    "고객 검증 질문",
+    ...draft.validationQuestions.map((item) => `- ${item}`),
+    "",
+    "멘토 코멘트",
+    draft.mentorComment
+  ].join("\n");
+}
+
 export default function ParticipantModulePlaceholder({ slug }: { slug: string }) {
   const [state, setState] = useState<HighViewOperationsState>(() => defaultOperationsState());
   const [programId, setProgramId] = useState("");
@@ -214,9 +251,11 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
   const isIdeaDiagnosisModule = startupModule?.slug === IDEA_DIAGNOSIS_SLUG;
   const isCustomerPersonaModule = startupModule?.slug === CUSTOMER_PERSONA_SLUG;
   const isCustomerJourneyModule = startupModule?.slug === CUSTOMER_JOURNEY_SLUG;
+  const isProblemStatementModule = startupModule?.slug === PROBLEM_STATEMENT_SLUG;
   const oneLineIdeaOutput = participant?.moduleProgress?.[ONE_LINE_IDEA_SLUG]?.outputData || "";
   const ideaDiagnosisOutput = participant?.moduleProgress?.[IDEA_DIAGNOSIS_SLUG]?.outputData || "";
   const customerPersonaOutput = participant?.moduleProgress?.[CUSTOMER_PERSONA_SLUG]?.outputData || "";
+  const customerJourneyOutput = participant?.moduleProgress?.[CUSTOMER_JOURNEY_SLUG]?.outputData || "";
 
   const saveProgress = async (
     status: ParticipantModuleProgressStatus,
@@ -511,6 +550,64 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
     }
   };
 
+  const generateProblemStatement = async () => {
+    if (!program || !participant || !startupModule || startupModule.slug !== PROBLEM_STATEMENT_SLUG) return;
+
+    const ideaMemo = inputData.trim();
+    if (!ideaMemo) {
+      setAiError("문제정의문을 만들 고객 문제 메모를 먼저 입력해주세요.");
+      return;
+    }
+
+    const requestBody: ProblemStatementInput = {
+      programName: program.name,
+      teamName: team?.name || "",
+      participantName: participant.name || participant.code,
+      ideaMemo,
+      oneLineIdea: oneLineIdeaOutput,
+      diagnosisReport: ideaDiagnosisOutput,
+      personaReport: customerPersonaOutput,
+      journeyReport: customerJourneyOutput,
+      operation: {
+        programId: program.id,
+        programCode: program.programCode,
+        programName: program.name,
+        participantId: participant.id,
+        participantCode: participant.code,
+        teamId: team?.id || "",
+        teamName: team?.name || "",
+        role: participant.role
+      }
+    };
+
+    setGenerating(true);
+    setAiError("");
+    setNotice("AI가 발표용 문제정의문을 생성하고 있습니다.");
+
+    try {
+      const response = await fetch("/api/generate-problem-statement", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody)
+      });
+      const data = (await response.json()) as { draft?: ProblemStatementDraft; error?: string };
+
+      if (!response.ok || !data.draft) {
+        throw new Error(data.error || "문제정의문을 생성하지 못했습니다.");
+      }
+
+      const formattedOutput = formatProblemStatementDraft(data.draft);
+      setOutputData(formattedOutput);
+      await saveProgress("in_progress", { inputData: ideaMemo, outputData: formattedOutput });
+      setNotice("문제정의문이 생성되었습니다. 실제 고객에게 검증 가능한 문장인지 확인한 뒤 완료로 표시해주세요.");
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "문제정의문 생성 중 오류가 발생했습니다.");
+      setNotice("");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   if (!startupModule) {
     return (
       <main className="mx-auto flex min-h-screen max-w-2xl items-center px-5 py-10">
@@ -623,6 +720,29 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
           ? "AI 생성 버튼을 누르면 여정 단계, 고객 행동, 접점, 감정, 고통점, 서비스 기회가 여기에 표시됩니다."
           : "모듈 수행 결과, 핵심 문장, 다음에 붙일 AI 결과 초안 등을 적어두세요.";
 
+  const moduleCopyOverride = isProblemStatementModule
+    ? {
+        inputTitle: "문제정의 메모 입력",
+        inputDescription:
+          "고객이 어떤 상황에서 어떤 불편을 겪는지 적어주세요. 앞선 모듈 결과가 있다면 함께 참고해 발표용 문제정의문으로 정리합니다.",
+        inputLabel: "고객 문제 메모",
+        inputPlaceholder:
+          "예: 밤늦게 공부를 마친 자취생은 따뜻한 식사를 원하지만 배달비가 부담되고 편의점 음식은 질려서 만족스러운 대안을 찾기 어렵다.",
+        resultTitle: "AI 문제정의문 / 수정 가능",
+        resultDescription:
+          "문제정의문은 해결책 홍보 문장이 아니라 고객 인터뷰로 검증할 수 있는 문장이어야 합니다. 표현을 팀 발표 톤에 맞게 수정하세요.",
+        resultPlaceholder:
+          "AI 생성 버튼을 누르면 문제정의문, 고객, 상황, 고통, 근본 원인, 기존 대안의 한계, 검증 질문이 여기에 표시됩니다."
+      }
+    : null;
+  const displayInputTitle = moduleCopyOverride?.inputTitle || inputTitle;
+  const displayInputDescription = moduleCopyOverride?.inputDescription || inputDescription;
+  const displayInputLabel = moduleCopyOverride?.inputLabel || inputLabel;
+  const displayInputPlaceholder = moduleCopyOverride?.inputPlaceholder || inputPlaceholder;
+  const displayResultTitle = moduleCopyOverride?.resultTitle || resultTitle;
+  const displayResultDescription = moduleCopyOverride?.resultDescription || resultDescription;
+  const displayResultPlaceholder = moduleCopyOverride?.resultPlaceholder || resultPlaceholder;
+
   return (
     <main className="mx-auto max-w-5xl px-5 py-8">
       <header className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
@@ -662,14 +782,14 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
 
       <section className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <form className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-bold text-gray-950">{inputTitle}</h2>
-          <p className="mt-2 text-sm leading-6 text-gray-600">{inputDescription}</p>
+          <h2 className="text-lg font-bold text-gray-950">{displayInputTitle}</h2>
+          <p className="mt-2 text-sm leading-6 text-gray-600">{displayInputDescription}</p>
           <label className="mt-4 block">
-            <span className="mb-1 block text-sm font-semibold text-gray-800">{inputLabel}</span>
+            <span className="mb-1 block text-sm font-semibold text-gray-800">{displayInputLabel}</span>
             <textarea
               className="min-h-56 w-full rounded-md border border-gray-300 px-3 py-2 text-sm leading-6 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
               onChange={(event) => setInputData(event.target.value)}
-              placeholder={inputPlaceholder}
+              placeholder={displayInputPlaceholder}
               value={inputData}
             />
           </label>
@@ -712,6 +832,16 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
                 type="button"
               >
                 {generating ? "AI 생성 중..." : "AI 고객 여정지도 생성"}
+              </button>
+            ) : null}
+            {isProblemStatementModule ? (
+              <button
+                className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
+                disabled={generating || !inputData.trim()}
+                onClick={generateProblemStatement}
+                type="button"
+              >
+                {generating ? "AI 생성 중..." : "AI 문제정의문 생성"}
               </button>
             ) : null}
             <button
@@ -759,12 +889,12 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
             </dl>
           </section>
           <section className="rounded-lg border border-blue-200 bg-blue-50 p-5 shadow-sm">
-            <p className="text-sm font-bold text-blue-800">{resultTitle}</p>
-            <p className="mt-2 text-sm leading-6 text-blue-950">{resultDescription}</p>
+            <p className="text-sm font-bold text-blue-800">{displayResultTitle}</p>
+            <p className="mt-2 text-sm leading-6 text-blue-950">{displayResultDescription}</p>
             <textarea
               className="mt-3 min-h-40 w-full rounded-md border border-blue-200 bg-white px-3 py-2 text-sm leading-6 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
               onChange={(event) => setOutputData(event.target.value)}
-              placeholder={resultPlaceholder}
+              placeholder={displayResultPlaceholder}
               value={outputData}
             />
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
