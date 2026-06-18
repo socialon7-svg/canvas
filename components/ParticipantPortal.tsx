@@ -544,33 +544,35 @@ export default function ParticipantPortal() {
 
   if (!program || !participant) {
     return (
-      <div className="mx-auto flex min-h-screen max-w-md items-center px-5 py-10">
-        <main className="w-full rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-          <p className="text-sm font-semibold text-blue-700">참여자 포털</p>
-          <h1 className="mt-1 text-2xl font-bold text-gray-950">참여자 입장</h1>
-          <p className="mt-2 text-sm text-gray-600">
-            내부직원이 발급한 프로그램 코드와 참여자 코드를 입력하세요.
+      <div className="mx-auto flex min-h-screen max-w-lg items-center px-5 py-10 sm:py-16">
+        <main className="app-surface w-full p-6 sm:p-8">
+          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#3182f6] text-lg font-black text-white">H</div>
+          <p className="mt-6 text-sm font-bold text-[#3182f6]">교육생 포털</p>
+          <h1 className="mt-2 text-3xl font-bold text-[#191f28]">교육 프로그램 시작하기</h1>
+          <p className="mt-3 text-sm leading-6 text-[#6b7684]">
+            운영진에게 받은 두 개의 코드를 입력하면 바로 시작할 수 있어요.
           </p>
-          <p className="mt-2 rounded-md bg-gray-50 px-3 py-2 text-xs leading-5 text-gray-600">
-            공백, 하이픈, 대소문자는 자동으로 보정됩니다. 입장이 안 되면 화면의 코드와 안내받은 코드를 다시 비교하세요.
-          </p>
-          <form className="mt-6 space-y-4" onSubmit={login}>
+          <form className="mt-8 space-y-5" onSubmit={login}>
             <label>
-              <span className="mb-1 block text-sm font-semibold text-gray-800">프로그램 코드</span>
+              <span className="mb-2 block text-sm font-bold text-[#333d4b]">프로그램 코드</span>
               <input
                 name="programCode"
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                className="app-input text-base uppercase"
                 placeholder="예: HV-DEMO"
+                autoCapitalize="characters"
+                autoComplete="off"
                 value={programCode}
                 onChange={(event) => setProgramCode(normalizeAccessCode(event.target.value))}
               />
             </label>
             <label>
-              <span className="mb-1 block text-sm font-semibold text-gray-800">참여자 코드</span>
+              <span className="mb-2 block text-sm font-bold text-[#333d4b]">참여자 코드</span>
               <input
                 name="participantCode"
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                className="app-input text-base uppercase"
                 placeholder="예: P-DEMO1"
+                autoCapitalize="characters"
+                autoComplete="off"
                 value={participantCode}
                 onChange={(event) => setParticipantCode(normalizeAccessCode(event.target.value))}
               />
@@ -585,31 +587,29 @@ export default function ParticipantPortal() {
               </div>
             ) : null}
             <button
-              className="w-full rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-800 active:bg-blue-900 disabled:bg-gray-400"
+              className="app-primary-button w-full text-base"
               disabled={joining}
               type="submit"
             >
-              {joining ? "입장 확인 중..." : "입장하기"}
+              {joining ? "코드를 확인하고 있어요" : "내 프로그램 들어가기"}
             </button>
           </form>
-          <div className="mt-4 rounded-md border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-800">
-            <p className="mb-1 font-bold">데모 체험하기</p>
-            <p>
-              프로그램 코드: <code className="rounded bg-blue-100 px-1 py-0.5 font-mono font-bold">HV-DEMO</code>
-            </p>
-            <p>
-              참여자 코드: <code className="rounded bg-blue-100 px-1 py-0.5 font-mono font-bold">P-DEMO1</code>
-            </p>
+          <div className="mt-7 border-t border-[#e5e8eb] pt-6">
+            <p className="text-sm font-bold text-[#333d4b]">처음 둘러보시나요?</p>
+            <p className="mt-1 text-xs leading-5 text-[#8b95a1]">샘플 교육생 화면을 바로 체험할 수 있어요.</p>
             <button
-              className="mt-3 w-full rounded-md border border-blue-300 bg-white px-3 py-2 font-bold text-blue-800 hover:bg-blue-100"
+              className="app-secondary-button mt-3 w-full text-sm text-[#1b64da]"
               disabled={joining}
               onClick={enterDemo}
               type="button"
             >
-              {joining ? "입장 확인 중..." : "데모로 바로 입장"}
+              {joining ? "준비 중..." : "샘플 화면 체험하기"}
             </button>
           </div>
-          <Link className="mt-4 inline-block text-sm font-semibold text-gray-500 hover:text-gray-700" href="/">
+          <p className="mt-5 text-center text-xs leading-5 text-[#8b95a1]">
+            공백과 대소문자는 자동으로 정리돼요. 계속 입장되지 않으면 운영진에게 문의해주세요.
+          </p>
+          <Link className="mt-5 block text-center text-sm font-bold text-[#6b7684] hover:text-[#333d4b]" href="/">
             역할 선택으로 돌아가기
           </Link>
         </main>
@@ -625,69 +625,85 @@ export default function ParticipantPortal() {
   ];
 
   return (
-    <div className="mx-auto max-w-6xl px-5 py-8">
-      <header className="mb-6 flex flex-col gap-4 rounded-lg border border-gray-200 bg-white p-5 shadow-sm lg:flex-row lg:items-end lg:justify-between">
+    <div className="mx-auto max-w-6xl px-4 py-5 pb-28 sm:px-5 sm:py-8 sm:pb-10">
+      <header className="app-surface mb-5 flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <p className="text-sm font-semibold text-blue-700">참여자 워크스페이스 · {program.programCode}</p>
-          <h1 className="mt-1 text-3xl font-bold text-gray-950">{program.name}</h1>
-          <p className="mt-2 text-sm text-gray-600">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-bold text-[#3182f6]">{program.programCode}</p>
+            <span className="rounded-full bg-[#f2f4f6] px-2.5 py-1 text-xs font-bold text-[#6b7684]">
+              {participant.name || participant.code}
+            </span>
+          </div>
+          <h1 className="mt-2 text-2xl font-bold text-[#191f28] sm:text-3xl">{program.name}</h1>
+          <p className="mt-2 text-sm text-[#6b7684]">
             {participant.name || participant.code} · {team?.name || "미배정"} · {program.clientName}
           </p>
           {sessionSyncing ? <p className="mt-2 text-xs font-semibold text-blue-700">최신 운영 정보 확인 중...</p> : null}
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="hidden flex-wrap items-center gap-1 sm:flex">
           {tabs.map((item) => (
             <button
               key={item.key}
-              className={`rounded-md px-4 py-2 text-sm font-semibold ${
-                tab === item.key ? "bg-blue-700 text-white" : "border border-gray-300 bg-white text-gray-800"
-              }`}
+              className={`app-tab ${tab === item.key ? "app-tab-active" : ""}`}
               onClick={() => setTab(item.key)}
               type="button"
             >
               {item.label}
             </button>
           ))}
-          <button className="rounded-md border border-red-200 px-4 py-2 text-sm font-semibold text-red-700" onClick={logout}>
+          <button className="app-secondary-button ml-1 min-h-10 text-sm text-red-600" onClick={logout}>
             나가기
           </button>
         </div>
       </header>
 
+      <nav className="participant-bottom-nav sm:hidden" aria-label="참여자 메뉴">
+        {tabs.map((item) => (
+          <button
+            key={item.key}
+            className={`app-tab ${tab === item.key ? "app-tab-active" : ""}`}
+            onClick={() => setTab(item.key)}
+            type="button"
+          >
+            {item.label}
+          </button>
+        ))}
+      </nav>
+
       {notice ? (
         <p className="mb-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">{notice}</p>
       ) : null}
 
-      <section className="mb-5 rounded-lg border border-blue-200 bg-white p-5 shadow-sm">
+      <section className="app-surface mb-5 overflow-hidden border-blue-100 p-5 sm:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-blue-700">내가 해야 할 일</p>
-            <h2 className="mt-1 text-2xl font-bold text-gray-950">{studentProgressPercent}% 완료</h2>
-            <p className="mt-2 text-sm leading-6 text-gray-600">
-              {studentCompletedSteps}/{studentProgressSteps.length}단계 완료 · {nextAction.title}
+            <p className="text-sm font-bold text-[#3182f6]">지금 할 일</p>
+            <h2 className="mt-2 text-2xl font-bold text-[#191f28]">{nextAction.title}</h2>
+            <p className="mt-2 text-sm leading-6 text-[#6b7684]">
+              전체 과정 {studentProgressPercent}% 완료 · {studentCompletedSteps}/{studentProgressSteps.length}단계
             </p>
           </div>
           <button
-            className="rounded-md bg-blue-700 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-blue-800 active:bg-blue-900"
+            className="app-primary-button w-full shrink-0 text-sm lg:w-auto"
             onClick={nextAction.onClick}
             type="button"
           >
             {nextAction.action}
           </button>
         </div>
-        <div className="mt-4 h-3 overflow-hidden rounded-full bg-gray-100">
-          <div className="h-full rounded-full bg-blue-700 transition-all" style={{ width: `${studentProgressPercent}%` }} />
+        <div className="mt-5 h-2 overflow-hidden rounded-full bg-[#e5e8eb]">
+          <div className="h-full rounded-full bg-[#3182f6] transition-all" style={{ width: `${studentProgressPercent}%` }} />
         </div>
-        <div className="mt-4 grid gap-2 sm:grid-cols-4">
-          {studentProgressSteps.map((step) => (
+        <div className="mt-5 grid gap-3 sm:grid-cols-4">
+          {studentProgressSteps.map((step, index) => (
             <div
               key={step.label}
-              className={`rounded-md border px-3 py-2 text-sm ${
-                step.done ? "border-green-200 bg-green-50 text-green-800" : "border-gray-200 bg-gray-50 text-gray-600"
+              className={`border-l-2 px-3 py-1 text-sm ${
+                step.done ? "border-green-500 text-green-800" : "border-[#d1d6db] text-[#6b7684]"
               }`}
             >
-              <p className="font-bold">{step.done ? "완료" : "대기"} · {step.label}</p>
-              <p className="mt-1 text-xs opacity-80">{step.hint}</p>
+              <p className="text-xs font-bold opacity-70">{index + 1}단계 · {step.done ? "완료" : "진행 전"}</p>
+              <p className="mt-1 font-bold">{step.label}</p>
             </div>
           ))}
         </div>
@@ -700,7 +716,7 @@ export default function ParticipantPortal() {
             </div>
           ))}
         </div>
-        <p className="mt-3 rounded-md bg-blue-50 px-3 py-2 text-sm leading-6 text-blue-900">
+        <p className="mt-4 rounded-md bg-[#f2f7ff] px-4 py-3 text-sm leading-6 text-[#1b64da]">
           {nextAction.description}
         </p>
       </section>

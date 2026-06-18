@@ -1774,16 +1774,17 @@ export default function InternalPortal() {
 
   if (!authorized) {
     return (
-      <div className="mx-auto flex min-h-screen max-w-md items-center px-5 py-10">
-        <main className="w-full rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-          <p className="text-sm font-semibold text-blue-700">내부직원 포털</p>
-          <h1 className="mt-1 text-2xl font-bold text-gray-950">내부직원 로그인</h1>
-          <p className="mt-2 text-sm text-gray-600">암호만 입력하면 운영 포털과 제출 목록을 관리할 수 있습니다.</p>
-          <form className="mt-6 space-y-4" onSubmit={login}>
+      <div className="mx-auto flex min-h-screen max-w-lg items-center px-5 py-10 sm:py-16">
+        <main className="app-surface w-full p-6 sm:p-8">
+          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#191f28] text-lg font-black text-white">H</div>
+          <p className="mt-6 text-sm font-bold text-[#3182f6]">운영진 전용</p>
+          <h1 className="mt-2 text-3xl font-bold text-[#191f28]">오늘 운영을 시작할까요?</h1>
+          <p className="mt-3 text-sm leading-6 text-[#6b7684]">관리자 암호를 입력하면 현재 제출과 검토 상태를 바로 확인할 수 있어요.</p>
+          <form className="mt-8 space-y-5" onSubmit={login}>
             <label>
-              <span className="mb-1 block text-sm font-semibold text-gray-800">암호</span>
+              <span className="mb-2 block text-sm font-bold text-[#333d4b]">관리자 암호</span>
               <input
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                className="app-input text-base"
                 type="password"
                 autoComplete="current-password"
                 value={password}
@@ -1796,13 +1797,14 @@ export default function InternalPortal() {
               </p>
             ) : null}
             <button
-              className="w-full rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-800 active:bg-blue-900 disabled:bg-gray-400"
+              className="app-primary-button w-full text-base"
               disabled={loading}
             >
-              {loading ? "확인 중..." : "접속하기"}
+              {loading ? "권한을 확인하고 있어요" : "운영 콘솔 열기"}
             </button>
           </form>
-          <Link className="mt-4 inline-block text-sm font-semibold text-gray-500 hover:text-gray-700" href="/">
+          <p className="mt-5 text-center text-xs text-[#8b95a1]">운영 데이터는 권한이 확인된 사용자에게만 표시됩니다.</p>
+          <Link className="mt-5 block text-center text-sm font-bold text-[#6b7684] hover:text-[#333d4b]" href="/">
             역할 선택으로 돌아가기
           </Link>
         </main>
@@ -1821,25 +1823,24 @@ export default function InternalPortal() {
   ];
 
   return (
-    <div className="mx-auto max-w-7xl px-5 py-8">
-      <header className="mb-5 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+    <div className="mx-auto max-w-7xl px-4 py-5 sm:px-5 sm:py-8">
+      <header className="app-surface mb-4 p-5 sm:p-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <p className="text-sm font-semibold text-blue-700">내부직원 포털</p>
-            <h1 className="mt-1 text-3xl font-bold text-gray-950">하이뷰랩 프로그램 운영 포털</h1>
-            <p className="mt-2 text-sm text-gray-600">프로그램, 참여자, 팀, 산출물 제출, 피드백, 결과보고를 한 흐름으로 관리합니다.</p>
+            <p className="text-sm font-bold text-[#3182f6]">HIGHVIEWLAB OPERATIONS</p>
+            <h1 className="mt-2 text-2xl font-bold text-[#191f28] sm:text-3xl">현장 운영 콘솔</h1>
+            <p className="mt-2 text-sm leading-6 text-[#6b7684]">오늘의 제출과 검토 상태를 확인하고 필요한 작업을 바로 처리하세요.</p>
             {currentProgram ? (
-              <p className="mt-3 inline-flex rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
-                현재 프로그램: {currentProgram.name} · {currentProgram.programCode} · 교육생 노출 모듈{" "}
-                {currentParticipantVisibleModuleCount}개
+              <p className="mt-4 inline-flex rounded-full bg-[#f2f4f6] px-3 py-1.5 text-xs font-bold text-[#4e5968]">
+                {currentProgram.programCode} · 교육생 모듈 {currentParticipantVisibleModuleCount}개
               </p>
             ) : null}
           </div>
           <div className="grid gap-3 lg:min-w-[520px]">
-            <label className="grid gap-1 text-sm font-semibold text-gray-800">
-              프로그램 선택
+            <label className="grid gap-2 text-sm font-bold text-[#333d4b]">
+              지금 운영할 프로그램
               <select
-                className="rounded-md border border-gray-300 px-3 py-2 text-sm font-normal"
+                className="app-input font-normal"
                 value={currentProgram?.id || ""}
                 onChange={(event) => setCurrentProgramId(event.target.value)}
               >
@@ -1851,21 +1852,18 @@ export default function InternalPortal() {
               </select>
             </label>
             <div className="flex flex-wrap gap-2">
-              <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:bg-gray-400" onClick={() => refreshSubmissions()} disabled={refreshing}>
+              <button className="app-primary-button min-h-11 text-sm" onClick={() => refreshSubmissions()} disabled={refreshing}>
                 {refreshing ? "새로고침 중..." : "운영 데이터 새로고침"}
               </button>
-              <button className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-800" onClick={() => setTab("submissions")} type="button">
-                제출/피드백 보기
+              <button className="app-secondary-button min-h-11 text-sm text-[#1b64da]" onClick={() => setTab("submissions")} type="button">
+                제출 확인
               </button>
               <button
-                className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-bold text-amber-800"
+                className="app-secondary-button min-h-11 text-sm"
                 onClick={() => openFilteredModuleReviews("needsReview")}
                 type="button"
               >
-                모듈검토 {moduleReviewCounts.needsReview}
-              </button>
-              <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-bold" onClick={() => setTab("report")} type="button">
-                결과보고
+                검토 필요 {moduleReviewCounts.needsReview}
               </button>
             </div>
             {!operationsFallbackMode && !fallbackMode ? (
@@ -1885,43 +1883,28 @@ export default function InternalPortal() {
                       : "운영 상태 동기화 준비 중"}
               </div>
             ) : null}
-            <div className="flex flex-wrap gap-2 border-t border-gray-100 pt-3">
-              <button className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold" onClick={() => exportOperationsState(state)}>
-                운영 데이터 백업
-              </button>
-              <button className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold" onClick={downloadParticipantsCsv}>
-                참여자 CSV
-              </button>
-              <button className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold" onClick={downloadSubmissionsCsv}>
-                제출 CSV
-              </button>
-              <button className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold" onClick={downloadModuleProgressCsv}>
-                모듈 CSV
-              </button>
-              <button className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold" onClick={downloadReportCsv}>
-                전체 결과 CSV
-              </button>
-              <Link className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-800" href="/admin/modu-startup">
-                모두의창업 목록
-              </Link>
-              {operationsFallbackMode ? (
-                <button className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700" onClick={handleReset}>
-                  데모 초기화
-                </button>
-              ) : null}
-              <button className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold" onClick={logout}>
-                로그아웃
-              </button>
-            </div>
+            <details className="border-t border-[#e5e8eb] pt-3 text-sm">
+              <summary className="cursor-pointer select-none font-bold text-[#6b7684] hover:text-[#333d4b]">내보내기 및 기타 도구</summary>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button className="app-secondary-button min-h-9 px-3 text-xs" onClick={() => exportOperationsState(state)}>운영 데이터 백업</button>
+                <button className="app-secondary-button min-h-9 px-3 text-xs" onClick={downloadParticipantsCsv}>참여자 CSV</button>
+                <button className="app-secondary-button min-h-9 px-3 text-xs" onClick={downloadSubmissionsCsv}>제출 CSV</button>
+                <button className="app-secondary-button min-h-9 px-3 text-xs" onClick={downloadModuleProgressCsv}>모듈 CSV</button>
+                <button className="app-secondary-button min-h-9 px-3 text-xs" onClick={downloadReportCsv}>전체 결과 CSV</button>
+                <Link className="app-secondary-button inline-flex min-h-9 items-center px-3 text-xs text-[#1b64da]" href="/admin/modu-startup">모두의창업 목록</Link>
+                {operationsFallbackMode ? (
+                  <button className="app-secondary-button min-h-9 px-3 text-xs text-red-600" onClick={handleReset}>데모 초기화</button>
+                ) : null}
+                <button className="app-secondary-button min-h-9 px-3 text-xs" onClick={logout}>로그아웃</button>
+              </div>
+            </details>
           </div>
         </div>
-        <nav className="mt-5 flex flex-wrap gap-2">
+        <nav className="app-tab-list mt-5 border-t border-[#e5e8eb] pt-4" aria-label="운영 콘솔 메뉴">
           {tabs.map((item) => (
             <button
               key={item.key}
-              className={`rounded-md px-4 py-2 text-sm font-semibold ${
-                tab === item.key ? "bg-blue-700 text-white" : "border border-gray-300 bg-white text-gray-800"
-              }`}
+              className={`app-tab ${tab === item.key ? "app-tab-active" : ""}`}
               onClick={() => setTab(item.key)}
             >
               {item.label}
@@ -1956,7 +1939,7 @@ export default function InternalPortal() {
       {tab === "dashboard" && currentProgram && stats ? (
         <main className="grid gap-4">
           <section
-            className={`rounded-lg border p-5 shadow-sm ${
+            className={`rounded-lg border p-5 sm:p-6 ${
               operationsFocus.tone === "red"
                 ? "border-red-200 bg-red-50 text-red-900"
                 : operationsFocus.tone === "amber"
@@ -1968,12 +1951,12 @@ export default function InternalPortal() {
           >
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
-                <p className="text-sm font-bold">지금 먼저 볼 일</p>
+                <p className="text-sm font-bold">지금 확인할 일</p>
                 <h2 className="mt-1 text-2xl font-bold">{operationsFocus.title}</h2>
                 <p className="mt-2 text-sm leading-6">{operationsFocus.description}</p>
               </div>
               <button
-                className="rounded-md border border-current/20 bg-white/70 px-4 py-2 text-sm font-bold transition-colors hover:bg-white"
+                className="min-h-11 rounded-md border border-current/20 bg-white px-4 text-sm font-bold shadow-sm hover:bg-white/80"
                 onClick={openFocusAction}
                 type="button"
               >
@@ -1984,7 +1967,7 @@ export default function InternalPortal() {
 
           <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {dashboardProgressItems.map((item) => (
-              <article key={item.label} className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+              <article key={item.label} className="app-surface p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-gray-600">{item.label}</p>
@@ -2022,11 +2005,11 @@ export default function InternalPortal() {
             ))}
           </section>
 
-          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+          <section className="app-surface p-5 sm:p-6">
             <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
               <div>
-                <p className="text-sm font-semibold text-blue-700">오늘 처리 큐</p>
-                <h2 className="mt-1 text-xl font-bold text-gray-950">현장에서 바로 확인할 항목</h2>
+                <p className="text-sm font-bold text-[#3182f6]">오늘 처리할 항목</p>
+                <h2 className="mt-1 text-xl font-bold text-[#191f28]">상태별로 바로 확인하세요</h2>
               </div>
               <p className="text-sm text-gray-600">카드를 누르면 제출/피드백 목록이 해당 상태로 필터링됩니다.</p>
             </div>
@@ -2034,7 +2017,7 @@ export default function InternalPortal() {
               {actionQueue.map((item) => (
                 <button
                   key={item.label}
-                  className={`rounded-lg border p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow ${
+                  className={`rounded-lg border p-4 text-left transition hover:border-blue-300 ${
                     item.tone === "red"
                       ? "border-red-200 bg-red-50 text-red-900"
                       : item.tone === "amber"

@@ -3,10 +3,10 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "하이뷰랩 프로그램 운영 MVP",
+    default: "하이뷰랩 Startup OS",
     template: "%s"
   },
-  description: "창업교육·캠프 참여자 과제 제출과 내부 운영 관리를 위한 MVP"
+  description: "창업교육 참여자 과제와 현장 운영을 한 흐름으로 관리하는 하이뷰랩 Startup OS"
 };
 
 export default function RootLayout({
