@@ -57,6 +57,14 @@ async function run() {
     const cookie = (join.headers.get("set-cookie") || "").split(";")[0];
     assert(cookie.startsWith("highview_participant_session="), "참여자 세션 쿠키가 발급되지 않았습니다.");
 
+    const workspace = await request("/api/participants/session", { headers: { Cookie: cookie } });
+    const workspaceData = await workspace.json();
+    assert(workspace.status === 200, `Participant workspace refresh failed: ${workspace.status}`);
+    assert(
+      workspaceData.program?.id === joinData.program.id && workspaceData.participant?.id === joinData.participant.id,
+      "Participant workspace refresh returned a different session identity."
+    );
+
     const draftQuery = new URLSearchParams({
       programId: joinData.program.id,
       participantId: joinData.participant.id,

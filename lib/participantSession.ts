@@ -17,6 +17,15 @@ import {
 export const PROGRAM_SESSION_KEY = "highviewlab-participant-program-id";
 export const PARTICIPANT_SESSION_KEY = "highviewlab-participant-id";
 
+export interface ParticipantWorkspaceResponse {
+  program?: HighViewProgram;
+  participant?: HighViewParticipant;
+  team?: HighViewTeam | null;
+  feedbacks?: HighViewFeedback[];
+  code?: string;
+  error?: string;
+}
+
 function isBrowser() {
   return typeof window !== "undefined";
 }
@@ -56,6 +65,26 @@ export function clearParticipantSession() {
   }
 }
 
+export async function fetchParticipantWorkspace() {
+  const response = await fetch("/api/participants/session", {
+    credentials: "same-origin",
+    cache: "no-store"
+  });
+  const data = (await response.json().catch(() => ({}))) as ParticipantWorkspaceResponse;
+  return { response, data };
+}
+
+function mergeModuleProgress(current: HighViewParticipant | undefined, incoming: HighViewParticipant) {
+  const merged = { ...(incoming.moduleProgress || {}) };
+  for (const [slug, localProgress] of Object.entries(current?.moduleProgress || {})) {
+    const serverProgress = merged[slug];
+    if (!serverProgress || new Date(localProgress.updatedAt).getTime() > new Date(serverProgress.updatedAt).getTime()) {
+      merged[slug] = localProgress;
+    }
+  }
+  return merged;
+}
+
 export function mergeParticipantEntryIntoOperationsState(input: {
   program: HighViewProgram;
   participant: HighViewParticipant;
@@ -65,11 +94,16 @@ export function mergeParticipantEntryIntoOperationsState(input: {
   if (!isBrowser()) return defaultOperationsState();
 
   const state = loadOperationsState();
+  const currentParticipant = state.participants.find((participant) => participant.id === input.participant.id);
+  const participant = {
+    ...input.participant,
+    moduleProgress: mergeModuleProgress(currentParticipant, input.participant)
+  };
   const nextState: HighViewOperationsState = normalizeOperationsState({
     ...state,
     programs: [input.program, ...state.programs.filter((program) => program.id !== input.program.id)],
     participants: [
-      input.participant,
+      participant,
       ...state.participants.filter((participant) => participant.id !== input.participant.id)
     ],
     teams: input.team

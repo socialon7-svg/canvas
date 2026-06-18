@@ -39,9 +39,13 @@ import {
   startupModuleCategoryLabels
 } from "@/lib/startupModules";
 import { defaultOperationsState, loadOperationsState, saveOperationsState } from "@/lib/operationsStorage";
+import {
+  clearParticipantSession,
+  fetchParticipantWorkspace,
+  mergeParticipantEntryIntoOperationsState,
+  readParticipantSession
+} from "@/lib/participantSession";
 
-const PROGRAM_SESSION_KEY = "highviewlab-participant-program-id";
-const PARTICIPANT_SESSION_KEY = "highviewlab-participant-id";
 const ONE_LINE_IDEA_SLUG = "one-line-idea";
 const IDEA_DIAGNOSIS_SLUG = "idea-diagnosis";
 const CUSTOMER_PERSONA_SLUG = "customer-persona";
@@ -55,14 +59,6 @@ const COMPETITOR_ANALYSIS_SLUG = "competitor-analysis";
 const DIFFERENTIATION_STRATEGY_SLUG = "differentiation-strategy";
 const BUSINESS_MODEL_SLUG = "business-model";
 const PRICING_POLICY_SLUG = "pricing-policy";
-
-function readSessionValue(key: string) {
-  try {
-    return window.sessionStorage?.getItem(key) || "";
-  } catch {
-    return "";
-  }
-}
 
 function statusLabel(status: ParticipantModuleProgressStatus) {
   if (status === "completed") return "완료";
@@ -510,9 +506,11 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
   const [savingProgress, setSavingProgress] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     const loaded = loadOperationsState();
-    const storedProgramId = readSessionValue(PROGRAM_SESSION_KEY);
-    const storedParticipantId = readSessionValue(PARTICIPANT_SESSION_KEY);
+    const session = readParticipantSession();
+    const storedProgramId = session.programId;
+    const storedParticipantId = session.participantId;
     setState(loaded);
     setProgramId(storedProgramId);
     setParticipantId(storedParticipantId);
@@ -521,6 +519,43 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
     const progress = participant?.moduleProgress?.[slug];
     if (progress?.inputData) setInputData(progress.inputData);
     if (progress?.outputData) setOutputData(progress.outputData);
+
+    if (storedProgramId && storedParticipantId) {
+      fetchParticipantWorkspace()
+        .then(({ response, data }) => {
+          if (cancelled) return;
+          if (response.ok && data.program && data.participant) {
+            const nextState = mergeParticipantEntryIntoOperationsState({
+              program: data.program,
+              participant: data.participant,
+              team: data.team || null,
+              feedbacks: data.feedbacks
+            });
+            const freshParticipant = nextState.participants.find((item) => item.id === data.participant?.id);
+            const freshProgress = freshParticipant?.moduleProgress?.[slug];
+            setState(nextState);
+            setProgramId(data.program.id);
+            setParticipantId(data.participant.id);
+            if (freshProgress) {
+              setInputData(freshProgress.inputData || "");
+              setOutputData(freshProgress.outputData || "");
+            }
+            return;
+          }
+          if (response.status === 401 || response.status === 404) {
+            clearParticipantSession();
+            setProgramId("");
+            setParticipantId("");
+            setAiError("참여자 세션이 만료되었습니다. 참여자 포털에서 다시 입장해주세요.");
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setNotice("네트워크 확인 중에는 이 브라우저의 임시 저장 내용을 표시합니다.");
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
   }, [slug]);
 
   const startupModule = getStartupModuleBySlug(slug);

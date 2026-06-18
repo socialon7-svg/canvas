@@ -23,6 +23,7 @@ import { getParticipantVisibleModules } from "@/lib/startupModules";
 import { normalizeAccessCode, validateAccessCodeInput } from "@/lib/normalize";
 import {
   clearParticipantSession,
+  fetchParticipantWorkspace,
   mergeParticipantEntryIntoOperationsState,
   readParticipantSession,
   writeParticipantSession
@@ -84,6 +85,7 @@ export default function ParticipantPortal() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [joining, setJoining] = useState(false);
+  const [sessionSyncing, setSessionSyncing] = useState(false);
   const [latestSubmission, setLatestSubmission] = useState<LeanCanvasSubmission | null>(null);
   const [temporaryStorage, setTemporaryStorage] = useState<BrowserTemporaryStorageSummary>({
     draftCount: 0,
@@ -92,12 +94,53 @@ export default function ParticipantPortal() {
   });
 
   useEffect(() => {
+    let cancelled = false;
     const loaded = loadOperationsState();
     const session = readParticipantSession();
     setState(loaded);
     setProgramId(session.programId);
     setParticipantId(session.participantId);
     setTemporaryStorage(getBrowserTemporaryStorageSummary());
+
+    if (session.programId && session.participantId) {
+      setSessionSyncing(true);
+      fetchParticipantWorkspace()
+        .then(({ response, data }) => {
+          if (cancelled) return;
+          if (response.ok && data.program && data.participant) {
+            const nextState = mergeParticipantEntryIntoOperationsState({
+              program: data.program,
+              participant: data.participant,
+              team: data.team || null,
+              feedbacks: data.feedbacks
+            });
+            setState(nextState);
+            setProgramId(data.program.id);
+            setParticipantId(data.participant.id);
+            return;
+          }
+          if (response.status === 401 || response.status === 404) {
+            clearParticipantSession();
+            setProgramId("");
+            setParticipantId("");
+            setError("참여자 세션이 만료되었습니다. 안내받은 코드로 다시 입장해주세요.");
+            return;
+          }
+          const isDemoFallback =
+            response.status === 503 &&
+            (data.code === "SUPABASE_NOT_CONFIGURED" || data.code === "SUPABASE_TABLE_NOT_READY");
+          if (!isDemoFallback) setNotice("최신 운영 정보를 불러오지 못했습니다. 잠시 후 새로고침해주세요.");
+        })
+        .catch(() => {
+          if (!cancelled) setNotice("네트워크 연결을 확인하는 동안 이 브라우저의 저장 정보를 표시합니다.");
+        })
+        .finally(() => {
+          if (!cancelled) setSessionSyncing(false);
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const program = state.programs.find((item) => item.id === programId);
@@ -590,6 +633,7 @@ export default function ParticipantPortal() {
           <p className="mt-2 text-sm text-gray-600">
             {participant.name || participant.code} · {team?.name || "미배정"} · {program.clientName}
           </p>
+          {sessionSyncing ? <p className="mt-2 text-xs font-semibold text-blue-700">최신 운영 정보 확인 중...</p> : null}
         </div>
         <div className="flex flex-wrap gap-2">
           {tabs.map((item) => (
