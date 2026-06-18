@@ -38,7 +38,7 @@ create table if not exists public.participants (
   program_id uuid not null references public.programs(id) on delete cascade,
   team_id uuid references public.teams(id) on delete set null,
   participant_code text not null,
-  join_token text not null unique default encode(gen_random_bytes(24), 'hex'),
+  join_token text not null unique default encode(extensions.gen_random_bytes(24), 'hex'),
   name text not null,
   email text not null default '',
   phone text not null default '',
