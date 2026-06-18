@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import StartupModuleSelector from "@/components/StartupModuleSelector";
 import StatusBadge from "@/components/StatusBadge";
@@ -268,6 +268,7 @@ export default function InternalPortal() {
     selectedParticipantId: searchParams.get("selectedParticipantId") || ""
   });
   const applyingUrlStateRef = useRef(false);
+  const syncInFlightRef = useRef(false);
   const [state, setState] = useState<HighViewOperationsState>(() => defaultOperationsState());
   const [currentProgramId, setCurrentProgramId] = useState(() => searchParams.get("programId") || "");
   const [tab, setTab] = useState<InternalTab>(() => {
@@ -282,6 +283,9 @@ export default function InternalPortal() {
   const [systemReadiness, setSystemReadiness] = useState<SystemReadinessPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [backgroundSyncing, setBackgroundSyncing] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+  const [autoRefreshError, setAutoRefreshError] = useState("");
   const [submissionFilter, setSubmissionFilter] = useState<SubmissionFilter>(() => {
     const value = searchParams.get("submissionFilter");
     return isSubmissionFilter(value) ? value : "all";
@@ -319,6 +323,8 @@ export default function InternalPortal() {
         setFallbackMode(submissionResult.fallback);
         setOperationsFallbackMode(operationsResult.fallback);
         setSystemReadiness(readiness);
+        setLastSyncedAt(new Date());
+        setAutoRefreshError("");
         if (operationsResult.state) {
           setState(operationsResult.state);
           const requestedId = initialUrlStateRef.current.programId;
@@ -828,10 +834,15 @@ export default function InternalPortal() {
     setState({ ...nextState });
   };
 
-  const refreshSubmissions = async (options: { silentUnauthorized?: boolean } = {}) => {
-    setRefreshing(true);
-    setError("");
-    setNotice("");
+  const refreshSubmissions = useCallback(async (options: { silentUnauthorized?: boolean; background?: boolean } = {}) => {
+    if (syncInFlightRef.current) return;
+    syncInFlightRef.current = true;
+    if (options.background) setBackgroundSyncing(true);
+    else {
+      setRefreshing(true);
+      setError("");
+      setNotice("");
+    }
     try {
       const [result, operationsResult, readiness] = await Promise.all([
         loadServerSubmissions(),
@@ -851,6 +862,8 @@ export default function InternalPortal() {
       setFallbackMode(result.fallback);
       setOperationsFallbackMode(operationsResult.fallback);
       setSystemReadiness(readiness);
+      setLastSyncedAt(new Date());
+      setAutoRefreshError("");
       if (operationsResult.state) {
         setState(operationsResult.state);
         setCurrentProgramId((current) =>
@@ -863,11 +876,38 @@ export default function InternalPortal() {
         setNotice("데모 모드: 이 브라우저 임시 데이터입니다. 다른 기기와 공유되지 않습니다.");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "제출 목록을 불러오지 못했습니다.");
+      if (options.background) {
+        setAutoRefreshError("자동 갱신이 지연되고 있습니다. 운영 데이터 새로고침을 눌러주세요.");
+      } else {
+        setError(err instanceof Error ? err.message : "제출 목록을 불러오지 못했습니다.");
+      }
     } finally {
-      setRefreshing(false);
+      syncInFlightRef.current = false;
+      if (options.background) setBackgroundSyncing(false);
+      else setRefreshing(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!authorized || operationsFallbackMode || fallbackMode) return;
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      void refreshSubmissions({ silentUnauthorized: true, background: true });
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") refreshWhenVisible();
+    };
+    const intervalId = window.setInterval(refreshWhenVisible, 30_000);
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [authorized, fallbackMode, operationsFallbackMode, refreshSubmissions]);
 
   const downloadParticipantsCsv = () => {
     if (!currentProgram) return;
@@ -1863,6 +1903,23 @@ export default function InternalPortal() {
                 결과보고
               </button>
             </div>
+            {!operationsFallbackMode && !fallbackMode ? (
+              <div
+                className={`flex items-center gap-2 text-xs font-semibold ${autoRefreshError ? "text-amber-700" : "text-gray-600"}`}
+                aria-live="polite"
+              >
+                <span
+                  className={`h-2 w-2 rounded-full ${autoRefreshError ? "bg-amber-500" : backgroundSyncing ? "animate-pulse bg-blue-600" : "bg-green-600"}`}
+                />
+                {autoRefreshError
+                  ? autoRefreshError
+                  : backgroundSyncing
+                    ? "최신 운영 상태를 확인하고 있습니다."
+                    : lastSyncedAt
+                      ? `${lastSyncedAt.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} 기준 · 30초마다 자동 갱신`
+                      : "운영 상태 동기화 준비 중"}
+              </div>
+            ) : null}
             <div className="flex flex-wrap gap-2 border-t border-gray-100 pt-3">
               <button className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold" onClick={() => exportOperationsState(state)}>
                 운영 데이터 백업
