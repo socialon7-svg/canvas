@@ -151,67 +151,75 @@ export default function CanvasEditor() {
     }
   };
 
+  const completedFieldCount = editableFields.filter((key) => canvas[key].some((item) => item.trim())).length;
+  const canvasProgress = Math.round((completedFieldCount / editableFields.length) * 100);
+
   if (!loaded) {
     return <div className="mx-auto max-w-4xl px-5 py-10 text-sm text-gray-600">초안을 불러오는 중입니다...</div>;
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-5 py-8">
-      <header className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-semibold text-blue-700">{participant.educationName || "교육명 미입력"}</p>
-          <h1 className="mt-1 text-2xl font-bold text-gray-950">{participant.ideaName || "아이디어명 미입력"}</h1>
-          <p className="mt-1 text-sm text-gray-600">
-            {participant.teamName || "팀명 미입력"} · {participant.participantName || "참가자명 미입력"}
-          </p>
+    <div className="mx-auto max-w-6xl px-4 py-5 pb-24 sm:px-5 sm:py-8">
+      <header className="app-surface mb-5 p-5 sm:p-6">
+        <button className="text-sm font-bold text-[#6b7684] hover:text-[#333d4b]" onClick={() => router.push("/participant/canvas")}>
+          입력 정보로 돌아가기
+        </button>
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-sm font-bold text-[#3182f6]">린캔버스 · 2단계</p>
+            <h1 className="mt-2 text-2xl font-bold text-[#191f28] sm:text-3xl">AI 초안 검토하기</h1>
+            <p className="mt-2 text-sm text-[#6b7684]">
+              {participant.ideaName || "아이디어명 미입력"} · {participant.teamName || "팀명 미입력"} · {participant.participantName || "참가자명 미입력"}
+            </p>
+            <p className="mt-1 text-xs text-[#8b95a1]">{participant.educationName || "교육명 미입력"}</p>
+          </div>
+          <span className="w-fit rounded-full bg-[#e8f3ff] px-3 py-1.5 text-sm font-bold text-[#1b64da]">
+            {completedFieldCount}/{editableFields.length}개 항목 작성
+          </span>
         </div>
-        <div className="flex gap-2">
-          <button
-            className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-            onClick={() => router.push("/participant/canvas")}
-          >
-            입력으로 돌아가기
-          </button>
-          <button
-            className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-800 active:bg-blue-900 disabled:bg-gray-400"
-            disabled={submitting}
-            onClick={submit}
-          >
-            {submitting ? "제출 중..." : "수정 완료 및 PDF 생성하기"}
-          </button>
+        <div className="mt-5 h-2 overflow-hidden rounded-full bg-[#e5e8eb]">
+          <div className="h-full rounded-full bg-[#3182f6] transition-all" style={{ width: `${canvasProgress}%` }} />
+        </div>
+        <div className="mt-4 grid gap-2 text-sm sm:grid-cols-3">
+          <p className="font-bold text-green-700">1. 정보 입력 완료</p>
+          <p className="font-bold text-[#1b64da]">2. AI 초안 수정</p>
+          <p className="font-bold text-[#8b95a1]">3. 제출·PDF 확인</p>
         </div>
       </header>
 
-      <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        AI 초안은 완성본이 아닙니다. 팀 상황에 맞게 문장을 직접 수정한 뒤 제출하세요.
-        <span className="mt-1 block text-xs">
-          {draftSave.status === "saving"
-            ? "수정 내용을 자동저장 중입니다."
-            : draftSave.status === "saved" && draftSave.lastSavedAt
-              ? `${draftSave.fallbackMode ? "이 브라우저에" : "서버에"} 자동저장됨 · ${new Date(draftSave.lastSavedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}`
-              : draftSave.status === "error"
-                ? `자동저장 실패: ${draftSave.error}`
-                : serverDraftNotice ||
-                  (lastSavedAt
-                    ? `마지막 임시저장: ${lastSavedAt.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}`
-                    : "수정 내용은 입력 즉시 이 브라우저에 임시저장됩니다.")}
-        </span>
+      <div className="mb-4 rounded-md border border-blue-100 bg-[#f2f7ff] px-4 py-3 text-sm text-[#1b64da]">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="font-bold">각 항목은 한 줄에 하나씩, 최대 3개까지 입력할 수 있어요.</p>
+          <span className="text-xs font-semibold">
+            {draftSave.status === "saving"
+              ? "자동저장 중"
+              : draftSave.status === "saved" && draftSave.lastSavedAt
+                ? `${draftSave.fallbackMode ? "이 브라우저" : "서버"}에 저장됨 · ${new Date(draftSave.lastSavedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}`
+                : draftSave.status === "error"
+                  ? `자동저장 실패 · ${draftSave.error}`
+                  : serverDraftNotice ||
+                    (lastSavedAt
+                      ? `임시저장 · ${lastSavedAt.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}`
+                      : "수정하면 자동저장돼요")}
+          </span>
+        </div>
       </div>
       {submitError ? (
         <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{submitError}</div>
       ) : null}
       {fallbackNotice ? (
-        <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          {fallbackNotice}
-        </div>
+        <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{fallbackNotice}</div>
       ) : null}
 
       <main className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {editableFields.map((key) => (
-          <label key={key} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-            <span className="mb-2 block text-sm font-bold text-gray-900">{canvasLabels[key]}</span>
+        {editableFields.map((key, index) => (
+          <label key={key} className="app-surface p-4">
+            <span className="mb-2 flex items-center justify-between gap-2 text-sm font-bold text-[#191f28]">
+              <span>{index + 1}. {canvasLabels[key]}</span>
+              <span className="text-xs font-semibold text-[#8b95a1]">{canvas[key].length}/3</span>
+            </span>
             <textarea
-              className="min-h-36 w-full resize-y rounded-md border border-gray-300 px-3 py-2 text-sm leading-6 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              className="min-h-40 w-full resize-y rounded-md border border-[#d1d6db] px-3 py-3 text-sm leading-6 outline-none transition-colors focus:border-[#3182f6] focus:ring-3 focus:ring-blue-100"
               value={toText(canvas[key])}
               onChange={(event) => updateField(key, event.target.value)}
               onBlur={draftSave.saveNow}
@@ -219,6 +227,20 @@ export default function CanvasEditor() {
           </label>
         ))}
       </main>
+
+      <section className="sticky bottom-3 mt-5 flex flex-col gap-3 rounded-lg border border-blue-100 bg-white/95 p-4 shadow-[0_8px_30px_rgba(0,0,0,0.12)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-bold text-[#191f28]">수정 내용을 확인했나요?</p>
+          <p className="mt-1 text-xs text-[#8b95a1]">제출 후 바로 접수번호와 PDF 미리보기를 확인할 수 있어요.</p>
+        </div>
+        <button
+          className="app-primary-button w-full shrink-0 text-sm sm:w-auto"
+          disabled={submitting || completedFieldCount === 0}
+          onClick={submit}
+        >
+          {submitting ? "안전하게 제출하고 있어요" : "최종 제출하고 확인하기"}
+        </button>
+      </section>
     </div>
   );
 }

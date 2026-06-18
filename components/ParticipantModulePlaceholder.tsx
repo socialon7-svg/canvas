@@ -1650,21 +1650,43 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
   const displayResultTitle = activeModuleCopy?.resultTitle || resultTitle;
   const displayResultDescription = activeModuleCopy?.resultDescription || resultDescription;
   const displayResultPlaceholder = activeModuleCopy?.resultPlaceholder || resultPlaceholder;
+  const hasModuleContent = Boolean(inputData.trim() || outputData.trim());
 
   return (
-    <main className="mx-auto max-w-5xl px-5 py-8">
-      <header className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+    <main className="mx-auto max-w-6xl px-4 py-5 pb-20 sm:px-5 sm:py-8">
+      <header className="app-surface p-5 sm:p-6">
+        <Link className="text-sm font-bold text-[#6b7684] hover:text-[#333d4b]" href="/participant">
+          모듈 목록으로 돌아가기
+        </Link>
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <p className="text-sm font-semibold text-blue-700">
+          <div className="mt-4">
+            <p className="text-sm font-bold text-[#3182f6]">
               STEP {startupModule.order} · {startupModuleCategoryLabels[startupModule.category]}
             </p>
-            <h1 className="mt-1 text-3xl font-bold text-gray-950">{startupModule.title}</h1>
-            <p className="mt-2 text-sm leading-6 text-gray-600">{startupModule.description}</p>
+            <h1 className="mt-2 text-2xl font-bold text-[#191f28] sm:text-3xl">{startupModule.title}</h1>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-[#6b7684]">{startupModule.description}</p>
           </div>
-          <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-sm font-bold text-blue-800">
+          <span className="mt-4 w-fit rounded-full bg-[#e8f3ff] px-3 py-1.5 text-sm font-bold text-[#1b64da]">
             {statusLabel(currentStatus)}
           </span>
+        </div>
+        <div className="mt-6 grid gap-3 border-t border-[#e5e8eb] pt-5 sm:grid-cols-3">
+          {[
+            { label: "메모 작성", done: Boolean(inputData.trim()) },
+            { label: "초안 만들기", done: Boolean(outputData.trim()) },
+            { label: "검토 후 완료", done: currentStatus === "completed" }
+          ].map((step, index) => (
+            <div className="flex items-center gap-3" key={step.label}>
+              <span
+                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-black ${
+                  step.done ? "bg-green-100 text-green-700" : "bg-[#f2f4f6] text-[#8b95a1]"
+                }`}
+              >
+                {step.done ? "OK" : index + 1}
+              </span>
+              <span className={`text-sm font-bold ${step.done ? "text-green-700" : "text-[#6b7684]"}`}>{step.label}</span>
+            </div>
+          ))}
         </div>
       </header>
 
@@ -1688,18 +1710,21 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
         </section>
       ) : null}
 
-      <section className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <form className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-bold text-gray-950">{displayInputTitle}</h2>
-          <p className="mt-2 text-sm leading-6 text-gray-600">{displayInputDescription}</p>
+      <section className="mt-4 grid gap-4 lg:grid-cols-2">
+        <form className="app-surface p-5 sm:p-6" onSubmit={(event) => event.preventDefault()}>
+          <p className="text-sm font-bold text-[#3182f6]">1. 아이디어 메모</p>
+          <h2 className="mt-1 text-xl font-bold text-[#191f28]">{displayInputTitle}</h2>
+          <p className="mt-2 text-sm leading-6 text-[#6b7684]">{displayInputDescription}</p>
           <label className="mt-4 block">
-            <span className="mb-1 block text-sm font-semibold text-gray-800">{displayInputLabel}</span>
+            <span className="mb-2 block text-sm font-bold text-[#333d4b]">{displayInputLabel}</span>
             <textarea
-              className="min-h-56 w-full rounded-md border border-gray-300 px-3 py-2 text-sm leading-6 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              className="min-h-72 w-full resize-y rounded-md border border-[#d1d6db] px-4 py-3 text-sm leading-6 outline-none transition-colors focus:border-[#3182f6] focus:ring-3 focus:ring-blue-100"
+              maxLength={6000}
               onChange={(event) => setInputData(event.target.value)}
               placeholder={displayInputPlaceholder}
               value={inputData}
             />
+            <span className="mt-1 block text-right text-xs text-[#8b95a1]">{inputData.length.toLocaleString()}/6,000자</span>
           </label>
           <div className="mt-4 flex flex-wrap gap-2">
             {isOneLineIdeaModule ? (
@@ -1843,7 +1868,7 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
               </button>
             ) : null}
             <button
-              className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="app-secondary-button min-h-10 text-sm text-[#1b64da] disabled:cursor-not-allowed disabled:opacity-60"
               disabled={savingProgress}
               onClick={() => saveProgress("in_progress")}
               type="button"
@@ -1851,15 +1876,7 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
               {savingProgress ? "저장 중..." : "임시 저장"}
             </button>
             <button
-              className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-400"
-              disabled={savingProgress}
-              onClick={() => saveProgress("completed")}
-              type="button"
-            >
-              {savingProgress ? "저장 중..." : "완료로 표시"}
-            </button>
-            <button
-              className="rounded-md border border-amber-200 px-4 py-2 text-sm font-bold text-amber-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="app-secondary-button min-h-10 text-sm text-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
               disabled={savingProgress}
               onClick={() => saveProgress("needs_review")}
               type="button"
@@ -1869,56 +1886,48 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
           </div>
         </form>
 
-        <aside className="grid gap-4">
-          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-            <p className="text-sm font-semibold text-gray-500">참여 정보</p>
-            <dl className="mt-3 grid gap-3 text-sm">
-              <div className="rounded-md bg-gray-50 p-3">
-                <dt className="text-gray-500">프로그램</dt>
-                <dd className="mt-1 font-semibold text-gray-950">{program.name}</dd>
-              </div>
-              <div className="rounded-md bg-gray-50 p-3">
-                <dt className="text-gray-500">참여자</dt>
-                <dd className="mt-1 font-semibold text-gray-950">{participant.name || participant.code}</dd>
-              </div>
-              <div className="rounded-md bg-gray-50 p-3">
-                <dt className="text-gray-500">업데이트</dt>
-                <dd className="mt-1 font-semibold text-gray-950">
-                  {progress?.updatedAt ? new Date(progress.updatedAt).toLocaleString("ko-KR") : "아직 없음"}
-                </dd>
-              </div>
-            </dl>
-          </section>
-          <section className="rounded-lg border border-blue-200 bg-blue-50 p-5 shadow-sm">
-            <p className="text-sm font-bold text-blue-800">{displayResultTitle}</p>
-            <p className="mt-2 text-sm leading-6 text-blue-950">{displayResultDescription}</p>
+        <aside className="grid content-start gap-4">
+          <section className="app-surface border-blue-100 p-5 sm:p-6">
+            <p className="text-sm font-bold text-[#3182f6]">2. AI 초안 확인</p>
+            <h2 className="mt-1 text-xl font-bold text-[#191f28]">{displayResultTitle}</h2>
+            <p className="mt-2 text-sm leading-6 text-[#6b7684]">{displayResultDescription}</p>
             <textarea
-              className="mt-3 min-h-40 w-full rounded-md border border-blue-200 bg-white px-3 py-2 text-sm leading-6 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              className="mt-4 min-h-72 w-full resize-y rounded-md border border-[#d1d6db] bg-white px-4 py-3 text-sm leading-6 outline-none transition-colors focus:border-[#3182f6] focus:ring-3 focus:ring-blue-100"
+              maxLength={12000}
               onChange={(event) => setOutputData(event.target.value)}
               placeholder={displayResultPlaceholder}
               value={outputData}
             />
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <span className="mt-1 block text-right text-xs text-[#8b95a1]">{outputData.length.toLocaleString()}/12,000자</span>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
               <button
-                className="rounded-md bg-blue-700 px-3 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-400"
-                disabled={savingProgress}
+                className="app-primary-button text-sm disabled:cursor-not-allowed"
+                disabled={savingProgress || !hasModuleContent}
                 onClick={() => saveProgress("completed")}
                 type="button"
               >
-                {savingProgress ? "저장 중..." : "결과 저장"}
+                {savingProgress ? "저장 중..." : currentStatus === "completed" ? "수정 내용 저장" : "검토 완료하기"}
               </button>
               <button
-                className="rounded-md border border-blue-300 bg-white px-3 py-2 text-sm font-bold text-blue-800"
+                className="app-secondary-button text-sm text-[#1b64da]"
                 onClick={copyOutput}
                 type="button"
               >
                 결과 복사
               </button>
             </div>
+            {!hasModuleContent ? (
+              <p className="mt-3 text-xs leading-5 text-[#8b95a1]">메모를 작성하거나 AI 초안을 만든 뒤 완료할 수 있어요.</p>
+            ) : null}
           </section>
-          <Link className="rounded-md border border-gray-300 bg-white px-4 py-2 text-center text-sm font-bold" href="/participant">
-            모듈 목록으로 돌아가기
-          </Link>
+          <details className="app-surface p-4 text-sm">
+            <summary className="cursor-pointer select-none font-bold text-[#4e5968]">참여 정보와 마지막 저장 시각</summary>
+            <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3 lg:grid-cols-1">
+              <div><dt className="text-[#8b95a1]">프로그램</dt><dd className="mt-1 font-bold text-[#333d4b]">{program.name}</dd></div>
+              <div><dt className="text-[#8b95a1]">참여자</dt><dd className="mt-1 font-bold text-[#333d4b]">{participant.name || participant.code}</dd></div>
+              <div><dt className="text-[#8b95a1]">마지막 저장</dt><dd className="mt-1 font-bold text-[#333d4b]">{progress?.updatedAt ? new Date(progress.updatedAt).toLocaleString("ko-KR") : "아직 없음"}</dd></div>
+            </dl>
+          </details>
         </aside>
       </section>
     </main>

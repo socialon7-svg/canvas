@@ -267,13 +267,13 @@ export default function InputForm({ requireParticipantSession = false }: { requi
 
   const renderField = (field: FieldConfig) => {
     const hasError = Boolean(fieldErrors[field.key]);
-    const fieldClassName = `w-full rounded-md border px-3 py-2 text-sm outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 ${
+    const fieldClassName = `w-full rounded-md border px-4 py-3 text-sm outline-none transition-colors focus:border-[#3182f6] focus:ring-3 focus:ring-blue-100 ${
       hasError ? "border-red-500 bg-red-50/40" : "border-gray-300 bg-white"
     }`;
 
     return (
       <label key={field.key} className={field.wide ? "md:col-span-2" : ""}>
-        <span className="mb-1 block text-sm font-semibold text-gray-800">
+        <span className="mb-1 block text-sm font-bold text-[#333d4b]">
           {field.label} {field.required ? <span className="text-red-600">*</span> : null}
         </span>
         <span className="mb-2 block text-xs leading-5 text-gray-500">{field.helper}</span>
@@ -309,19 +309,36 @@ export default function InputForm({ requireParticipantSession = false }: { requi
     return <div className="mx-auto max-w-4xl px-5 py-10 text-sm text-gray-600">참여자 정보를 확인하는 중입니다...</div>;
   }
 
+  const requiredFields = fields.filter((field) => field.required);
+  const completedRequiredFields = requiredFields.filter((field) => input[field.key].trim()).length;
+  const requiredProgress = Math.round((completedRequiredFields / requiredFields.length) * 100);
+
   return (
-    <div className="mx-auto max-w-5xl px-5 py-8">
-      <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-semibold text-blue-700">하이뷰랩 프로그램 과제</p>
-          <h1 className="mt-1 text-3xl font-bold tracking-tight text-gray-950">린캔버스 과제 작성 및 PDF 제출</h1>
-          <p className="mt-2 text-sm text-gray-600">
-            창업 아이디어를 입력하면 AI가 린캔버스 초안을 만들고, 수정 후 프로그램 산출물로 제출할 수 있습니다.
-          </p>
-        </div>
-        <Link className="text-sm font-semibold text-gray-700 underline" href="/participant">
+    <div className="mx-auto max-w-6xl px-4 py-5 pb-24 sm:px-5 sm:py-8">
+      <header className="app-surface mb-5 p-5 sm:p-6">
+        <Link className="text-sm font-bold text-[#6b7684] hover:text-[#333d4b]" href="/participant">
           참여자 포털로 돌아가기
         </Link>
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+          <p className="text-sm font-bold text-[#3182f6]">린캔버스 · 1단계</p>
+          <h1 className="mt-2 text-2xl font-bold text-[#191f28] sm:text-3xl">아이디어 정보 입력</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-[#6b7684]">
+            창업 아이디어를 입력하면 AI가 린캔버스 초안을 만들고, 수정 후 프로그램 산출물로 제출할 수 있습니다.
+          </p>
+          </div>
+          <span className="w-fit rounded-full bg-[#e8f3ff] px-3 py-1.5 text-sm font-bold text-[#1b64da]">
+            필수 {completedRequiredFields}/{requiredFields.length}
+          </span>
+        </div>
+        <div className="mt-5 h-2 overflow-hidden rounded-full bg-[#e5e8eb]">
+          <div className="h-full rounded-full bg-[#3182f6] transition-all" style={{ width: `${requiredProgress}%` }} />
+        </div>
+        <div className="mt-4 grid gap-2 text-sm sm:grid-cols-3">
+          <p className="font-bold text-[#1b64da]">1. 정보 입력</p>
+          <p className="font-bold text-[#8b95a1]">2. AI 초안 수정</p>
+          <p className="font-bold text-[#8b95a1]">3. 제출·PDF 확인</p>
+        </div>
       </header>
 
       {input.operation?.participantCode ? (
@@ -341,12 +358,12 @@ export default function InputForm({ requireParticipantSession = false }: { requi
         </div>
       ) : null}
 
-      <main className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+      <main className="app-surface p-5 sm:p-6">
         <div className="space-y-6">
           {fieldGroups.map((group) => (
-            <fieldset key={group.title} className="rounded-lg border border-gray-100 bg-gray-50/60 p-4">
-              <legend className="px-2 text-sm font-bold text-gray-700">{group.title}</legend>
-              <div className="grid gap-4 md:grid-cols-2">{group.keys.map((key) => renderField(fieldByKey[key]))}</div>
+            <fieldset key={group.title} className="border-t border-[#e5e8eb] pt-6 first:border-t-0 first:pt-0">
+              <legend className="mb-4 text-lg font-bold text-[#191f28]">{group.title}</legend>
+              <div className="grid gap-5 md:grid-cols-2">{group.keys.map((key) => renderField(fieldByKey[key]))}</div>
             </fieldset>
           ))}
         </div>
@@ -358,16 +375,19 @@ export default function InputForm({ requireParticipantSession = false }: { requi
           </div>
         ) : null}
 
-        <div className="mt-6 flex flex-col items-end gap-2">
+        <div className="sticky bottom-3 mt-8 flex flex-col gap-2 rounded-lg border border-blue-100 bg-white/95 p-3 shadow-[0_8px_30px_rgba(0,0,0,0.12)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+          <div className="px-1">
+            <p className="text-sm font-bold text-[#333d4b]">입력이 끝났나요?</p>
+            <p className="mt-1 text-xs text-[#8b95a1]">다음 화면에서 AI 초안을 직접 수정할 수 있어요.</p>
+          </div>
           <button
-            className="rounded-md bg-blue-700 px-5 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-blue-800 active:bg-blue-900 disabled:cursor-not-allowed disabled:bg-gray-400"
+            className="app-primary-button w-full shrink-0 text-sm sm:w-auto"
             type="button"
             disabled={loading}
             onClick={generate}
           >
-            {loading ? "AI 초안 생성 중... 잠시만 기다려주세요" : "AI 초안 생성하기"}
+            {loading ? "AI가 초안을 만들고 있어요" : "다음: AI 초안 만들기"}
           </button>
-          <p className="text-xs text-gray-500">생성된 초안은 다음 단계에서 자유롭게 수정할 수 있습니다.</p>
         </div>
       </main>
     </div>
