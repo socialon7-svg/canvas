@@ -28,6 +28,9 @@ async function run() {
   const moduleSubmission = await request("/api/module-submissions", { method: "POST" });
   assert(moduleSubmission.status === 401, `비인증 모듈 제출 응답이 401이 아닙니다: ${moduleSubmission.status}`);
 
+  const moduleGeneration = await request("/api/generate-startup-module", { method: "POST" });
+  assert(moduleGeneration.status === 401, `비인증 모듈 생성 응답이 401이 아닙니다: ${moduleGeneration.status}`);
+
   if (process.env.SMOKE_ADMIN_PASSWORD) {
     const login = await request("/api/admin-login", {
       method: "POST",

@@ -45,6 +45,11 @@ import {
   mergeParticipantEntryIntoOperationsState,
   readParticipantSession
 } from "@/lib/participantSession";
+import {
+  formatStartupModuleDraft,
+  getStartupModuleAutomationConfig,
+  type AutomatedStartupModuleDraft
+} from "@/lib/startupModuleAutomation";
 
 const ONE_LINE_IDEA_SLUG = "one-line-idea";
 const IDEA_DIAGNOSIS_SLUG = "idea-diagnosis";
@@ -579,6 +584,7 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
   const isDifferentiationStrategyModule = startupModule?.slug === DIFFERENTIATION_STRATEGY_SLUG;
   const isBusinessModelModule = startupModule?.slug === BUSINESS_MODEL_SLUG;
   const isPricingPolicyModule = startupModule?.slug === PRICING_POLICY_SLUG;
+  const automatedModuleConfig = startupModule ? getStartupModuleAutomationConfig(startupModule.slug) : undefined;
   const oneLineIdeaOutput = participant?.moduleProgress?.[ONE_LINE_IDEA_SLUG]?.outputData || "";
   const ideaDiagnosisOutput = participant?.moduleProgress?.[IDEA_DIAGNOSIS_SLUG]?.outputData || "";
   const customerPersonaOutput = participant?.moduleProgress?.[CUSTOMER_PERSONA_SLUG]?.outputData || "";
@@ -1353,6 +1359,50 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
     }
   };
 
+  const generateAutomatedModule = async () => {
+    if (!program || !participant || !startupModule || !automatedModuleConfig) return;
+    const ideaMemo = inputData.trim();
+    if (!ideaMemo) return setAiError(`${automatedModuleConfig.inputLabel}를 먼저 입력해주세요.`);
+    const previousResults = Object.entries(participant.moduleProgress || {})
+      .filter(([moduleSlug, moduleProgress]) => moduleSlug !== startupModule.slug && moduleProgress.outputData?.trim())
+      .map(([moduleSlug, moduleProgress]) => {
+        const sourceModule = getStartupModuleBySlug(moduleSlug);
+        return `[${sourceModule?.title || moduleSlug}]\n${moduleProgress.outputData.slice(0, 1800)}`;
+      })
+      .join("\n\n")
+      .slice(0, 10000);
+
+    setGenerating(true);
+    setAiError("");
+    setNotice(automatedModuleConfig.generatingMessage);
+    try {
+      const response = await fetch("/api/generate-startup-module", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          moduleSlug: startupModule.slug,
+          programName: program.name,
+          teamName: team?.name || "",
+          participantName: participant.name || participant.code,
+          ideaMemo,
+          previousResults,
+          operation: operationContext
+        })
+      });
+      const data = (await response.json()) as { draft?: AutomatedStartupModuleDraft; error?: string };
+      if (!response.ok || !data.draft) throw new Error(data.error || `${startupModule.title} 초안을 생성하지 못했습니다.`);
+      const formattedOutput = formatStartupModuleDraft(data.draft);
+      setOutputData(formattedOutput);
+      await saveProgress("in_progress", { inputData: ideaMemo, outputData: formattedOutput });
+      setNotice(automatedModuleConfig.completionMessage);
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : `${startupModule.title} 생성 중 오류가 발생했습니다.`);
+      setNotice("");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   if (!startupModule) {
     return (
       <main className="mx-auto flex min-h-screen max-w-2xl items-center px-5 py-10">
@@ -1592,13 +1642,14 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
                           "AI 생성 버튼을 누르면 입문형·핵심형·확장형 패키지, 할인·환불 규칙, 가격 실험과 지표가 표시됩니다."
                       }
                     : null;
-  const displayInputTitle = moduleCopyOverride?.inputTitle || inputTitle;
-  const displayInputDescription = moduleCopyOverride?.inputDescription || inputDescription;
-  const displayInputLabel = moduleCopyOverride?.inputLabel || inputLabel;
-  const displayInputPlaceholder = moduleCopyOverride?.inputPlaceholder || inputPlaceholder;
-  const displayResultTitle = moduleCopyOverride?.resultTitle || resultTitle;
-  const displayResultDescription = moduleCopyOverride?.resultDescription || resultDescription;
-  const displayResultPlaceholder = moduleCopyOverride?.resultPlaceholder || resultPlaceholder;
+  const activeModuleCopy = automatedModuleConfig || moduleCopyOverride;
+  const displayInputTitle = activeModuleCopy?.inputTitle || inputTitle;
+  const displayInputDescription = activeModuleCopy?.inputDescription || inputDescription;
+  const displayInputLabel = activeModuleCopy?.inputLabel || inputLabel;
+  const displayInputPlaceholder = activeModuleCopy?.inputPlaceholder || inputPlaceholder;
+  const displayResultTitle = activeModuleCopy?.resultTitle || resultTitle;
+  const displayResultDescription = activeModuleCopy?.resultDescription || resultDescription;
+  const displayResultPlaceholder = activeModuleCopy?.resultPlaceholder || resultPlaceholder;
 
   return (
     <main className="mx-auto max-w-5xl px-5 py-8">
@@ -1779,6 +1830,16 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
                 type="button"
               >
                 {generating ? "AI 생성 중..." : "AI 가격정책 설계안 생성"}
+              </button>
+            ) : null}
+            {automatedModuleConfig && !automatedModuleConfig.adminOnly ? (
+              <button
+                className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
+                disabled={generating || !inputData.trim()}
+                onClick={generateAutomatedModule}
+                type="button"
+              >
+                {generating ? "AI 생성 중..." : automatedModuleConfig.buttonLabel}
               </button>
             ) : null}
             <button

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import StartupModuleSelector from "@/components/StartupModuleSelector";
 import StatusBadge from "@/components/StatusBadge";
+import InternalAiOperationsGenerator from "@/components/InternalAiOperationsGenerator";
 import type {
   FeedbackStatus,
   HighViewFeedback,
@@ -3065,6 +3066,14 @@ export default function InternalPortal() {
               </button>
             </div>
           </section>
+          {currentProgram ? (
+            <InternalAiOperationsGenerator
+              onSaved={() => refreshSubmissions()}
+              participants={programParticipants}
+              program={currentProgram}
+              teams={programTeams}
+            />
+          ) : null}
           <section className="mt-5 grid gap-3 md:grid-cols-4">
             <MetricCard
               label="모듈 완료율"

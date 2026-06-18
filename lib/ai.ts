@@ -39,6 +39,14 @@ import {
   type ValidationExperimentInput
 } from "@/lib/types";
 import { z } from "zod";
+import {
+  buildStartupModuleAutomationPrompt,
+  createMockStartupModuleDraft,
+  getStartupModuleAutomationConfig,
+  parseStartupModuleAutomationJson,
+  type AutomatedStartupModuleDraft,
+  type AutomatedStartupModuleInput
+} from "@/lib/startupModuleAutomation";
 
 const requiredKeys = Object.keys(emptyCanvasDraft) as Array<keyof LeanCanvasDraft>;
 const DEFAULT_AI_MODEL = "gpt-5.4";
@@ -2912,6 +2920,32 @@ export async function generatePricingPolicyDraft(input: PricingPolicyInput): Pro
       ]
     });
     return parsePricingPolicyJson(content);
+  } catch (error) {
+    if (isAbortError(error)) throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");
+    throw error;
+  }
+}
+
+export async function generateAutomatedStartupModuleDraft(
+  input: AutomatedStartupModuleInput
+): Promise<AutomatedStartupModuleDraft> {
+  const config = getStartupModuleAutomationConfig(input.moduleSlug);
+  if (!config) throw new Error("지원하지 않는 자동화 모듈입니다.");
+  if (process.env.AI_MOCK === "true") return createMockStartupModuleDraft(input, config);
+
+  try {
+    const content = await fetchChatCompletionContent({
+      temperature: 0.25,
+      timeoutMs: 60000,
+      messages: [
+        {
+          role: "system",
+          content: "너는 근거와 가정을 구분하며 JSON 객체만 반환하는 창업교육 산출물 작성 도우미다."
+        },
+        { role: "user", content: buildStartupModuleAutomationPrompt(input, config) }
+      ]
+    });
+    return parseStartupModuleAutomationJson(content, config);
   } catch (error) {
     if (isAbortError(error)) throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");
     throw error;
