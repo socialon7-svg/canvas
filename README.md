@@ -235,7 +235,10 @@ http://localhost:3000
 npm run typecheck
 npm run lint
 npm run build
+npm run smoke
 ```
+
+`npm run smoke`는 기본적으로 `http://127.0.0.1:3000`을 검사합니다. 배포 주소는 `SMOKE_BASE_URL`로 지정하고, 관리자 쿠키 발급과 운영 준비상태 API까지 확인하려면 `SMOKE_ADMIN_PASSWORD`를 함께 설정합니다.
 
 ## 8. 환경변수
 
@@ -345,8 +348,11 @@ P0 Phase 2에서 다음 서버 API를 추가했습니다.
 - `POST /api/module-submissions`
 - `PATCH /api/module-progress`
 - `POST /api/feedbacks`
+- `GET /api/system-readiness` (관리자 전용 운영 DB·PDF 컬럼 점검)
 
 프로그램/참여자 관리 API는 관리자 httpOnly cookie 인증을 사용합니다. 참여자 입장 API는 프로그램 코드+참여자 코드 또는 `join_token`으로 참여자를 확인하고, 정상 입장 시 HMAC 서명된 httpOnly 참여자 세션을 발급하며 `joined_at`, `last_seen_at`을 갱신합니다. `module-drafts`, `module-progress`, 참여자 제출 API는 세션의 `programId`, `participantId`와 요청값이 다르면 403을 반환합니다. Supabase 운영 테이블이 준비되지 않은 경우에만 기존 localStorage 데모 흐름으로 fallback합니다.
+
+운영 콘솔은 `/api/system-readiness` 결과를 상단에 표시합니다. 필수 운영 테이블 또는 PDF 상태 컬럼이 없으면 중앙 저장 모드로 오인하지 않고 미준비 항목과 실행할 migration 파일을 안내합니다.
 
 ### 9.5 서버 draft 자동저장
 

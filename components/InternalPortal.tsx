@@ -148,6 +148,13 @@ type OperationsServerPayload = {
   error?: string;
 };
 
+type SystemReadinessPayload = {
+  ready: boolean;
+  mode: "server" | "demo";
+  code?: string;
+  checks: Array<{ key: string; label: string; ready: boolean; code?: string }>;
+};
+
 function isDemoFallbackResponse(status: number, code?: string) {
   return status === 503 && (code === "SUPABASE_NOT_CONFIGURED" || code === "SUPABASE_TABLE_NOT_READY");
 }
@@ -181,6 +188,14 @@ async function writeOperationsApi<T>(url: string, init: RequestInit) {
   if (isDemoFallbackResponse(response.status, data.code)) return { data: null, fallback: true };
   if (!response.ok) throw new Error(data.error || "운영 데이터 저장에 실패했습니다.");
   return { data, fallback: false };
+}
+
+async function loadSystemReadiness() {
+  const response = await fetch("/api/system-readiness", { credentials: "same-origin" });
+  if (response.status === 401) return null;
+  const data = (await response.json()) as SystemReadinessPayload & { error?: string };
+  if (!response.ok) throw new Error(data.error || "운영 환경 상태를 확인하지 못했습니다.");
+  return data;
 }
 
 function MetricCard({
@@ -264,6 +279,7 @@ export default function InternalPortal() {
   const [submissions, setSubmissions] = useState<LeanCanvasSubmission[]>([]);
   const [fallbackMode, setFallbackMode] = useState(false);
   const [operationsFallbackMode, setOperationsFallbackMode] = useState(false);
+  const [systemReadiness, setSystemReadiness] = useState<SystemReadinessPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [submissionFilter, setSubmissionFilter] = useState<SubmissionFilter>(() => {
@@ -291,8 +307,8 @@ export default function InternalPortal() {
     setSelectedParticipantId(initialUrlStateRef.current.selectedParticipantId);
 
     setRefreshing(true);
-    Promise.all([loadServerSubmissions(), loadServerOperations()])
-      .then(([submissionResult, operationsResult]) => {
+    Promise.all([loadServerSubmissions(), loadServerOperations(), loadSystemReadiness()])
+      .then(([submissionResult, operationsResult, readiness]) => {
         if (submissionResult.unauthorized || operationsResult.unauthorized) {
           setAuthorized(false);
           setSubmissions([]);
@@ -302,6 +318,7 @@ export default function InternalPortal() {
         setSubmissions(submissionResult.submissions);
         setFallbackMode(submissionResult.fallback);
         setOperationsFallbackMode(operationsResult.fallback);
+        setSystemReadiness(readiness);
         if (operationsResult.state) {
           setState(operationsResult.state);
           const requestedId = initialUrlStateRef.current.programId;
@@ -816,7 +833,11 @@ export default function InternalPortal() {
     setError("");
     setNotice("");
     try {
-      const [result, operationsResult] = await Promise.all([loadServerSubmissions(), loadServerOperations()]);
+      const [result, operationsResult, readiness] = await Promise.all([
+        loadServerSubmissions(),
+        loadServerOperations(),
+        loadSystemReadiness()
+      ]);
       if (result.unauthorized || operationsResult.unauthorized) {
         setAuthorized(false);
         setSubmissions([]);
@@ -829,6 +850,7 @@ export default function InternalPortal() {
       setSubmissions(result.submissions);
       setFallbackMode(result.fallback);
       setOperationsFallbackMode(operationsResult.fallback);
+      setSystemReadiness(readiness);
       if (operationsResult.state) {
         setState(operationsResult.state);
         setCurrentProgramId((current) =>
@@ -1886,10 +1908,20 @@ export default function InternalPortal() {
         </nav>
       </header>
 
-      {operationsFallbackMode || fallbackMode ? (
-        <p className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-950">
-          데모 모드: 이 브라우저 임시 데이터입니다. 다른 기기와 공유되지 않습니다.
-        </p>
+      {operationsFallbackMode || fallbackMode || systemReadiness?.ready === false ? (
+        <section className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p className="font-bold">데모 모드: 이 브라우저 임시 데이터입니다. 다른 기기와 공유되지 않습니다.</p>
+          {systemReadiness?.ready === false ? (
+            <>
+              <p className="mt-2">
+                운영 DB 미준비 항목: {systemReadiness.checks.filter((check) => !check.ready).map((check) => check.label).join(", ")}
+              </p>
+              <p className="mt-1 text-xs leading-5">
+                Supabase SQL Editor에서 <code>001_operations_core.sql</code>과 <code>20260618010000_reconcile_pdf_status_schema.sql</code>을 순서대로 실행하세요.
+              </p>
+            </>
+          ) : null}
+        </section>
       ) : (
         <p className="mb-4 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-900">
           중앙 저장 모드: 운영 데이터가 Supabase에 저장되어 다른 운영진과 공유됩니다.
