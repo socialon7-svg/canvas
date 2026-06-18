@@ -2,6 +2,7 @@
 
 import type {
   HighViewOperationsState,
+  HighViewFeedback,
   HighViewParticipant,
   HighViewProgram,
   HighViewTeam
@@ -59,6 +60,7 @@ export function mergeParticipantEntryIntoOperationsState(input: {
   program: HighViewProgram;
   participant: HighViewParticipant;
   team?: HighViewTeam | null;
+  feedbacks?: HighViewFeedback[];
 }) {
   if (!isBrowser()) return defaultOperationsState();
 
@@ -72,7 +74,13 @@ export function mergeParticipantEntryIntoOperationsState(input: {
     ],
     teams: input.team
       ? [input.team, ...state.teams.filter((team) => team.id !== input.team?.id)]
-      : state.teams
+      : state.teams,
+    feedbacks: input.feedbacks
+      ? [
+          ...input.feedbacks,
+          ...state.feedbacks.filter((feedback) => feedback.participantId !== input.participant.id)
+        ]
+      : state.feedbacks
   });
 
   saveOperationsState(nextState);

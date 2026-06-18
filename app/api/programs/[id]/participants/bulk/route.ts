@@ -74,7 +74,10 @@ export async function POST(request: Request, { params }: { params: Promise<unkno
       })
     );
 
-    return NextResponse.json({ participants: participants.map(toParticipantDto) }, { status: 201 });
+    return NextResponse.json(
+      { participants: participants.map((participant) => toParticipantDto(participant)) },
+      { status: 201 }
+    );
   } catch (error) {
     return handleOperationsApiError(error, "참여자 일괄 생성 실패");
   }

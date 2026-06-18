@@ -200,6 +200,34 @@ export async function createProgram(input: {
   return requireData(data, "프로그램 생성 결과가 없습니다.");
 }
 
+export async function updateProgram(input: {
+  programId: string;
+  name?: string;
+  clientName?: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  status?: string;
+  brief?: string;
+}) {
+  const supabase = getClient();
+  const patch: Record<string, string | null> = {};
+  if (input.name !== undefined) patch.name = input.name;
+  if (input.clientName !== undefined) patch.client_name = input.clientName;
+  if (input.startDate !== undefined) patch.start_date = input.startDate;
+  if (input.endDate !== undefined) patch.end_date = input.endDate;
+  if (input.status !== undefined) patch.status = input.status;
+  if (input.brief !== undefined) patch.brief = input.brief;
+
+  const { data, error } = await supabase
+    .from("programs")
+    .update(patch)
+    .eq("id", input.programId)
+    .select("*")
+    .single<OperationsProgramRow>();
+  throwIfError(error);
+  return requireData(data, "프로그램 수정 결과가 없습니다.");
+}
+
 export async function listParticipants(programId: string) {
   const supabase = getClient();
   const { data, error } = await supabase
@@ -296,6 +324,42 @@ export async function createParticipants(
   return data ?? [];
 }
 
+export async function updateParticipant(input: {
+  participantId: string;
+  teamId?: string | null;
+  name?: string;
+  email?: string;
+  phone?: string;
+  school?: string;
+  major?: string;
+  role?: string;
+}) {
+  const supabase = getClient();
+  const patch: Record<string, string | null> = {};
+  if (input.teamId !== undefined) patch.team_id = input.teamId;
+  if (input.name !== undefined) patch.name = input.name;
+  if (input.email !== undefined) patch.email = input.email;
+  if (input.phone !== undefined) patch.phone = input.phone;
+  if (input.school !== undefined) patch.school = input.school;
+  if (input.major !== undefined) patch.major = input.major;
+  if (input.role !== undefined) patch.role = input.role;
+
+  const { data, error } = await supabase
+    .from("participants")
+    .update(patch)
+    .eq("id", input.participantId)
+    .select("*")
+    .single<OperationsParticipantRow>();
+  throwIfError(error);
+  return requireData(data, "참여자 수정 결과가 없습니다.");
+}
+
+export async function deleteParticipant(participantId: string) {
+  const supabase = getClient();
+  const { error } = await supabase.from("participants").delete().eq("id", participantId);
+  throwIfError(error);
+}
+
 export async function getParticipantByJoinToken(joinToken: string) {
   const supabase = getClient();
   const { data, error } = await supabase
@@ -351,6 +415,38 @@ export async function getTeam(teamId: string | null | undefined) {
   return data ?? null;
 }
 
+export async function createTeam(input: { programId: string; name: string; memo?: string }) {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from("teams")
+    .insert({ program_id: input.programId, name: input.name, memo: input.memo ?? "" })
+    .select("*")
+    .single<OperationsTeamRow>();
+  throwIfError(error);
+  return requireData(data, "팀 생성 결과가 없습니다.");
+}
+
+export async function updateTeam(input: { teamId: string; name?: string; memo?: string }) {
+  const supabase = getClient();
+  const patch: Record<string, string> = {};
+  if (input.name !== undefined) patch.name = input.name;
+  if (input.memo !== undefined) patch.memo = input.memo;
+  const { data, error } = await supabase
+    .from("teams")
+    .update(patch)
+    .eq("id", input.teamId)
+    .select("*")
+    .single<OperationsTeamRow>();
+  throwIfError(error);
+  return requireData(data, "팀 수정 결과가 없습니다.");
+}
+
+export async function deleteTeam(teamId: string) {
+  const supabase = getClient();
+  const { error } = await supabase.from("teams").delete().eq("id", teamId);
+  throwIfError(error);
+}
+
 export async function listProgramModules(programId: string) {
   const supabase = getClient();
   const { data, error } = await supabase
@@ -360,6 +456,53 @@ export async function listProgramModules(programId: string) {
     .order("sort_order", { ascending: true })
     .returns<OperationsProgramModuleRow[]>();
 
+  throwIfError(error);
+  return data ?? [];
+}
+
+export async function replaceProgramModules(
+  programId: string,
+  modules: Array<{ moduleId: number; moduleSlug: string; isEnabled: boolean; sortOrder: number }>
+) {
+  const supabase = getClient();
+  if (!modules.length) return [];
+  const { data, error } = await supabase
+    .from("program_modules")
+    .upsert(
+      modules.map((module) => ({
+        program_id: programId,
+        module_id: module.moduleId,
+        module_slug: module.moduleSlug,
+        is_enabled: module.isEnabled,
+        sort_order: module.sortOrder
+      })),
+      { onConflict: "program_id,module_slug" }
+    )
+    .select("*")
+    .returns<OperationsProgramModuleRow[]>();
+  throwIfError(error);
+  return data ?? [];
+}
+
+export async function listModuleProgress(programId: string) {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from("participant_module_progress")
+    .select("*")
+    .eq("program_id", programId)
+    .returns<ParticipantModuleProgressRow[]>();
+  throwIfError(error);
+  return data ?? [];
+}
+
+export async function listFeedbacks(programId: string) {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from("feedbacks")
+    .select("*")
+    .eq("program_id", programId)
+    .order("updated_at", { ascending: false })
+    .returns<FeedbackRow[]>();
   throwIfError(error);
   return data ?? [];
 }

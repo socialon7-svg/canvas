@@ -16,16 +16,9 @@ const roleCards = [
   {
     href: "/internal",
     eyebrow: "운영진",
-    title: "운영 포털",
-    description: "프로그램, 참여자 코드, 팀, 제출물, 피드백, 결과보고를 관리합니다.",
-    action: "운영 포털 열기"
-  },
-  {
-    href: "/admin",
-    eyebrow: "관리자",
-    title: "제출 목록 빠른 확인",
-    description: "제출물, PDF 상태, 검색·필터, CSV 다운로드를 빠르게 확인합니다.",
-    action: "제출 목록 보기"
+    title: "공식 운영 콘솔",
+    description: "프로그램, 참여자, 제출·PDF 상태, 피드백과 결과보고를 한 화면에서 관리합니다.",
+    action: "운영 콘솔 열기"
   }
 ];
 
@@ -43,7 +36,7 @@ export default function Home() {
           </p>
         </div>
 
-        <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="mx-auto mt-8 grid max-w-4xl gap-4 md:grid-cols-2">
           {roleCards.map((card) => (
             <Link
               key={card.href}

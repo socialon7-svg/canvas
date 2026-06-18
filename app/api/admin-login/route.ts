@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
-import { ADMIN_SESSION_COOKIE, adminCookieOptions, createAdminSessionToken, isAdminPasswordValid } from "@/lib/adminAuth";
+import {
+  ADMIN_SESSION_COOKIE,
+  AdminAuthConfigurationError,
+  adminCookieOptions,
+  createAdminSessionToken,
+  isAdminPasswordValid
+} from "@/lib/adminAuth";
 
 function isFormRequest(request: Request) {
   const contentType = request.headers.get("content-type") || "";
@@ -45,7 +51,10 @@ export async function POST(request: Request) {
     const response = NextResponse.json({ ok: true });
     response.cookies.set(ADMIN_SESSION_COOKIE, createAdminSessionToken(), adminCookieOptions());
     return response;
-  } catch {
+  } catch (error) {
+    if (error instanceof AdminAuthConfigurationError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    }
     return NextResponse.json({ ok: false }, { status: 400 });
   }
 }

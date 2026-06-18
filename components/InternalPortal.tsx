@@ -7,8 +7,11 @@ import StartupModuleSelector from "@/components/StartupModuleSelector";
 import StatusBadge from "@/components/StatusBadge";
 import type {
   FeedbackStatus,
+  HighViewFeedback,
   HighViewOperationsState,
   HighViewParticipant,
+  HighViewProgram,
+  HighViewTeam,
   LeanCanvasSubmission,
   ParticipantModuleProgressStatus,
   ProgramStatus
@@ -135,6 +138,51 @@ async function loadServerSubmissions() {
   return { submissions: data.submissions, fallback: false, unauthorized: false };
 }
 
+type OperationsServerPayload = {
+  mode?: "server";
+  programs?: HighViewProgram[];
+  participants?: HighViewParticipant[];
+  teams?: HighViewTeam[];
+  feedbacks?: HighViewFeedback[];
+  code?: string;
+  error?: string;
+};
+
+function isDemoFallbackResponse(status: number, code?: string) {
+  return status === 503 && (code === "SUPABASE_NOT_CONFIGURED" || code === "SUPABASE_TABLE_NOT_READY");
+}
+
+async function loadServerOperations() {
+  const response = await fetch("/api/programs?include=operations", { credentials: "same-origin" });
+  const data = (await response.json()) as OperationsServerPayload;
+  if (response.status === 401) return { state: null, fallback: false, unauthorized: true };
+  if (isDemoFallbackResponse(response.status, data.code)) {
+    return { state: null, fallback: true, unauthorized: false };
+  }
+  if (!response.ok || !data.programs || !data.participants || !data.teams || !data.feedbacks) {
+    throw new Error(data.error || "운영 데이터를 불러오지 못했습니다.");
+  }
+  return {
+    state: {
+      version: 1,
+      programs: data.programs,
+      participants: data.participants,
+      teams: data.teams,
+      feedbacks: data.feedbacks
+    } satisfies HighViewOperationsState,
+    fallback: false,
+    unauthorized: false
+  };
+}
+
+async function writeOperationsApi<T>(url: string, init: RequestInit) {
+  const response = await fetch(url, { ...init, credentials: "same-origin" });
+  const data = (await response.json().catch(() => ({}))) as T & { code?: string; error?: string };
+  if (isDemoFallbackResponse(response.status, data.code)) return { data: null, fallback: true };
+  if (!response.ok) throw new Error(data.error || "운영 데이터 저장에 실패했습니다.");
+  return { data, fallback: false };
+}
+
 function MetricCard({
   label,
   value,
@@ -215,6 +263,7 @@ export default function InternalPortal() {
   const [password, setPassword] = useState("");
   const [submissions, setSubmissions] = useState<LeanCanvasSubmission[]>([]);
   const [fallbackMode, setFallbackMode] = useState(false);
+  const [operationsFallbackMode, setOperationsFallbackMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [submissionFilter, setSubmissionFilter] = useState<SubmissionFilter>(() => {
@@ -242,19 +291,31 @@ export default function InternalPortal() {
     setSelectedParticipantId(initialUrlStateRef.current.selectedParticipantId);
 
     setRefreshing(true);
-    loadServerSubmissions()
-      .then((result) => {
-        if (result.unauthorized) {
+    Promise.all([loadServerSubmissions(), loadServerOperations()])
+      .then(([submissionResult, operationsResult]) => {
+        if (submissionResult.unauthorized || operationsResult.unauthorized) {
           setAuthorized(false);
           setSubmissions([]);
           return;
         }
         setAuthorized(true);
-        setSubmissions(result.submissions);
-        setFallbackMode(result.fallback);
-        if (result.fallback) setNotice("Supabase 대신 이 브라우저의 임시 제출 목록을 표시합니다.");
+        setSubmissions(submissionResult.submissions);
+        setFallbackMode(submissionResult.fallback);
+        setOperationsFallbackMode(operationsResult.fallback);
+        if (operationsResult.state) {
+          setState(operationsResult.state);
+          const requestedId = initialUrlStateRef.current.programId;
+          setCurrentProgramId(
+            operationsResult.state.programs.some((program) => program.id === requestedId)
+              ? requestedId
+              : operationsResult.state.programs[0]?.id || ""
+          );
+        }
+        if (submissionResult.fallback || operationsResult.fallback) {
+          setNotice("데모 모드: 이 브라우저 임시 데이터입니다. 다른 기기와 공유되지 않습니다.");
+        }
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "제출 목록을 불러오지 못했습니다."))
+      .catch((err) => setError(err instanceof Error ? err.message : "운영 데이터를 불러오지 못했습니다."))
       .finally(() => setRefreshing(false));
   }, []);
 
@@ -755,8 +816,8 @@ export default function InternalPortal() {
     setError("");
     setNotice("");
     try {
-      const result = await loadServerSubmissions();
-      if (result.unauthorized) {
+      const [result, operationsResult] = await Promise.all([loadServerSubmissions(), loadServerOperations()]);
+      if (result.unauthorized || operationsResult.unauthorized) {
         setAuthorized(false);
         setSubmissions([]);
         if (!options.silentUnauthorized) {
@@ -767,7 +828,18 @@ export default function InternalPortal() {
       setAuthorized(true);
       setSubmissions(result.submissions);
       setFallbackMode(result.fallback);
-      if (result.fallback) setNotice("Supabase 대신 이 브라우저의 임시 제출 목록을 표시합니다.");
+      setOperationsFallbackMode(operationsResult.fallback);
+      if (operationsResult.state) {
+        setState(operationsResult.state);
+        setCurrentProgramId((current) =>
+          operationsResult.state?.programs.some((program) => program.id === current)
+            ? current
+            : operationsResult.state?.programs[0]?.id || ""
+        );
+      }
+      if (result.fallback || operationsResult.fallback) {
+        setNotice("데모 모드: 이 브라우저 임시 데이터입니다. 다른 기기와 공유되지 않습니다.");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "제출 목록을 불러오지 못했습니다.");
     } finally {
@@ -1173,9 +1245,10 @@ export default function InternalPortal() {
     setSubmissions([]);
   };
 
-  const addProgram = (event: React.FormEvent<HTMLFormElement>) => {
+  const addProgram = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const formData = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const formData = new FormData(form);
     const program = createProgram({
       name: String(formData.get("name") || "").trim(),
       clientName: String(formData.get("clientName") || "").trim(),
@@ -1188,15 +1261,36 @@ export default function InternalPortal() {
       setError("프로그램명과 기관명은 필수입니다.");
       return;
     }
-    const nextState = { ...state, programs: [program, ...state.programs] };
-    persistState(nextState);
-    setCurrentProgramId(program.id);
-    setNotice("프로그램을 생성했습니다.");
-    setNewProgramModuleIds(DEFAULT_STARTUP_MODULE_IDS);
-    event.currentTarget.reset();
+    try {
+      const result = await writeOperationsApi<{ program: HighViewProgram }>("/api/programs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: program.name,
+          clientName: program.clientName,
+          startDate: program.startDate,
+          endDate: program.endDate,
+          brief: program.brief,
+          moduleIds: newProgramModuleIds
+        })
+      });
+      if (result.fallback) {
+        persistState({ ...state, programs: [program, ...state.programs] });
+        setCurrentProgramId(program.id);
+        setOperationsFallbackMode(true);
+      } else if (result.data?.program) {
+        setCurrentProgramId(result.data.program.id);
+        await refreshSubmissions();
+      }
+      setNotice(result.fallback ? "데모 모드에서 프로그램을 생성했습니다." : "프로그램을 중앙 저장소에 생성했습니다.");
+      setNewProgramModuleIds(DEFAULT_STARTUP_MODULE_IDS);
+      form.reset();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "프로그램 생성에 실패했습니다.");
+    }
   };
 
-  const saveCurrentProgramModules = () => {
+  const saveCurrentProgramModules = async () => {
     if (!currentProgram) return;
     const moduleIds = normalizeStartupModuleIds(currentProgramModuleDraftIds);
     const nextState = {
@@ -1210,12 +1304,29 @@ export default function InternalPortal() {
           : program
       )
     };
-    persistState(nextState);
-    setCurrentProgramModuleDraftIds(moduleIds);
-    setNotice(`${currentProgram.name}의 노출 모듈 ${moduleIds.length}개를 저장했습니다.`);
+    try {
+      const result = await writeOperationsApi<{ program: HighViewProgram }>(
+        `/api/programs/${currentProgram.id}/modules`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ moduleIds })
+        }
+      );
+      if (result.fallback) {
+        persistState(nextState);
+        setOperationsFallbackMode(true);
+      } else {
+        await refreshSubmissions();
+      }
+      setCurrentProgramModuleDraftIds(moduleIds);
+      setNotice(`${currentProgram.name}의 노출 모듈 ${moduleIds.length}개를 저장했습니다.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "모듈 설정 저장에 실패했습니다.");
+    }
   };
 
-  const updateCurrentProgramInfo = (event: React.FormEvent<HTMLFormElement>) => {
+  const updateCurrentProgramInfo = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!currentProgram) return;
     const formData = new FormData(event.currentTarget);
@@ -1241,23 +1352,55 @@ export default function InternalPortal() {
           : program
       )
     };
-    persistState(nextState);
-    setError("");
-    setNotice("프로그램 기본 정보를 저장했습니다.");
+    try {
+      const updatedProgram = nextState.programs.find((program) => program.id === currentProgram.id);
+      const result = await writeOperationsApi<{ program: HighViewProgram }>(`/api/programs/${currentProgram.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatedProgram)
+      });
+      if (result.fallback) {
+        persistState(nextState);
+        setOperationsFallbackMode(true);
+      } else {
+        await refreshSubmissions();
+      }
+      setError("");
+      setNotice("프로그램 기본 정보를 저장했습니다.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "프로그램 정보 저장에 실패했습니다.");
+    }
   };
 
-  const addInvites = (event: React.FormEvent<HTMLFormElement>) => {
+  const addInvites = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!currentProgram) return;
     const formData = new FormData(event.currentTarget);
     const count = Math.max(1, Math.min(100, Number(formData.get("count") || 1)));
     const school = String(formData.get("school") || "").trim();
     const invites = Array.from({ length: count }, () => createParticipant(currentProgram.id, school));
-    persistState({ ...state, participants: [...invites, ...state.participants] });
-    setNotice(`${count}개의 참여자 코드를 생성했습니다.`);
+    try {
+      const result = await writeOperationsApi<{ participants: HighViewParticipant[] }>(
+        `/api/programs/${currentProgram.id}/participants/bulk`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ count, school })
+        }
+      );
+      if (result.fallback) {
+        persistState({ ...state, participants: [...invites, ...state.participants] });
+        setOperationsFallbackMode(true);
+      } else {
+        await refreshSubmissions();
+      }
+      setNotice(`${count}개의 참여자 코드를 생성했습니다.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "참여자 코드 생성에 실패했습니다.");
+    }
   };
 
-  const updateParticipantInfo = (event: React.FormEvent<HTMLFormElement>) => {
+  const updateParticipantInfo = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!selectedParticipantForEdit) return;
     const formData = new FormData(event.currentTarget);
@@ -1278,11 +1421,29 @@ export default function InternalPortal() {
           : participant
       )
     };
-    persistState(nextState);
-    setNotice("참여자 정보를 저장했습니다.");
+    try {
+      const updatedParticipant = nextState.participants.find((item) => item.id === selectedParticipantForEdit.id);
+      const result = await writeOperationsApi<{ participant: HighViewParticipant }>(
+        `/api/participants/${selectedParticipantForEdit.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updatedParticipant)
+        }
+      );
+      if (result.fallback) {
+        persistState(nextState);
+        setOperationsFallbackMode(true);
+      } else {
+        await refreshSubmissions();
+      }
+      setNotice("참여자 정보를 저장했습니다.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "참여자 정보 저장에 실패했습니다.");
+    }
   };
 
-  const removeParticipant = (participantId: string) => {
+  const removeParticipant = async (participantId: string) => {
     const participant = state.participants.find((item) => item.id === participantId);
     if (!participant) return;
     const label = participant.name || participant.code;
@@ -1292,12 +1453,24 @@ export default function InternalPortal() {
       participants: state.participants.filter((item) => item.id !== participantId),
       feedbacks: state.feedbacks.filter((feedback) => feedback.participantId !== participantId)
     };
-    persistState(nextState);
-    if (selectedParticipantId === participantId) setSelectedParticipantId("");
-    setNotice(`${label} 참여자 코드를 삭제했습니다.`);
+    try {
+      const result = await writeOperationsApi<{ ok: boolean }>(`/api/participants/${participantId}`, {
+        method: "DELETE"
+      });
+      if (result.fallback) {
+        persistState(nextState);
+        setOperationsFallbackMode(true);
+      } else {
+        await refreshSubmissions();
+      }
+      if (selectedParticipantId === participantId) setSelectedParticipantId("");
+      setNotice(`${label} 참여자 코드를 삭제했습니다.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "참여자 삭제에 실패했습니다.");
+    }
   };
 
-  const addTeam = (event: React.FormEvent<HTMLFormElement>) => {
+  const addTeam = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!currentProgram) return;
     const formData = new FormData(event.currentTarget);
@@ -1307,13 +1480,28 @@ export default function InternalPortal() {
       setError("팀명을 입력해주세요.");
       return;
     }
+    const form = event.currentTarget;
     const team = createTeam(currentProgram.id, name, memo);
-    persistState({ ...state, teams: [team, ...state.teams] });
-    setNotice("팀을 생성했습니다.");
-    event.currentTarget.reset();
+    try {
+      const result = await writeOperationsApi<{ team: HighViewTeam }>(`/api/programs/${currentProgram.id}/teams`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, memo })
+      });
+      if (result.fallback) {
+        persistState({ ...state, teams: [team, ...state.teams] });
+        setOperationsFallbackMode(true);
+      } else {
+        await refreshSubmissions();
+      }
+      setNotice("팀을 생성했습니다.");
+      form.reset();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "팀 생성에 실패했습니다.");
+    }
   };
 
-  const updateTeam = (event: React.FormEvent<HTMLFormElement>) => {
+  const updateTeam = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = event.currentTarget;
     const teamId = form.dataset.teamId || "";
@@ -1328,12 +1516,26 @@ export default function InternalPortal() {
       ...state,
       teams: state.teams.map((team) => (team.id === teamId ? { ...team, name, memo } : team))
     };
-    persistState(nextState);
-    setError("");
-    setNotice("팀 정보를 저장했습니다.");
+    try {
+      const result = await writeOperationsApi<{ team: HighViewTeam }>(`/api/teams/${teamId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, memo })
+      });
+      if (result.fallback) {
+        persistState(nextState);
+        setOperationsFallbackMode(true);
+      } else {
+        await refreshSubmissions();
+      }
+      setError("");
+      setNotice("팀 정보를 저장했습니다.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "팀 정보 저장에 실패했습니다.");
+    }
   };
 
-  const removeTeam = (teamId: string) => {
+  const removeTeam = async (teamId: string) => {
     const team = state.teams.find((item) => item.id === teamId);
     if (!team) return;
     const memberCount = state.participants.filter((participant) => participant.teamId === teamId).length;
@@ -1349,20 +1551,47 @@ export default function InternalPortal() {
         participant.teamId === teamId ? { ...participant, teamId: "" } : participant
       )
     };
-    persistState(nextState);
-    setNotice(`${team.name} 팀을 삭제했습니다.`);
+    try {
+      const result = await writeOperationsApi<{ ok: boolean }>(`/api/teams/${teamId}`, { method: "DELETE" });
+      if (result.fallback) {
+        persistState(nextState);
+        setOperationsFallbackMode(true);
+      } else {
+        await refreshSubmissions();
+      }
+      setNotice(`${team.name} 팀을 삭제했습니다.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "팀 삭제에 실패했습니다.");
+    }
   };
 
-  const assignTeam = (event: React.FormEvent<HTMLFormElement>) => {
+  const assignTeam = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     const participantId = String(formData.get("participantId") || "");
     const teamId = String(formData.get("teamId") || "");
     const participant = state.participants.find((item) => item.id === participantId);
     if (!participant) return;
-    participant.teamId = teamId;
-    persistState(state);
-    setNotice("팀 배정을 저장했습니다.");
+    const nextState = {
+      ...state,
+      participants: state.participants.map((item) => (item.id === participantId ? { ...item, teamId } : item))
+    };
+    try {
+      const result = await writeOperationsApi<{ participant: HighViewParticipant }>(`/api/participants/${participantId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamId: teamId || null })
+      });
+      if (result.fallback) {
+        persistState(nextState);
+        setOperationsFallbackMode(true);
+      } else {
+        await refreshSubmissions();
+      }
+      setNotice("팀 배정을 저장했습니다.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "팀 배정 저장에 실패했습니다.");
+    }
   };
 
   const handleReset = () => {
@@ -1373,7 +1602,7 @@ export default function InternalPortal() {
     setNotice("운영 데모 데이터를 초기화했습니다.");
   };
 
-  const handleFeedback = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleFeedback = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!currentProgram) return;
     const form = event.currentTarget;
@@ -1381,16 +1610,32 @@ export default function InternalPortal() {
     const submission = submissions.find((item) => item.id === submissionId);
     if (!submission) return;
     const formData = new FormData(form);
-    saveFeedback(state, {
+    const feedbackInput = {
       programId: currentProgram.id,
       participantId: submission.participant.operation?.participantId || submission.id,
       submissionId,
       comment: String(formData.get("comment") || "").trim(),
       nextAction: String(formData.get("nextAction") || "").trim(),
       status: String(formData.get("status") || "needs_revision") as FeedbackStatus
-    });
-    persistState(state);
-    setNotice("피드백을 저장했습니다.");
+    };
+    try {
+      const result = await writeOperationsApi<{ feedback: HighViewFeedback }>("/api/feedbacks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(feedbackInput)
+      });
+      if (result.fallback) {
+        const nextState = { ...state, feedbacks: [...state.feedbacks] };
+        saveFeedback(nextState, feedbackInput);
+        persistState(nextState);
+        setOperationsFallbackMode(true);
+      } else {
+        await refreshSubmissions();
+      }
+      setNotice("피드백을 저장했습니다.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "피드백 저장에 실패했습니다.");
+    }
   };
 
   const applyFeedbackTemplate = (submissionId: string, template: FeedbackQuickTemplate) => {
@@ -1417,7 +1662,7 @@ export default function InternalPortal() {
     setNotice(`${template.label} 피드백 템플릿을 입력했습니다. 저장 버튼을 눌러 반영하세요.`);
   };
 
-  const handleModuleReview = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleModuleReview = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = event.currentTarget;
     const participantId = form.dataset.participantId || "";
@@ -1452,8 +1697,32 @@ export default function InternalPortal() {
           : item
       )
     };
-    persistState(nextState);
-    setNotice(`${participant.name || participant.code}의 ${startupModule.title} 검토 상태를 저장했습니다.`);
+    try {
+      const result = await writeOperationsApi<{ progress: unknown }>("/api/module-progress", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          programId: participant.programId,
+          participantId,
+          moduleSlug,
+          status,
+          currentStep: currentProgress?.status === "completed" ? 100 : 50,
+          inputData: { text: currentProgress?.inputData || "" },
+          outputData: { text: currentProgress?.outputData || "" },
+          adminComment: String(formData.get("adminComment") || "").trim(),
+          reviewedAt: now
+        })
+      });
+      if (result.fallback) {
+        persistState(nextState);
+        setOperationsFallbackMode(true);
+      } else {
+        await refreshSubmissions();
+      }
+      setNotice(`${participant.name || participant.code}의 ${startupModule.title} 검토 상태를 저장했습니다.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "모듈 검토 저장에 실패했습니다.");
+    }
   };
 
   const removeSubmission = async (submission: LeanCanvasSubmission) => {
@@ -1556,7 +1825,7 @@ export default function InternalPortal() {
             </label>
             <div className="flex flex-wrap gap-2">
               <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:bg-gray-400" onClick={() => refreshSubmissions()} disabled={refreshing}>
-                {refreshing ? "새로고침 중..." : "제출 새로고침"}
+                {refreshing ? "새로고침 중..." : "운영 데이터 새로고침"}
               </button>
               <button className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-800" onClick={() => setTab("submissions")} type="button">
                 제출/피드백 보기
@@ -1591,9 +1860,11 @@ export default function InternalPortal() {
               <Link className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-800" href="/admin/modu-startup">
                 모두의창업 목록
               </Link>
-              <button className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700" onClick={handleReset}>
-                데모 초기화
-              </button>
+              {operationsFallbackMode ? (
+                <button className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700" onClick={handleReset}>
+                  데모 초기화
+                </button>
+              ) : null}
               <button className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold" onClick={logout}>
                 로그아웃
               </button>
@@ -1614,6 +1885,16 @@ export default function InternalPortal() {
           ))}
         </nav>
       </header>
+
+      {operationsFallbackMode || fallbackMode ? (
+        <p className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-950">
+          데모 모드: 이 브라우저 임시 데이터입니다. 다른 기기와 공유되지 않습니다.
+        </p>
+      ) : (
+        <p className="mb-4 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-900">
+          중앙 저장 모드: 운영 데이터가 Supabase에 저장되어 다른 운영진과 공유됩니다.
+        </p>
+      )}
 
       {error ? <p className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
       {notice ? <p className="mb-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">{notice}</p> : null}

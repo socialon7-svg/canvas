@@ -34,7 +34,7 @@ export async function GET(request: Request, { params }: { params: Promise<unknow
     }
 
     const participants = await listParticipants(id);
-    return NextResponse.json({ participants: participants.map(toParticipantDto) });
+    return NextResponse.json({ participants: participants.map((participant) => toParticipantDto(participant)) });
   } catch (error) {
     return handleOperationsApiError(error, "참여자 목록 조회 실패");
   }

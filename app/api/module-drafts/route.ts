@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getModuleDraft, upsertModuleDraft } from "@/lib/operationsRepository";
 import { handleOperationsApiError } from "@/lib/operationsApiUtils";
+import { authorizeParticipantRequest } from "@/lib/participantAuth";
 
 const draftQuerySchema = z.object({
   programId: z.string().trim().min(1),
@@ -16,12 +17,16 @@ const draftUpsertSchema = draftQuerySchema.extend({
 
 export async function GET(request: Request) {
   try {
+    const initialAuthorization = authorizeParticipantRequest(request, {});
+    if (!initialAuthorization.ok) return initialAuthorization.response;
     const url = new URL(request.url);
     const query = draftQuerySchema.parse({
       programId: url.searchParams.get("programId") || "",
       participantId: url.searchParams.get("participantId") || "",
       moduleSlug: url.searchParams.get("moduleSlug") || ""
     });
+    const authorization = authorizeParticipantRequest(request, query);
+    if (!authorization.ok) return authorization.response;
     const draft = await getModuleDraft(query);
 
     return NextResponse.json({
@@ -44,7 +49,11 @@ export async function GET(request: Request) {
 
 export async function PUT(request: Request) {
   try {
+    const initialAuthorization = authorizeParticipantRequest(request, {});
+    if (!initialAuthorization.ok) return initialAuthorization.response;
     const body = draftUpsertSchema.parse(await request.json());
+    const authorization = authorizeParticipantRequest(request, body);
+    if (!authorization.ok) return authorization.response;
     const draft = await upsertModuleDraft(body);
 
     return NextResponse.json({

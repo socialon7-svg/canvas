@@ -102,6 +102,7 @@ create table if not exists public.module_submissions (
   status text not null default 'submitted',
   pdf_status text not null default 'idle',
   pdf_error_message text,
+  pdf_generated_at timestamptz,
   input_data jsonb not null default '{}'::jsonb,
   output_data jsonb not null default '{}'::jsonb,
   submitted_at timestamptz not null default now(),

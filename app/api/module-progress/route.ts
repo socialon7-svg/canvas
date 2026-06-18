@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { upsertModuleProgress, type ParticipantModuleProgressRow } from "@/lib/operationsRepository";
 import { handleOperationsApiError } from "@/lib/operationsApiUtils";
+import { authorizeParticipantRequest } from "@/lib/participantAuth";
 
 const jsonObjectSchema = z.record(z.string(), z.unknown());
 
@@ -35,7 +36,11 @@ function toModuleProgressDto(row: ParticipantModuleProgressRow) {
 
 export async function PATCH(request: Request) {
   try {
+    const initialAuthorization = authorizeParticipantRequest(request, {}, { allowAdmin: true });
+    if (!initialAuthorization.ok) return initialAuthorization.response;
     const body = moduleProgressSchema.parse(await request.json());
+    const authorization = authorizeParticipantRequest(request, body, { allowAdmin: true });
+    if (!authorization.ok) return authorization.response;
     const progress = await upsertModuleProgress({
       programId: body.programId,
       participantId: body.participantId,

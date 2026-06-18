@@ -9,7 +9,16 @@ function getAdminPassword() {
 }
 
 function getSessionSecret() {
-  return process.env.ADMIN_SESSION_SECRET || getAdminPassword();
+  const configuredSecret = process.env.ADMIN_SESSION_SECRET || "";
+  if (configuredSecret) return configuredSecret;
+  return process.env.NODE_ENV === "production" ? "" : getAdminPassword();
+}
+
+export class AdminAuthConfigurationError extends Error {
+  constructor() {
+    super("운영 환경에 ADMIN_SESSION_SECRET이 설정되지 않았습니다.");
+    this.name = "AdminAuthConfigurationError";
+  }
 }
 
 function toBase64Url(value: Buffer) {
@@ -50,6 +59,7 @@ export function isAdminPasswordValid(password: string | undefined | null) {
 }
 
 export function createAdminSessionToken() {
+  if (!getSessionSecret()) throw new AdminAuthConfigurationError();
   const issuedAt = Date.now().toString();
   return `v1.${issuedAt}.${sign(issuedAt)}`;
 }
@@ -70,8 +80,10 @@ export function verifyAdminSessionToken(token: string | undefined | null) {
 }
 
 export function isAdminRequest(request: Request) {
-  const legacyHeaderPassword = request.headers.get("x-admin-password");
-  if (isAdminPasswordValid(legacyHeaderPassword)) return true;
+  if (process.env.NODE_ENV !== "production") {
+    const legacyHeaderPassword = request.headers.get("x-admin-password");
+    if (isAdminPasswordValid(legacyHeaderPassword)) return true;
+  }
 
   return verifyAdminSessionToken(getCookieValue(request, ADMIN_SESSION_COOKIE));
 }

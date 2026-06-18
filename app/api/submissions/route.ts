@@ -3,6 +3,7 @@ import { adminUnauthorizedResponse, isAdminRequest } from "@/lib/adminAuth";
 import { mirrorLeanCanvasSubmission } from "@/lib/moduleSubmissionMirror";
 import { createSupabaseServerClient, hasSupabaseServerConfig } from "@/lib/supabaseServer";
 import type { LeanCanvasDraft, LeanCanvasSubmission, ParticipantInput, PdfStatus } from "@/lib/types";
+import { authorizeParticipantRequest } from "@/lib/participantAuth";
 
 interface SubmissionRequest {
   participant: ParticipantInput;
@@ -71,12 +72,24 @@ function missingTableResponse() {
 
 export async function POST(request: Request) {
   try {
+    const initialAuthorization = authorizeParticipantRequest(request, {}, { allowAdmin: true });
+    if (!initialAuthorization.ok) return initialAuthorization.response;
     const body = (await request.json()) as SubmissionRequest;
     const validationError = validateSubmission(body);
 
     if (validationError) {
       return NextResponse.json({ error: validationError }, { status: 400 });
     }
+    const operation = body.participant.operation;
+    if (initialAuthorization.mode === "participant" && (!operation?.programId || !operation.participantId)) {
+      return NextResponse.json({ error: "참여자 운영 정보가 없는 제출입니다." }, { status: 403 });
+    }
+    const authorization = authorizeParticipantRequest(
+      request,
+      { programId: operation?.programId, participantId: operation?.participantId },
+      { allowAdmin: true }
+    );
+    if (!authorization.ok) return authorization.response;
 
     if (!hasSupabaseServerConfig()) {
       return NextResponse.json(

@@ -36,6 +36,7 @@ export function isOperationsTableMissingError(error: unknown) {
     (text.includes("relation") &&
       text.includes("does not exist") &&
       (text.includes("programs") ||
+        text.includes("teams") ||
         text.includes("participants") ||
         text.includes("program_modules") ||
         text.includes("participant_module_progress") ||

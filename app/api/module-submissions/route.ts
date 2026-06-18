@@ -7,6 +7,7 @@ import {
   type ModuleSubmissionRow
 } from "@/lib/operationsRepository";
 import { handleOperationsApiError } from "@/lib/operationsApiUtils";
+import { authorizeParticipantRequest } from "@/lib/participantAuth";
 
 const jsonObjectSchema = z.record(z.string(), z.unknown());
 
@@ -70,7 +71,11 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const initialAuthorization = authorizeParticipantRequest(request, {}, { allowAdmin: true });
+    if (!initialAuthorization.ok) return initialAuthorization.response;
     const body = moduleSubmissionCreateSchema.parse(await request.json());
+    const authorization = authorizeParticipantRequest(request, body, { allowAdmin: true });
+    if (!authorization.ok) return authorization.response;
     const submission = await createModuleSubmission({
       programId: body.programId,
       participantId: body.participantId,

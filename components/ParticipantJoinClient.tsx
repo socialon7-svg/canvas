@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { HighViewParticipant, HighViewProgram, HighViewTeam } from "@/lib/types";
+import type { HighViewFeedback, HighViewParticipant, HighViewProgram, HighViewTeam } from "@/lib/types";
 import { loadOperationsState } from "@/lib/operationsStorage";
 import {
   mergeParticipantEntryIntoOperationsState,
@@ -14,6 +14,7 @@ interface JoinResponse {
   program?: HighViewProgram;
   participant?: HighViewParticipant;
   team?: HighViewTeam | null;
+  feedbacks?: HighViewFeedback[];
   error?: string;
   code?: string;
 }
@@ -55,7 +56,8 @@ export default function ParticipantJoinClient({ token }: { token: string }) {
           mergeParticipantEntryIntoOperationsState({
             program: data.program,
             participant: data.participant,
-            team: data.team || null
+            team: data.team || null,
+            feedbacks: data.feedbacks
           });
           if (!cancelled) {
             setStatus(`${data.participant.name || data.participant.code}님 워크스페이스로 이동합니다.`);
@@ -64,17 +66,25 @@ export default function ParticipantJoinClient({ token }: { token: string }) {
           return;
         }
 
-        const local = findLocalParticipantByToken(token);
-        if (local) {
-          writeParticipantSession(local.program.id, local.participant.id);
-          if (!cancelled) {
-            setStatus(`${local.participant.name || local.participant.code}님 데모 워크스페이스로 이동합니다.`);
-            router.replace("/participant");
+        const canUseDemoFallback =
+          response.status === 503 &&
+          (data.code === "SUPABASE_NOT_CONFIGURED" || data.code === "SUPABASE_TABLE_NOT_READY");
+        if (canUseDemoFallback) {
+          const local = findLocalParticipantByToken(token);
+          if (local) {
+            writeParticipantSession(local.program.id, local.participant.id);
+            if (!cancelled) {
+              setStatus(`${local.participant.name || local.participant.code}님 데모 워크스페이스로 이동합니다.`);
+              router.replace("/participant");
+            }
+            return;
           }
-          return;
         }
 
-        throw new Error(data.error || "입장 링크를 찾을 수 없습니다.");
+        if (!cancelled) {
+          setError(data.error || "입장 링크를 찾을 수 없습니다.");
+        }
+        return;
       } catch (caught) {
         const local = findLocalParticipantByToken(token);
         if (local) {

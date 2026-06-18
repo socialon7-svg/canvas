@@ -42,6 +42,8 @@ interface ParticipantJoinResponse {
   program?: HighViewOperationsState["programs"][number];
   participant?: HighViewParticipant;
   team?: HighViewOperationsState["teams"][number] | null;
+  feedbacks?: HighViewOperationsState["feedbacks"];
+  code?: string;
   error?: string;
 }
 
@@ -272,6 +274,36 @@ export default function ParticipantPortal() {
     setState({ ...nextState });
   };
 
+  const enterLocalParticipant = (submittedProgramCode: string, submittedParticipantCode: string) => {
+    const matchedProgram = state.programs.find(
+      (item) => normalizeAccessCode(item.programCode) === submittedProgramCode
+    );
+    const matchedParticipant = state.participants.find(
+      (item) =>
+        item.programId === matchedProgram?.id &&
+        normalizeAccessCode(item.code) === submittedParticipantCode
+    );
+
+    if (!matchedProgram || !matchedParticipant) return false;
+
+    const now = new Date().toISOString();
+    const nextState: HighViewOperationsState = {
+      ...state,
+      participants: state.participants.map((item) =>
+        item.id === matchedParticipant.id
+          ? { ...item, joinedAt: item.joinedAt || now, lastSeenAt: now }
+          : item
+      )
+    };
+    persistState(nextState);
+    writeParticipantSession(matchedProgram.id, matchedParticipant.id);
+    setProgramId(matchedProgram.id);
+    setParticipantId(matchedParticipant.id);
+    setError("");
+    setNotice("데모 모드로 입장했습니다. 이 브라우저의 임시 데이터를 사용합니다.");
+    return true;
+  };
+
   const login = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
@@ -288,6 +320,7 @@ export default function ParticipantPortal() {
     try {
       const response = await fetch("/api/participants/join", {
         method: "POST",
+        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           programCode: submittedProgramCode,
@@ -300,7 +333,8 @@ export default function ParticipantPortal() {
         const nextState = mergeParticipantEntryIntoOperationsState({
           program: data.program,
           participant: data.participant,
-          team: data.team || null
+          team: data.team || null,
+          feedbacks: data.feedbacks
         });
         setState(nextState);
         setProgramId(data.program.id);
@@ -309,39 +343,45 @@ export default function ParticipantPortal() {
         setNotice("입장했습니다. 내 정보를 확인한 뒤 배정된 모듈을 진행하세요.");
         return;
       }
+      const canUseDemoFallback =
+        response.status === 503 &&
+        (data.code === "SUPABASE_NOT_CONFIGURED" || data.code === "SUPABASE_TABLE_NOT_READY");
+      if (!canUseDemoFallback) {
+        setError(data.error || "입장에 실패했습니다. 코드를 확인하거나 운영진에게 문의해주세요.");
+        return;
+      }
     } catch {
-      // Supabase 운영 모드가 준비되지 않은 경우 아래 localStorage fallback을 사용합니다.
-    }
-
-    const matchedProgram = state.programs.find(
-      (item) => normalizeAccessCode(item.programCode) === submittedProgramCode
-    );
-    if (!matchedProgram) {
-      setError("입장 정보를 찾을 수 없습니다. 프로그램 코드와 참여자 코드를 다시 확인해주세요.");
+      setError("서버에 연결할 수 없습니다. 네트워크를 확인한 뒤 다시 시도해주세요.");
       return;
     }
 
-    const matchedParticipant = state.participants.find(
-      (item) =>
-        item.programId === matchedProgram.id &&
-        normalizeAccessCode(item.code) === submittedParticipantCode
-    );
-    if (!matchedParticipant) {
-      setError("입장 정보를 찾을 수 없습니다. 프로그램 코드와 참여자 코드를 다시 확인해주세요.");
-      return;
+    if (!enterLocalParticipant(submittedProgramCode, submittedParticipantCode)) {
+      setError("데모 입장 정보를 찾을 수 없습니다. 프로그램 코드와 참여자 코드를 다시 확인해주세요.");
     }
+  };
 
-    matchedParticipant.joinedAt ||= new Date().toISOString();
-    matchedParticipant.lastSeenAt = new Date().toISOString();
-    persistState(state);
-    writeParticipantSession(matchedProgram.id, matchedParticipant.id);
-    setProgramId(matchedProgram.id);
-    setParticipantId(matchedParticipant.id);
-    setError("");
-    setNotice("입장했습니다. 내 정보를 확인한 뒤 린캔버스를 작성하세요.");
+  const enterDemo = () => {
+    const demoProgramCode = "HV-DEMO";
+    const demoParticipantCode = "P-DEMO1";
+    setProgramCode(demoProgramCode);
+    setParticipantCode(demoParticipantCode);
+    if (!enterLocalParticipant(demoProgramCode, demoParticipantCode)) {
+      setError("데모 데이터를 불러오지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해주세요.");
+    }
+  };
+
+  const copyEntryError = async () => {
+    const message = `참여자 입장 오류: ${error} (프로그램 ${programCode || "미입력"}, 참여자 ${participantCode || "미입력"})`;
+    try {
+      await navigator.clipboard.writeText(message);
+      setNotice("운영진에게 전달할 오류 내용을 복사했습니다.");
+    } catch {
+      setNotice(message);
+    }
   };
 
   const logout = () => {
+    void fetch("/api/participants/logout", { method: "POST", credentials: "same-origin" }).catch(() => null);
     clearParticipantSession();
     setProgramId("");
     setParticipantId("");
@@ -361,11 +401,11 @@ export default function ParticipantPortal() {
     );
   };
 
-  const updateProfile = (event: React.FormEvent<HTMLFormElement>) => {
+  const updateProfile = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!participant) return;
     const formData = new FormData(event.currentTarget);
-    Object.assign(participant, {
+    const updates = {
       name: String(formData.get("name") || "").trim(),
       email: String(formData.get("email") || "").trim(),
       phone: String(formData.get("phone") || "").trim(),
@@ -373,9 +413,48 @@ export default function ParticipantPortal() {
       major: String(formData.get("major") || "").trim(),
       role: String(formData.get("role") || "").trim(),
       lastSeenAt: new Date().toISOString()
-    } satisfies Partial<HighViewParticipant>);
-    persistState(state);
-    setNotice("내 정보를 저장했습니다.");
+    } satisfies Partial<HighViewParticipant>;
+
+    if (!participant.id.startsWith("participant_")) {
+      try {
+        const response = await fetch(`/api/participants/${participant.id}`, {
+          method: "PATCH",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updates)
+        });
+        const data = (await response.json()) as { participant?: HighViewParticipant; code?: string; error?: string };
+        const canUseDemoFallback =
+          response.status === 503 &&
+          (data.code === "SUPABASE_NOT_CONFIGURED" || data.code === "SUPABASE_TABLE_NOT_READY");
+        if (response.ok && data.participant) {
+          setState((current) => ({
+            ...current,
+            participants: current.participants.map((item) =>
+              item.id === participant.id ? { ...item, ...updates, ...data.participant } : item
+            )
+          }));
+          setNotice("내 정보를 운영 서버에 저장했습니다.");
+          return;
+        }
+        if (!canUseDemoFallback) {
+          setNotice(data.error || "내 정보를 저장하지 못했습니다. 다시 시도해주세요.");
+          return;
+        }
+      } catch {
+        setNotice("서버에 연결할 수 없어 저장하지 못했습니다. 네트워크를 확인해주세요.");
+        return;
+      }
+    }
+
+    const nextState: HighViewOperationsState = {
+      ...state,
+      participants: state.participants.map((item) =>
+        item.id === participant.id ? { ...item, ...updates } : item
+      )
+    };
+    persistState(nextState);
+    setNotice("데모 모드로 이 브라우저에 내 정보를 임시 저장했습니다.");
   };
 
   const startCanvas = () => {
@@ -451,9 +530,13 @@ export default function ParticipantPortal() {
               />
             </label>
             {error ? (
-              <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
-                {error} 공백과 소문자는 자동으로 보정됩니다. 예: HV-DEMO / P-DEMO1
-              </p>
+              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                <p className="font-semibold">{error}</p>
+                <p className="mt-1">공백과 소문자는 자동으로 보정됩니다. 예: HV-DEMO / P-DEMO1</p>
+                <button className="mt-2 font-bold underline" onClick={copyEntryError} type="button">
+                  운영진 전달용 오류 복사
+                </button>
+              </div>
             ) : null}
             <button
               className="w-full rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-800 active:bg-blue-900"
@@ -470,6 +553,13 @@ export default function ParticipantPortal() {
             <p>
               참여자 코드: <code className="rounded bg-blue-100 px-1 py-0.5 font-mono font-bold">P-DEMO1</code>
             </p>
+            <button
+              className="mt-3 w-full rounded-md border border-blue-300 bg-white px-3 py-2 font-bold text-blue-800 hover:bg-blue-100"
+              onClick={enterDemo}
+              type="button"
+            >
+              데모로 바로 입장
+            </button>
           </div>
           <Link className="mt-4 inline-block text-sm font-semibold text-gray-500 hover:text-gray-700" href="/">
             역할 선택으로 돌아가기

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { mirrorPdfStatusToModuleSubmission } from "@/lib/moduleSubmissionMirror";
 import { createSupabaseServerClient, hasSupabaseServerConfig } from "@/lib/supabaseServer";
 import type { ModuStartupDraft, ModuStartupInput, ModuStartupSubmission, PdfStatus } from "@/lib/types";
+import { authorizeParticipantRequest } from "@/lib/participantAuth";
 
 interface ModuStartupSubmissionRow {
   id: string;
@@ -96,6 +97,8 @@ export async function GET(_request: Request, { params }: { params: Promise<unkno
 
 export async function PATCH(request: Request, { params }: { params: Promise<unknown> }) {
   try {
+    const initialAuthorization = authorizeParticipantRequest(request, {}, { allowAdmin: true });
+    if (!initialAuthorization.ok) return initialAuthorization.response;
     if (!hasSupabaseServerConfig()) {
       return NextResponse.json(
         { code: "SUPABASE_NOT_CONFIGURED", error: "Supabase 중앙 저장소가 설정되지 않았습니다." },
@@ -105,12 +108,36 @@ export async function PATCH(request: Request, { params }: { params: Promise<unkn
 
     const { id } = (await params) as { id: string };
     const body = pdfStatusSchema.parse(await request.json());
+    const supabase = createSupabaseServerClient();
+    const { data: existing, error: existingError } = await supabase
+      .from("modu_startup_submissions")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle<ModuStartupSubmissionRow>();
+    if (existingError || !existing) {
+      if (isMissingTableError(existingError)) return missingTableResponse();
+      return NextResponse.json({ error: "모두의창업 제출물을 찾을 수 없습니다." }, { status: 404 });
+    }
+    if (
+      initialAuthorization.mode === "participant" &&
+      (!existing.input.operation?.programId || !existing.input.operation.participantId)
+    ) {
+      return NextResponse.json({ error: "레거시 제출물은 운영진만 PDF 상태를 변경할 수 있습니다." }, { status: 403 });
+    }
+    const authorization = authorizeParticipantRequest(
+      request,
+      {
+        programId: existing.input.operation?.programId,
+        participantId: existing.input.operation?.participantId
+      },
+      { allowAdmin: true }
+    );
+    if (!authorization.ok) return authorization.response;
     const patch = {
       pdf_status: body.pdfStatus,
       pdf_error_message: body.pdfStatus === "failed" ? (body.pdfErrorMessage ?? "") : null,
       pdf_generated_at: body.pdfStatus === "success" ? new Date().toISOString() : null
     };
-    const supabase = createSupabaseServerClient();
     const { data, error } = await supabase
       .from("modu_startup_submissions")
       .update(patch)

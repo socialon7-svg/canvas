@@ -292,6 +292,10 @@ export default function ModuStartupGenerator() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [localDraftToResume, setLocalDraftToResume] = useState<{
+    input: ModuStartupInput;
+    savedAt: string;
+  } | null>(null);
 
   const printableText = useMemo(() => (draft ? formatDraft(input, draft) : ""), [draft, input]);
   const serverDraftData = useMemo<Record<string, unknown>>(() => ({ input, draft }), [draft, input]);
@@ -313,22 +317,11 @@ export default function ModuStartupGenerator() {
     let cancelled = false;
     const prefill = loadModuStartupPrefill();
     const savedDraft = loadModuStartupDraftFromLocal();
-    let baseInput = prefill ? { ...initialInput, ...prefill } : initialInput;
+    const baseInput = prefill ? { ...initialInput, ...prefill } : initialInput;
 
     if (savedDraft) {
-      const resume = window.confirm(
-        `이전에 작성하던 모두의창업 내용이 있습니다.\n저장 시각: ${new Date(savedDraft.savedAt).toLocaleString("ko-KR")}\n이어 쓰시겠습니까?`
-      );
-
-      if (resume) {
-        baseInput = { ...baseInput, ...savedDraft.input };
-        setInput(baseInput);
-        setLastSavedAt(savedDraft.savedAt);
-        setNotice("이전에 작성하던 내용을 불러왔습니다.");
-      } else {
-        clearModuStartupDraftFromLocal();
-        if (prefill) setInput(baseInput);
-      }
+      setLocalDraftToResume(savedDraft);
+      if (prefill) setInput(baseInput);
     } else if (prefill) {
       setInput(baseInput);
     }
@@ -352,6 +345,7 @@ export default function ModuStartupGenerator() {
       if (cancelled) return;
 
       if (savedServerDraft?.draftData) {
+        setLocalDraftToResume(null);
         if (savedServerDraft.draftData.input) {
           setInput({ ...baseInput, ...savedServerDraft.draftData.input });
         }
@@ -393,7 +387,26 @@ export default function ModuStartupGenerator() {
     setDraft((current) => (current ? { ...current, [key]: splitLines(value) } : current));
   };
 
+  const validateBeforeStep = (nextStep: number) => {
+    if (nextStep > 1 && !input.ideaTitle.trim() && !input.ideaOneLine.trim()) {
+      setCurrentStep(1);
+      setError("아이디어명 또는 한 줄 소개 중 하나를 입력해주세요.");
+      return false;
+    }
+    if (nextStep > 2 && !input.backgroundStory.trim() && !input.customerProblem.trim()) {
+      setCurrentStep(2);
+      setError("배경 이야기 또는 고객 문제 중 하나를 입력해주세요.");
+      return false;
+    }
+    if (nextStep >= 5 && !input.executionPlan.trim()) {
+      setNotice("실행 계획이 비어 있습니다. 생성은 가능하지만 인터뷰·매출·실험 계획을 적으면 초안이 더 구체적입니다.");
+    }
+    setError("");
+    return true;
+  };
+
   const generateDraft = async () => {
+    if (!validateBeforeStep(moduStartupSteps.length - 1)) return;
     setLoading(true);
     setError("");
     setNotice("");
@@ -491,8 +504,18 @@ export default function ModuStartupGenerator() {
   };
 
   const moveStep = (nextStep: number) => {
+    if (nextStep > currentStep && !validateBeforeStep(nextStep)) return;
     setCurrentStep(Math.max(0, Math.min(moduStartupSteps.length - 1, nextStep)));
   };
+
+  const nextStepLabels = [
+    "다음: 한 줄 소개",
+    "다음: 문제 작성",
+    "다음: 실행 근거 작성",
+    "다음: 분야와 팀",
+    "다음: AI 초안 만들기",
+    "AI 초안 만들기"
+  ];
 
   const renderStepFields = () => {
     switch (currentStepId) {
@@ -702,6 +725,41 @@ export default function ModuStartupGenerator() {
         </p>
       ) : null}
 
+      {localDraftToResume ? (
+        <section className="no-print mb-5 rounded-lg border border-amber-200 bg-amber-50 p-5 shadow-sm">
+          <p className="text-sm font-semibold text-amber-800">이전에 작성하던 내용이 있어요</p>
+          <h2 className="mt-1 text-lg font-bold text-gray-950">저장된 모두의창업 초안을 이어서 작성할까요?</h2>
+          <p className="mt-2 text-sm text-amber-900">
+            마지막 저장 {new Date(localDraftToResume.savedAt).toLocaleString("ko-KR")}
+          </p>
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+            <button
+              className="rounded-md bg-amber-700 px-4 py-2 text-sm font-bold text-white"
+              onClick={() => {
+                setInput((current) => ({ ...current, ...localDraftToResume.input }));
+                setLastSavedAt(localDraftToResume.savedAt);
+                setLocalDraftToResume(null);
+                setNotice("이전에 작성하던 내용을 불러왔습니다.");
+              }}
+              type="button"
+            >
+              이어서 작성
+            </button>
+            <button
+              className="rounded-md border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-900"
+              onClick={() => {
+                clearModuStartupDraftFromLocal();
+                setLocalDraftToResume(null);
+                setNotice("이전 임시 저장을 지우고 새로 작성합니다.");
+              }}
+              type="button"
+            >
+              새로 작성
+            </button>
+          </div>
+        </section>
+      ) : null}
+
       {submittedSubmission ? (
         <section className="no-print mb-5 rounded-lg border border-green-200 bg-green-50 p-5 shadow-sm">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -730,7 +788,7 @@ export default function ModuStartupGenerator() {
         </section>
       ) : null}
 
-      <div className="grid gap-5 lg:grid-cols-[420px_1fr]">
+      <div className="grid gap-5 xl:grid-cols-[420px_minmax(0,1fr)]">
         <section className="no-print rounded-lg border border-gray-200 bg-white p-5 shadow-sm" onBlurCapture={draftSave.saveNow}>
           <h2 className="text-lg font-bold text-gray-950">입력 정보</h2>
           <p className="mt-2 text-sm leading-6 text-gray-600">
@@ -816,7 +874,7 @@ export default function ModuStartupGenerator() {
                   onClick={() => moveStep(currentStep + 1)}
                   type="button"
                 >
-                  다음
+                  {nextStepLabels[currentStep]}
                 </button>
               </div>
             </div>
