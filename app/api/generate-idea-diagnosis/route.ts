@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { generateIdeaDiagnosisDraft } from "@/lib/ai";
+import { authorizeOperationRequest } from "@/lib/participantAuth";
 import type { IdeaDiagnosisInput } from "@/lib/types";
 
 const textField = (max = 3000) => z.string().trim().max(max).optional().default("");
@@ -42,6 +43,8 @@ export async function POST(request: Request) {
   }
 
   try {
+    const authorization = authorizeOperationRequest(request, input.operation);
+    if (!authorization.ok) return authorization.response;
     const draft = await generateIdeaDiagnosisDraft(input);
     return NextResponse.json({ draft });
   } catch (error) {

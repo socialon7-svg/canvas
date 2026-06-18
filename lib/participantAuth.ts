@@ -158,3 +158,28 @@ export function authorizeParticipantRequest(
   }
   return { ok: true, mode: "participant", session };
 }
+
+export function authorizeOperationRequest(
+  request: Request,
+  operation: { programId?: string; participantId?: string } | undefined,
+  options: { allowAdmin?: boolean } = { allowAdmin: true }
+): ParticipantAuthorization {
+  const initialAuthorization = authorizeParticipantRequest(request, {}, options);
+  if (!initialAuthorization.ok) return initialAuthorization;
+
+  if (
+    initialAuthorization.mode === "participant" &&
+    (!operation?.programId || !operation.participantId)
+  ) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "참여자 운영 정보가 없는 요청입니다." }, { status: 403 })
+    };
+  }
+
+  return authorizeParticipantRequest(
+    request,
+    { programId: operation?.programId, participantId: operation?.participantId },
+    options
+  );
+}

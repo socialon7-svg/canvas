@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { generateCompetitorAnalysisDraft } from "@/lib/ai";
+import { authorizeOperationRequest } from "@/lib/participantAuth";
 import type { CompetitorAnalysisInput } from "@/lib/types";
 
 const textField = (max = 3000) => z.string().trim().max(max).optional().default("");
@@ -20,6 +21,8 @@ const inputSchema = z.object({
 export async function POST(request: Request) {
   try {
     const input = inputSchema.parse(await request.json()) as CompetitorAnalysisInput;
+    const authorization = authorizeOperationRequest(request, input.operation);
+    if (!authorization.ok) return authorization.response;
     return NextResponse.json({ draft: await generateCompetitorAnalysisDraft(input) });
   } catch (error) {
     if (error instanceof z.ZodError) return NextResponse.json({ error: "입력값이 올바르지 않습니다.", issues: error.issues }, { status: 400 });

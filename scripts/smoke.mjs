@@ -31,6 +31,33 @@ async function run() {
   const moduleGeneration = await request("/api/generate-startup-module", { method: "POST" });
   assert(moduleGeneration.status === 401, `비인증 모듈 생성 응답이 401이 아닙니다: ${moduleGeneration.status}`);
 
+  const protectedGenerationRequests = [
+    ["/api/generate", {}],
+    ["/api/generate-modu-startup", {}],
+    ["/api/generate-one-line-idea", { rawIdea: "smoke" }],
+    ["/api/generate-idea-diagnosis", { ideaMemo: "smoke" }],
+    ["/api/generate-customer-persona", { ideaMemo: "smoke" }],
+    ["/api/generate-customer-journey", { ideaMemo: "smoke" }],
+    ["/api/generate-problem-statement", { ideaMemo: "smoke" }],
+    ["/api/generate-customer-interview", { ideaMemo: "smoke" }],
+    ["/api/generate-survey", { ideaMemo: "smoke" }],
+    ["/api/generate-validation-experiment", { ideaMemo: "smoke" }],
+    ["/api/generate-market-research", { ideaMemo: "smoke" }],
+    ["/api/generate-competitor-analysis", { ideaMemo: "smoke" }],
+    ["/api/generate-differentiation-strategy", { ideaMemo: "smoke" }],
+    ["/api/generate-business-model", { ideaMemo: "smoke" }],
+    ["/api/generate-pricing-policy", { ideaMemo: "smoke" }]
+  ];
+
+  for (const [path, body] of protectedGenerationRequests) {
+    const generation = await request(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    assert(generation.status === 401, `비인증 AI 생성 응답이 401이 아닙니다 (${path}): ${generation.status}`);
+  }
+
   if (process.env.SMOKE_ADMIN_PASSWORD) {
     const login = await request("/api/admin-login", {
       method: "POST",
@@ -75,6 +102,19 @@ async function run() {
     });
     const draft = await request(`/api/module-drafts?${draftQuery}`, { headers: { Cookie: cookie } });
     assert(draft.status === 200, `참여자 인증 draft 조회가 실패했습니다: ${draft.status}`);
+
+    const mismatchedGeneration = await request("/api/generate-one-line-idea", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        rawIdea: "smoke",
+        operation: {
+          programId: joinData.program.id,
+          participantId: "another-participant"
+        }
+      })
+    });
+    assert(mismatchedGeneration.status === 403, `다른 참여자 AI 요청 응답이 403이 아닙니다: ${mismatchedGeneration.status}`);
   }
 
   console.log(`smoke ok: ${baseUrl}`);

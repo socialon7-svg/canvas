@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { generateAutomatedStartupModuleDraft } from "@/lib/ai";
-import { authorizeParticipantRequest } from "@/lib/participantAuth";
+import { authorizeOperationRequest, authorizeParticipantRequest } from "@/lib/participantAuth";
 import { getStartupModuleAutomationConfig } from "@/lib/startupModuleAutomation";
 
 const textField = (max = 5000) => z.string().trim().max(max).optional().default("");
@@ -36,11 +36,7 @@ export async function POST(request: Request) {
     const config = getStartupModuleAutomationConfig(input.moduleSlug);
     if (!config) return NextResponse.json({ error: "지원하지 않는 자동화 모듈입니다." }, { status: 404 });
 
-    const authorization = authorizeParticipantRequest(
-      request,
-      { programId: input.operation?.programId, participantId: input.operation?.participantId },
-      { allowAdmin: true }
-    );
+    const authorization = authorizeOperationRequest(request, input.operation);
     if (!authorization.ok) return authorization.response;
     if (config.adminOnly && authorization.mode === "participant") {
       return NextResponse.json({ error: "이 모듈은 운영진 전용입니다." }, { status: 403 });

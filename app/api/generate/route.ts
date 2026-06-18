@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { generateLeanCanvas } from "@/lib/ai";
+import { authorizeOperationRequest } from "@/lib/participantAuth";
 import type { ParticipantInput } from "@/lib/types";
 
 const textField = (max = 2000) => z.string().trim().max(max).optional().default("");
@@ -48,6 +49,8 @@ export async function POST(request: Request) {
   }
 
   try {
+    const authorization = authorizeOperationRequest(request, input.operation);
+    if (!authorization.ok) return authorization.response;
     const canvas = await generateLeanCanvas(input);
     return NextResponse.json({ canvas });
   } catch (error) {
