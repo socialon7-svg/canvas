@@ -264,6 +264,94 @@ export interface ValidationExperimentDraft {
   mentorComment: string;
 }
 
+export interface MarketResearchInput {
+  programName: string;
+  teamName: string;
+  participantName: string;
+  ideaMemo: string;
+  oneLineIdea?: string;
+  diagnosisReport?: string;
+  personaReport?: string;
+  problemStatementReport?: string;
+  validationExperimentReport?: string;
+  operation?: ParticipantOperationContext;
+}
+
+export interface MarketSizeEstimate {
+  label: "TAM" | "SAM" | "SOM";
+  value: string;
+  basis: string;
+  confidence: string;
+}
+
+export interface MarketResearchSourcePlan {
+  source: string;
+  searchQuery: string;
+  purpose: string;
+}
+
+export interface MarketResearchDraft {
+  researchGoal: string;
+  targetMarket: string;
+  marketDefinition: string;
+  coreCustomer: string;
+  marketSignals: string[];
+  demandEvidence: string[];
+  marketSizeEstimates: MarketSizeEstimate[];
+  sourcePlan: MarketResearchSourcePlan[];
+  fieldResearchPlan: string[];
+  risks: string[];
+  nextAction: string;
+  mentorComment: string;
+}
+
+export interface CompetitorAnalysisInput extends MarketResearchInput {
+  marketResearchReport?: string;
+}
+
+export interface CompetitorComparisonItem {
+  name: string;
+  type: string;
+  targetCustomer: string;
+  mainOffer: string;
+  priceLevel: string;
+  strength: string;
+  weakness: string;
+  evidenceStatus: string;
+}
+
+export interface CompetitorAnalysisDraft {
+  analysisGoal: string;
+  comparisonFrame: string;
+  customerChoiceCriteria: string[];
+  competitors: CompetitorComparisonItem[];
+  comparisonSummary: string[];
+  opportunityGaps: string[];
+  validationTasks: string[];
+  mentorComment: string;
+}
+
+export interface DifferentiationStrategyInput extends CompetitorAnalysisInput {
+  competitorAnalysisReport?: string;
+}
+
+export interface DifferentiationStrategyDraft {
+  strategyGoal: string;
+  targetCustomer: string;
+  customerProblem: string;
+  competitiveFrame: string;
+  strongestDifferentiator: string;
+  whyItMatters: string;
+  positioningStatement: string;
+  proofPoints: string[];
+  deliveryActions: string[];
+  defensibilityPlan: string[];
+  avoidClaims: string[];
+  messageOptions: string[];
+  nextActions: string[];
+  mentorComment: string;
+}
+
 export interface LeanCanvasDraft {
   problem: string[];
   existingAlternatives: string[];

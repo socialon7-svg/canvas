@@ -1,4 +1,7 @@
 import {
+  type CompetitorAnalysisDraft,
+  type CompetitorAnalysisInput,
+  type CompetitorComparisonItem,
   type CustomerInterviewDraft,
   type CustomerInterviewInput,
   type CustomerPersonaDraft,
@@ -13,6 +16,10 @@ import {
   type IdeaDiagnosisDraft,
   type IdeaDiagnosisInput,
   type LeanCanvasDraft,
+  type MarketResearchDraft,
+  type MarketResearchInput,
+  type MarketResearchSourcePlan,
+  type MarketSizeEstimate,
   type ModuStartupDraft,
   type ModuStartupInput,
   type OneLineIdeaDraft,
@@ -20,6 +27,8 @@ import {
   type ParticipantInput,
   type ProblemStatementDraft,
   type ProblemStatementInput,
+  type DifferentiationStrategyDraft,
+  type DifferentiationStrategyInput,
   type ValidationExperimentDraft,
   type ValidationExperimentInput
 } from "@/lib/types";
@@ -213,6 +222,71 @@ const validationExperimentDraftSchema = z.object({
   riskControls: z.array(experimentTextSchema).min(3).max(6),
   nextAction: experimentTextSchema,
   mentorComment: experimentTextSchema
+});
+
+const marketTextSchema = z.string().trim().min(1).max(280);
+const marketSizeEstimateSchema = z.object({
+  label: z.enum(["TAM", "SAM", "SOM"]),
+  value: marketTextSchema,
+  basis: marketTextSchema,
+  confidence: marketTextSchema
+});
+const marketResearchSourcePlanSchema = z.object({
+  source: marketTextSchema,
+  searchQuery: marketTextSchema,
+  purpose: marketTextSchema
+});
+const marketResearchDraftSchema = z.object({
+  researchGoal: marketTextSchema,
+  targetMarket: marketTextSchema,
+  marketDefinition: marketTextSchema,
+  coreCustomer: marketTextSchema,
+  marketSignals: z.array(marketTextSchema).min(3).max(6),
+  demandEvidence: z.array(marketTextSchema).min(3).max(6),
+  marketSizeEstimates: z.array(marketSizeEstimateSchema).min(3).max(3),
+  sourcePlan: z.array(marketResearchSourcePlanSchema).min(3).max(6),
+  fieldResearchPlan: z.array(marketTextSchema).min(3).max(6),
+  risks: z.array(marketTextSchema).min(3).max(6),
+  nextAction: marketTextSchema,
+  mentorComment: marketTextSchema
+});
+
+const competitorComparisonItemSchema = z.object({
+  name: marketTextSchema,
+  type: marketTextSchema,
+  targetCustomer: marketTextSchema,
+  mainOffer: marketTextSchema,
+  priceLevel: marketTextSchema,
+  strength: marketTextSchema,
+  weakness: marketTextSchema,
+  evidenceStatus: marketTextSchema
+});
+const competitorAnalysisDraftSchema = z.object({
+  analysisGoal: marketTextSchema,
+  comparisonFrame: marketTextSchema,
+  customerChoiceCriteria: z.array(marketTextSchema).min(3).max(6),
+  competitors: z.array(competitorComparisonItemSchema).min(3).max(6),
+  comparisonSummary: z.array(marketTextSchema).min(3).max(6),
+  opportunityGaps: z.array(marketTextSchema).min(2).max(5),
+  validationTasks: z.array(marketTextSchema).min(3).max(6),
+  mentorComment: marketTextSchema
+});
+
+const differentiationStrategyDraftSchema = z.object({
+  strategyGoal: marketTextSchema,
+  targetCustomer: marketTextSchema,
+  customerProblem: marketTextSchema,
+  competitiveFrame: marketTextSchema,
+  strongestDifferentiator: marketTextSchema,
+  whyItMatters: marketTextSchema,
+  positioningStatement: marketTextSchema,
+  proofPoints: z.array(marketTextSchema).min(3).max(6),
+  deliveryActions: z.array(marketTextSchema).min(3).max(6),
+  defensibilityPlan: z.array(marketTextSchema).min(3).max(6),
+  avoidClaims: z.array(marketTextSchema).min(3).max(6),
+  messageOptions: z.array(marketTextSchema).min(3).max(5),
+  nextActions: z.array(marketTextSchema).min(3).max(6),
+  mentorComment: marketTextSchema
 });
 
 function truncateByCharacters(value: string, maxLength: number) {
@@ -1693,6 +1767,309 @@ export function createMockValidationExperimentDraft(input: ValidationExperimentI
   };
 }
 
+function normalizeRequiredStringArray(
+  value: unknown,
+  fallback: string[],
+  minItems: number,
+  maxItems: number,
+  maxLength: number
+) {
+  const normalized = normalizeStringArray(value, fallback, maxItems, maxLength);
+  return normalized.length >= minItems ? normalized : fallback;
+}
+
+export function buildMarketResearchPrompt(input: MarketResearchInput) {
+  return [
+    "너는 창업교육 참가자의 시장조사 초안을 설계하는 리서치 멘토다.",
+    "참가자 입력과 이전 모듈 결과를 바탕으로 시장 범위, 수요 신호, TAM/SAM/SOM 산식, 조사 계획을 작성하라.",
+    "실시간 검색을 하지 않은 상태에서 최신 통계나 기관 수치를 사실처럼 만들어내지 마라.",
+    "확인되지 않은 시장 규모는 value에 '확인 필요' 또는 명시적 가정값을 쓰고, basis에 계산식과 필요한 변수를 적어라.",
+    "sourcePlan에는 실제로 확인할 공공통계, 산업보고서, 플랫폼 데이터, 검색어와 확인 목적을 구체적으로 적어라.",
+    "거대한 전체 시장보다 초기 고객과 실제 진입 가능한 지역·채널 범위를 우선하라.",
+    "반드시 JSON만 반환하라. 설명, 마크다운, 코드블록, 주석은 포함하지 마라.",
+    "",
+    "반환 JSON 형식:",
+    JSON.stringify(
+      {
+        researchGoal: "시장조사 핵심 목표",
+        targetMarket: "초기 목표 시장",
+        marketDefinition: "시장 범위와 제외 범위",
+        coreCustomer: "핵심 고객",
+        marketSignals: ["시장 신호 1", "시장 신호 2", "시장 신호 3"],
+        demandEvidence: ["수요 증거 1", "수요 증거 2", "수요 증거 3"],
+        marketSizeEstimates: [
+          { label: "TAM", value: "확인 필요", basis: "계산식과 변수", confidence: "가정 단계" },
+          { label: "SAM", value: "확인 필요", basis: "계산식과 변수", confidence: "가정 단계" },
+          { label: "SOM", value: "확인 필요", basis: "계산식과 변수", confidence: "가정 단계" }
+        ],
+        sourcePlan: [
+          { source: "확인할 출처", searchQuery: "검색어", purpose: "확인 목적" }
+        ],
+        fieldResearchPlan: ["현장 조사 1", "현장 조사 2", "현장 조사 3"],
+        risks: ["해석 위험 1", "해석 위험 2", "해석 위험 3"],
+        nextAction: "오늘 바로 할 조사",
+        mentorComment: "멘토 코멘트"
+      },
+      null,
+      2
+    ),
+    "",
+    "참가자 입력:",
+    JSON.stringify(input, null, 2)
+  ].join("\n");
+}
+
+function normalizeMarketSizeEstimates(value: unknown, fallback: MarketSizeEstimate[]): MarketSizeEstimate[] {
+  const items = Array.isArray(value) ? value : [];
+  const labels: MarketSizeEstimate["label"][] = ["TAM", "SAM", "SOM"];
+  return labels.map((label, index) => {
+    const matched = items.find(
+      (item) => item && typeof item === "object" && String((item as Record<string, unknown>).label || "").toUpperCase() === label
+    );
+    const source = matched && typeof matched === "object" ? (matched as Record<string, unknown>) : {};
+    const fallbackItem = fallback[index];
+    return {
+      label,
+      value: truncateByCharacters(normalizeText(source.value, fallbackItem.value), 180),
+      basis: truncateByCharacters(normalizeText(source.basis, fallbackItem.basis), 240),
+      confidence: truncateByCharacters(normalizeText(source.confidence, fallbackItem.confidence), 120)
+    };
+  });
+}
+
+function normalizeMarketSourcePlans(
+  value: unknown,
+  fallback: MarketResearchSourcePlan[]
+): MarketResearchSourcePlan[] {
+  const normalized = Array.isArray(value)
+    ? value
+        .map((item, index) => {
+          const source = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+          const fallbackItem = fallback[Math.min(index, fallback.length - 1)] || fallback[0];
+          return {
+            source: truncateByCharacters(normalizeText(source.source, fallbackItem.source), 180),
+            searchQuery: truncateByCharacters(normalizeText(source.searchQuery, fallbackItem.searchQuery), 180),
+            purpose: truncateByCharacters(normalizeText(source.purpose, fallbackItem.purpose), 200)
+          };
+        })
+        .filter((item) => item.source && item.searchQuery)
+        .slice(0, 6)
+    : [];
+  return normalized.length >= 3 ? normalized : fallback;
+}
+
+export function parseMarketResearchJson(raw: string): MarketResearchDraft {
+  const jsonText = extractJsonObject(raw);
+  const parsed = JSON.parse(jsonText) as Partial<Record<keyof MarketResearchDraft, unknown>>;
+  const fallbackSizes: MarketSizeEstimate[] = [
+    { label: "TAM", value: "확인 필요", basis: "전체 잠재 고객 수 × 연간 예상 지출액", confidence: "공식 통계 확인 전 가정" },
+    { label: "SAM", value: "확인 필요", basis: "초기 지역·채널에서 접근 가능한 고객 수 × 연간 예상 지출액", confidence: "세분시장 자료 확인 전 가정" },
+    { label: "SOM", value: "확인 필요", basis: "1년 안에 확보 가능한 고객 수 × 연간 예상 지출액", confidence: "검증 실험 결과 확인 전 가정" }
+  ];
+  const fallbackSources: MarketResearchSourcePlan[] = [
+    { source: "KOSIS 국가통계포털", searchQuery: "핵심 고객 인구 지역 연령 통계", purpose: "잠재 고객 수와 지역 분포 확인" },
+    { source: "중소벤처기업부·소상공인시장진흥공단", searchQuery: "업종 시장 현황 소비 지출", purpose: "업종 규모와 사업체 현황 확인" },
+    { source: "네이버 데이터랩·구글 트렌드", searchQuery: "고객 문제 핵심 검색어", purpose: "검색 관심도와 계절성 확인" }
+  ];
+  const draft: MarketResearchDraft = {
+    researchGoal: truncateByCharacters(normalizeText(parsed.researchGoal, "초기 고객이 충분히 존재하고 문제 해결 수요가 반복되는지 확인합니다."), 240),
+    targetMarket: truncateByCharacters(normalizeText(parsed.targetMarket, "초기 지역과 채널에서 접근 가능한 핵심 고객 시장"), 200),
+    marketDefinition: truncateByCharacters(normalizeText(parsed.marketDefinition, "핵심 고객의 반복 문제와 현재 지출이 발생하는 범위로 시장을 한정합니다."), 260),
+    coreCustomer: truncateByCharacters(normalizeText(parsed.coreCustomer, "최근 2주 안에 해당 문제를 직접 겪은 초기 고객"), 200),
+    marketSignals: normalizeRequiredStringArray(
+      parsed.marketSignals,
+      ["고객이 문제 해결을 위해 이미 시간이나 비용을 쓰고 있습니다.", "검색·커뮤니티에서 같은 불편이 반복해서 나타납니다.", "검증 실험에서 후속 행동 의향이 확인됩니다."],
+      3,
+      6,
+      200
+    ),
+    demandEvidence: normalizeRequiredStringArray(
+      parsed.demandEvidence,
+      ["최근 문제 경험 고객 수", "현재 대안에 쓰는 비용과 시간", "사전신청·인터뷰·구매 의향 같은 행동 데이터"],
+      3,
+      6,
+      200
+    ),
+    marketSizeEstimates: normalizeMarketSizeEstimates(parsed.marketSizeEstimates, fallbackSizes),
+    sourcePlan: normalizeMarketSourcePlans(parsed.sourcePlan, fallbackSources),
+    fieldResearchPlan: normalizeRequiredStringArray(
+      parsed.fieldResearchPlan,
+      ["핵심 고객 20명에게 문제 빈도와 현재 지출을 확인합니다.", "관련 업종 운영자 3명에게 고객 문의와 구매 패턴을 묻습니다.", "검색량·커뮤니티 게시물·가격 데이터를 같은 기간으로 비교합니다."],
+      3,
+      6,
+      220
+    ),
+    risks: normalizeRequiredStringArray(
+      parsed.risks,
+      ["전체 산업 규모를 초기 목표 시장으로 오해하지 않습니다.", "출처와 기준연도가 다른 숫자를 단순 합산하지 않습니다.", "호감도 응답을 실제 구매 수요로 해석하지 않습니다."],
+      3,
+      6,
+      200
+    ),
+    nextAction: truncateByCharacters(normalizeText(parsed.nextAction, "오늘 TAM/SAM/SOM 계산에 필요한 고객 수와 지출 변수를 출처별로 확인합니다."), 220),
+    mentorComment: truncateByCharacters(normalizeText(parsed.mentorComment, "시장 규모보다 초기 고객에게 실제로 접근하고 반복 수요를 확인할 수 있는지가 먼저입니다."), 240)
+  };
+  return marketResearchDraftSchema.parse(draft);
+}
+
+export function createMockMarketResearchDraft(input: MarketResearchInput): MarketResearchDraft {
+  const customer = input.personaReport?.includes("자취") ? "늦은 시간 따뜻한 식사를 찾는 자취 대학생" : "최근 2주 안에 해당 문제를 직접 겪은 초기 고객";
+  return parseMarketResearchJson(JSON.stringify({
+    researchGoal: "초기 고객 규모와 반복 수요, 현재 지출을 근거로 진입 가능한 시장을 확인합니다.",
+    targetMarket: `캠퍼스와 1인 가구 밀집 지역에서 접근 가능한 ${customer} 시장`,
+    marketDefinition: "핵심 고객이 반복 문제를 해결하기 위해 실제 시간이나 비용을 쓰는 시장으로 한정합니다.",
+    coreCustomer: customer
+  }));
+}
+
+export function buildCompetitorAnalysisPrompt(input: CompetitorAnalysisInput) {
+  return [
+    "너는 창업교육 현장에서 경쟁사와 현재 대안을 비교하는 전략 멘토다.",
+    "직접 경쟁사뿐 아니라 고객이 지금 사용하는 간접 대안, 수작업, 포기까지 포함하라.",
+    "실시간 확인 없이 특정 기업의 가격·기능·성과를 사실처럼 만들어내지 마라. 불확실하면 evidenceStatus에 '확인 필요'라고 적어라.",
+    "고객이 실제로 선택할 때 보는 기준을 3~6개로 좁히고, 우리 아이디어를 무조건 우월하게 평가하지 마라.",
+    "비교 결과에서 비어 있는 기회와 추가 확인할 과제를 구체적으로 작성하라.",
+    "반드시 JSON만 반환하라. 설명, 마크다운, 코드블록, 주석은 포함하지 마라.",
+    "",
+    "반환 JSON 형식:",
+    JSON.stringify(
+      {
+        analysisGoal: "경쟁 분석 목표",
+        comparisonFrame: "비교 범위",
+        customerChoiceCriteria: ["선택 기준 1", "선택 기준 2", "선택 기준 3"],
+        competitors: [
+          { name: "경쟁사 또는 대안", type: "직접/간접/무행동", targetCustomer: "대상", mainOffer: "제공 가치", priceLevel: "가격 수준 또는 확인 필요", strength: "강점", weakness: "약점", evidenceStatus: "근거 상태" }
+        ],
+        comparisonSummary: ["비교 요약 1", "비교 요약 2", "비교 요약 3"],
+        opportunityGaps: ["빈 기회 1", "빈 기회 2"],
+        validationTasks: ["확인 과제 1", "확인 과제 2", "확인 과제 3"],
+        mentorComment: "멘토 코멘트"
+      },
+      null,
+      2
+    ),
+    "",
+    "참가자 입력:",
+    JSON.stringify(input, null, 2)
+  ].join("\n");
+}
+
+function normalizeCompetitorItems(value: unknown, fallback: CompetitorComparisonItem[]): CompetitorComparisonItem[] {
+  const normalized = Array.isArray(value)
+    ? value
+        .map((item, index) => {
+          const source = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+          const fallbackItem = fallback[Math.min(index, fallback.length - 1)] || fallback[0];
+          return {
+            name: truncateByCharacters(normalizeText(source.name, fallbackItem.name), 140),
+            type: truncateByCharacters(normalizeText(source.type, fallbackItem.type), 100),
+            targetCustomer: truncateByCharacters(normalizeText(source.targetCustomer, fallbackItem.targetCustomer), 180),
+            mainOffer: truncateByCharacters(normalizeText(source.mainOffer, fallbackItem.mainOffer), 200),
+            priceLevel: truncateByCharacters(normalizeText(source.priceLevel, fallbackItem.priceLevel), 120),
+            strength: truncateByCharacters(normalizeText(source.strength, fallbackItem.strength), 180),
+            weakness: truncateByCharacters(normalizeText(source.weakness, fallbackItem.weakness), 180),
+            evidenceStatus: truncateByCharacters(normalizeText(source.evidenceStatus, fallbackItem.evidenceStatus), 140)
+          };
+        })
+        .filter((item) => item.name)
+        .slice(0, 6)
+    : [];
+  return normalized.length >= 3 ? normalized : fallback;
+}
+
+export function parseCompetitorAnalysisJson(raw: string): CompetitorAnalysisDraft {
+  const jsonText = extractJsonObject(raw);
+  const parsed = JSON.parse(jsonText) as Partial<Record<keyof CompetitorAnalysisDraft, unknown>>;
+  const fallbackCompetitors: CompetitorComparisonItem[] = [
+    { name: "기존 전문 서비스", type: "직접 경쟁", targetCustomer: "같은 문제를 유료로 해결하려는 고객", mainOffer: "전문 기능과 안정적인 운영", priceLevel: "확인 필요", strength: "신뢰도와 운영 경험", weakness: "초기 고객에게 비용과 절차가 부담될 수 있음", evidenceStatus: "공식 홈페이지와 사용자 후기 확인 필요" },
+    { name: "범용 플랫폼·검색", type: "간접 대안", targetCustomer: "직접 비교하고 해결하려는 고객", mainOffer: "많은 정보와 선택지", priceLevel: "무료 또는 거래별 비용", strength: "접근성이 높음", weakness: "고객 상황에 맞춘 결과를 얻기 어려움", evidenceStatus: "실제 고객 사용 행동 확인 필요" },
+    { name: "직접 해결·포기", type: "무행동 대안", targetCustomer: "비용을 아끼거나 문제를 참는 고객", mainOffer: "추가 지출 없음", priceLevel: "금전 비용 없음", strength: "즉시 선택 가능", weakness: "시간 손실과 문제 반복", evidenceStatus: "고객 인터뷰로 빈도 확인 필요" }
+  ];
+  const draft: CompetitorAnalysisDraft = {
+    analysisGoal: truncateByCharacters(normalizeText(parsed.analysisGoal, "고객이 현재 대안 중 무엇을 왜 선택하는지 비교합니다."), 220),
+    comparisonFrame: truncateByCharacters(normalizeText(parsed.comparisonFrame, "같은 고객 문제를 해결하는 직접 경쟁, 간접 대안, 무행동을 함께 비교합니다."), 240),
+    customerChoiceCriteria: normalizeRequiredStringArray(parsed.customerChoiceCriteria, ["해결 속도", "총비용", "사용 편의성", "결과 신뢰도"], 3, 6, 160),
+    competitors: normalizeCompetitorItems(parsed.competitors, fallbackCompetitors),
+    comparisonSummary: normalizeRequiredStringArray(parsed.comparisonSummary, ["기존 전문 서비스는 신뢰도가 높지만 초기 비용과 절차가 부담될 수 있습니다.", "범용 대안은 접근성이 높지만 고객 상황에 맞는 결과를 보장하기 어렵습니다.", "무행동은 비용이 없지만 문제 반복에 따른 시간 손실이 남습니다."], 3, 6, 220),
+    opportunityGaps: normalizeRequiredStringArray(parsed.opportunityGaps, ["핵심 고객이 짧은 시간 안에 결과를 확인할 수 있는 경험", "작게 시작해 효과를 확인한 뒤 비용을 지불하는 구조"], 2, 5, 200),
+    validationTasks: normalizeRequiredStringArray(parsed.validationTasks, ["고객 10명에게 현재 대안 선택 기준의 우선순위를 묻습니다.", "경쟁 대안 3개의 최신 가격과 제공 범위를 공식 페이지에서 확인합니다.", "현재 대안을 바꾸게 만드는 최소 조건을 후속 인터뷰로 확인합니다."], 3, 6, 220),
+    mentorComment: truncateByCharacters(normalizeText(parsed.mentorComment, "경쟁사는 같은 업종만이 아니라 고객의 시간과 예산을 대신 차지하는 모든 대안입니다."), 240)
+  };
+  return competitorAnalysisDraftSchema.parse(draft);
+}
+
+export function createMockCompetitorAnalysisDraft(input: CompetitorAnalysisInput): CompetitorAnalysisDraft {
+  return parseCompetitorAnalysisJson(JSON.stringify({
+    analysisGoal: "핵심 고객이 현재 대안을 선택하는 기준과 바꾸지 않는 이유를 확인합니다.",
+    comparisonFrame: input.marketResearchReport ? "시장조사 결과에 나타난 직접 경쟁, 간접 대안, 무행동을 비교합니다." : "고객 문제를 해결하는 직접 경쟁, 간접 대안, 무행동을 비교합니다."
+  }));
+}
+
+export function buildDifferentiationStrategyPrompt(input: DifferentiationStrategyInput) {
+  return [
+    "너는 창업교육 참가자의 차별화 전략을 한 가지 강한 축으로 좁히는 전략 멘토다.",
+    "경쟁사 분석과 고객 선택 기준을 바탕으로 핵심 고객에게 중요한 차별점 1개를 선택하라.",
+    "빠르다, 편리하다, 혁신적이다 같은 추상 표현만 쓰지 말고 고객 결과와 측정 가능한 증거 계획을 연결하라.",
+    "아직 증명하지 못한 강점을 확정 사실처럼 쓰지 말고 proofPoints와 nextActions에서 검증 방법을 제안하라.",
+    "가격·기능·품질을 모두 우월하다고 주장하지 말고 무엇을 포기할지도 avoidClaims에 적어라.",
+    "반드시 JSON만 반환하라. 설명, 마크다운, 코드블록, 주석은 포함하지 마라.",
+    "",
+    "반환 JSON 형식:",
+    JSON.stringify(
+      {
+        strategyGoal: "차별화 전략 목표",
+        targetCustomer: "좁은 핵심 고객",
+        customerProblem: "핵심 문제",
+        competitiveFrame: "비교 대상과 기준",
+        strongestDifferentiator: "가장 강한 차별점 1개",
+        whyItMatters: "고객에게 중요한 이유",
+        positioningStatement: "고객·문제·차별점이 담긴 포지셔닝 문장",
+        proofPoints: ["증거 1", "증거 2", "증거 3"],
+        deliveryActions: ["실행 요소 1", "실행 요소 2", "실행 요소 3"],
+        defensibilityPlan: ["방어력 계획 1", "방어력 계획 2", "방어력 계획 3"],
+        avoidClaims: ["피할 주장 1", "피할 주장 2", "피할 주장 3"],
+        messageOptions: ["메시지 후보 1", "메시지 후보 2", "메시지 후보 3"],
+        nextActions: ["다음 행동 1", "다음 행동 2", "다음 행동 3"],
+        mentorComment: "멘토 코멘트"
+      },
+      null,
+      2
+    ),
+    "",
+    "참가자 입력:",
+    JSON.stringify(input, null, 2)
+  ].join("\n");
+}
+
+export function parseDifferentiationStrategyJson(raw: string): DifferentiationStrategyDraft {
+  const jsonText = extractJsonObject(raw);
+  const parsed = JSON.parse(jsonText) as Partial<Record<keyof DifferentiationStrategyDraft, unknown>>;
+  const draft: DifferentiationStrategyDraft = {
+    strategyGoal: truncateByCharacters(normalizeText(parsed.strategyGoal, "핵심 고객이 기존 대안 대신 우리를 선택할 한 가지 이유를 만듭니다."), 220),
+    targetCustomer: truncateByCharacters(normalizeText(parsed.targetCustomer, "최근 문제를 직접 겪고 현재 대안에 불만이 있는 초기 고객"), 200),
+    customerProblem: truncateByCharacters(normalizeText(parsed.customerProblem, "현재 대안으로 원하는 결과를 빠르고 확실하게 얻기 어렵습니다."), 220),
+    competitiveFrame: truncateByCharacters(normalizeText(parsed.competitiveFrame, "전문 서비스, 범용 플랫폼, 직접 해결과 비교합니다."), 220),
+    strongestDifferentiator: truncateByCharacters(normalizeText(parsed.strongestDifferentiator, "핵심 고객 상황에 맞춘 결과를 짧은 시간 안에 확인할 수 있습니다."), 220),
+    whyItMatters: truncateByCharacters(normalizeText(parsed.whyItMatters, "고객이 시행착오에 쓰는 시간과 실패 비용을 줄이기 때문입니다."), 220),
+    positioningStatement: truncateByCharacters(normalizeText(parsed.positioningStatement, "반복 문제를 빠르게 해결해야 하는 초기 고객을 위해, 복잡한 기존 대안보다 짧은 시간 안에 상황별 결과를 확인하게 하는 서비스입니다."), 260),
+    proofPoints: normalizeRequiredStringArray(parsed.proofPoints, ["기존 대안 대비 완료 시간 비교", "첫 사용 성공률 또는 재사용률", "고객 인터뷰에서 확인한 시간·비용 절감 사례"], 3, 6, 200),
+    deliveryActions: normalizeRequiredStringArray(parsed.deliveryActions, ["핵심 고객 한 유형에 맞춘 기본 흐름을 설계합니다.", "첫 결과까지 필요한 단계와 입력을 최소화합니다.", "결과 확인 뒤 바로 다음 행동으로 이어지는 기능을 제공합니다."], 3, 6, 220),
+    defensibilityPlan: normalizeRequiredStringArray(parsed.defensibilityPlan, ["고객 상황과 결과 데이터를 구조화해 축적합니다.", "반복 사용에서 생기는 템플릿과 운영 노하우를 표준화합니다.", "교육기관·현장 파트너와 검증 사례를 쌓습니다."], 3, 6, 220),
+    avoidClaims: normalizeRequiredStringArray(parsed.avoidClaims, ["모든 고객에게 가장 좋은 서비스라고 주장하지 않습니다.", "검증하지 않은 최저가·최고 품질 표현을 쓰지 않습니다.", "기능 개수 자체를 차별점으로 내세우지 않습니다."], 3, 6, 200),
+    messageOptions: normalizeRequiredStringArray(parsed.messageOptions, ["복잡한 대안 대신, 오늘 필요한 결과부터 확인하세요.", "핵심 고객 상황에 맞춘 첫 결과를 더 짧게 만듭니다.", "시행착오에 쓰는 시간을 줄이고 다음 행동을 분명하게 합니다."], 3, 5, 200),
+    nextActions: normalizeRequiredStringArray(parsed.nextActions, ["핵심 고객 10명에게 세 가지 메시지 선호도를 확인합니다.", "기존 대안과 완료 시간·비용을 같은 조건으로 비교합니다.", "차별점이 실제 선택 행동으로 이어지는지 사전신청 테스트를 진행합니다."], 3, 6, 220),
+    mentorComment: truncateByCharacters(normalizeText(parsed.mentorComment, "차별점은 많이 적는 것이 아니라 고객이 바꿀 이유 하나를 증거로 만드는 일입니다."), 240)
+  };
+  return differentiationStrategyDraftSchema.parse(draft);
+}
+
+export function createMockDifferentiationStrategyDraft(input: DifferentiationStrategyInput): DifferentiationStrategyDraft {
+  return parseDifferentiationStrategyJson(JSON.stringify({
+    targetCustomer: input.personaReport || "현재 대안에 불만이 있는 초기 고객",
+    competitiveFrame: input.competitorAnalysisReport ? "경쟁사 분석에서 확인한 직접·간접 대안과 비교합니다." : "직접 경쟁, 간접 대안, 무행동과 비교합니다."
+  }));
+}
+
 const moduStartupKeys: Array<keyof ModuStartupDraft> = [
   "q1IdeaIntro",
   "q2BackgroundStory",
@@ -2148,6 +2525,62 @@ export async function generateValidationExperimentDraft(input: ValidationExperim
     if (isAbortError(error)) {
       throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");
     }
+    throw error;
+  }
+}
+
+export async function generateMarketResearchDraft(input: MarketResearchInput): Promise<MarketResearchDraft> {
+  if (process.env.AI_MOCK === "true") return createMockMarketResearchDraft(input);
+  try {
+    const content = await fetchChatCompletionContent({
+      temperature: 0.2,
+      timeoutMs: 50000,
+      messages: [
+        { role: "system", content: "너는 확인되지 않은 시장 수치를 만들지 않고 JSON만 반환하는 창업교육 시장조사 멘토다." },
+        { role: "user", content: buildMarketResearchPrompt(input) }
+      ]
+    });
+    return parseMarketResearchJson(content);
+  } catch (error) {
+    if (isAbortError(error)) throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");
+    throw error;
+  }
+}
+
+export async function generateCompetitorAnalysisDraft(input: CompetitorAnalysisInput): Promise<CompetitorAnalysisDraft> {
+  if (process.env.AI_MOCK === "true") return createMockCompetitorAnalysisDraft(input);
+  try {
+    const content = await fetchChatCompletionContent({
+      temperature: 0.2,
+      timeoutMs: 50000,
+      messages: [
+        { role: "system", content: "너는 근거 상태를 구분하고 JSON만 반환하는 창업교육 경쟁사 분석 멘토다." },
+        { role: "user", content: buildCompetitorAnalysisPrompt(input) }
+      ]
+    });
+    return parseCompetitorAnalysisJson(content);
+  } catch (error) {
+    if (isAbortError(error)) throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");
+    throw error;
+  }
+}
+
+export async function generateDifferentiationStrategyDraft(
+  input: DifferentiationStrategyInput
+): Promise<DifferentiationStrategyDraft> {
+  if (process.env.AI_MOCK === "true") return createMockDifferentiationStrategyDraft(input);
+  try {
+    const content = await fetchChatCompletionContent({
+      temperature: 0.25,
+      timeoutMs: 50000,
+      messages: [
+        { role: "system", content: "너는 가장 강한 차별점 한 가지와 검증 계획을 JSON만으로 반환하는 창업교육 전략 멘토다." },
+        { role: "user", content: buildDifferentiationStrategyPrompt(input) }
+      ]
+    });
+    return parseDifferentiationStrategyJson(content);
+  } catch (error) {
+    if (isAbortError(error)) throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");
     throw error;
   }
 }

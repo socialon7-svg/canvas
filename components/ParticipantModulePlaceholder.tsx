@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type {
+  CompetitorAnalysisDraft,
+  CompetitorAnalysisInput,
   CustomerInterviewDraft,
   CustomerInterviewInput,
   CustomerJourneyDraft,
@@ -11,9 +13,13 @@ import type {
   CustomerPersonaInput,
   CustomerSurveyDraft,
   CustomerSurveyInput,
+  DifferentiationStrategyDraft,
+  DifferentiationStrategyInput,
   HighViewOperationsState,
   IdeaDiagnosisDraft,
   IdeaDiagnosisInput,
+  MarketResearchDraft,
+  MarketResearchInput,
   OneLineIdeaDraft,
   OneLineIdeaInput,
   ParticipantModuleProgress,
@@ -40,6 +46,9 @@ const PROBLEM_STATEMENT_SLUG = "problem-statement";
 const CUSTOMER_INTERVIEW_SLUG = "customer-interview-questions";
 const CUSTOMER_SURVEY_SLUG = "survey-generator";
 const VALIDATION_EXPERIMENT_SLUG = "validation-experiment";
+const MARKET_RESEARCH_SLUG = "market-research-report";
+const COMPETITOR_ANALYSIS_SLUG = "competitor-analysis";
+const DIFFERENTIATION_STRATEGY_SLUG = "differentiation-strategy";
 
 function readSessionValue(key: string) {
   try {
@@ -358,6 +367,77 @@ function formatValidationExperimentDraft(draft: ValidationExperimentDraft) {
   ].join("\n");
 }
 
+function formatMarketResearchDraft(draft: MarketResearchDraft) {
+  return [
+    "조사 목표", draft.researchGoal, "",
+    "초기 목표 시장", draft.targetMarket, "",
+    "시장 정의", draft.marketDefinition, "",
+    "핵심 고객", draft.coreCustomer, "",
+    "시장 신호", ...draft.marketSignals.map((item) => `- ${item}`), "",
+    "수요 증거", ...draft.demandEvidence.map((item) => `- ${item}`), "",
+    "시장 규모 가정",
+    ...draft.marketSizeEstimates.flatMap((item) => [
+      `${item.label}: ${item.value}`,
+      `- 산식: ${item.basis}`,
+      `- 신뢰도: ${item.confidence}`,
+      ""
+    ]),
+    "출처 확인 계획",
+    ...draft.sourcePlan.flatMap((item, index) => [
+      `${index + 1}. ${item.source}`,
+      `- 검색어: ${item.searchQuery}`,
+      `- 확인 목적: ${item.purpose}`,
+      ""
+    ]),
+    "현장 조사 계획", ...draft.fieldResearchPlan.map((item) => `- ${item}`), "",
+    "해석 주의사항", ...draft.risks.map((item) => `- ${item}`), "",
+    "오늘 바로 할 일", draft.nextAction, "",
+    "멘토 코멘트", draft.mentorComment
+  ].join("\n");
+}
+
+function formatCompetitorAnalysisDraft(draft: CompetitorAnalysisDraft) {
+  return [
+    "분석 목표", draft.analysisGoal, "",
+    "비교 범위", draft.comparisonFrame, "",
+    "고객 선택 기준", ...draft.customerChoiceCriteria.map((item) => `- ${item}`), "",
+    "경쟁사·대안 비교",
+    ...draft.competitors.flatMap((item, index) => [
+      `${index + 1}. ${item.name} [${item.type}]`,
+      `- 대상 고객: ${item.targetCustomer}`,
+      `- 제공 가치: ${item.mainOffer}`,
+      `- 가격 수준: ${item.priceLevel}`,
+      `- 강점: ${item.strength}`,
+      `- 약점: ${item.weakness}`,
+      `- 근거 상태: ${item.evidenceStatus}`,
+      ""
+    ]),
+    "비교 요약", ...draft.comparisonSummary.map((item) => `- ${item}`), "",
+    "비어 있는 기회", ...draft.opportunityGaps.map((item) => `- ${item}`), "",
+    "추가 확인 과제", ...draft.validationTasks.map((item) => `- ${item}`), "",
+    "멘토 코멘트", draft.mentorComment
+  ].join("\n");
+}
+
+function formatDifferentiationStrategyDraft(draft: DifferentiationStrategyDraft) {
+  return [
+    "전략 목표", draft.strategyGoal, "",
+    "핵심 고객", draft.targetCustomer, "",
+    "핵심 문제", draft.customerProblem, "",
+    "경쟁 구도", draft.competitiveFrame, "",
+    "가장 강한 차별점", draft.strongestDifferentiator, "",
+    "고객에게 중요한 이유", draft.whyItMatters, "",
+    "포지셔닝 문장", draft.positioningStatement, "",
+    "차별점 증거", ...draft.proofPoints.map((item) => `- ${item}`), "",
+    "실행 요소", ...draft.deliveryActions.map((item) => `- ${item}`), "",
+    "방어력 계획", ...draft.defensibilityPlan.map((item) => `- ${item}`), "",
+    "피해야 할 주장", ...draft.avoidClaims.map((item) => `- ${item}`), "",
+    "메시지 후보", ...draft.messageOptions.map((item) => `- ${item}`), "",
+    "다음 행동", ...draft.nextActions.map((item) => `- ${item}`), "",
+    "멘토 코멘트", draft.mentorComment
+  ].join("\n");
+}
+
 export default function ParticipantModulePlaceholder({ slug }: { slug: string }) {
   const [state, setState] = useState<HighViewOperationsState>(() => defaultOperationsState());
   const [programId, setProgramId] = useState("");
@@ -398,6 +478,9 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
   const isCustomerInterviewModule = startupModule?.slug === CUSTOMER_INTERVIEW_SLUG;
   const isCustomerSurveyModule = startupModule?.slug === CUSTOMER_SURVEY_SLUG;
   const isValidationExperimentModule = startupModule?.slug === VALIDATION_EXPERIMENT_SLUG;
+  const isMarketResearchModule = startupModule?.slug === MARKET_RESEARCH_SLUG;
+  const isCompetitorAnalysisModule = startupModule?.slug === COMPETITOR_ANALYSIS_SLUG;
+  const isDifferentiationStrategyModule = startupModule?.slug === DIFFERENTIATION_STRATEGY_SLUG;
   const oneLineIdeaOutput = participant?.moduleProgress?.[ONE_LINE_IDEA_SLUG]?.outputData || "";
   const ideaDiagnosisOutput = participant?.moduleProgress?.[IDEA_DIAGNOSIS_SLUG]?.outputData || "";
   const customerPersonaOutput = participant?.moduleProgress?.[CUSTOMER_PERSONA_SLUG]?.outputData || "";
@@ -405,6 +488,9 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
   const problemStatementOutput = participant?.moduleProgress?.[PROBLEM_STATEMENT_SLUG]?.outputData || "";
   const customerInterviewOutput = participant?.moduleProgress?.[CUSTOMER_INTERVIEW_SLUG]?.outputData || "";
   const customerSurveyOutput = participant?.moduleProgress?.[CUSTOMER_SURVEY_SLUG]?.outputData || "";
+  const validationExperimentOutput = participant?.moduleProgress?.[VALIDATION_EXPERIMENT_SLUG]?.outputData || "";
+  const marketResearchOutput = participant?.moduleProgress?.[MARKET_RESEARCH_SLUG]?.outputData || "";
+  const competitorAnalysisOutput = participant?.moduleProgress?.[COMPETITOR_ANALYSIS_SLUG]?.outputData || "";
 
   const saveProgress = async (
     status: ParticipantModuleProgressStatus,
@@ -937,6 +1023,133 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
     }
   };
 
+  const operationContext = program && participant
+    ? {
+        programId: program.id,
+        programCode: program.programCode,
+        programName: program.name,
+        participantId: participant.id,
+        participantCode: participant.code,
+        teamId: team?.id || "",
+        teamName: team?.name || "",
+        role: participant.role
+      }
+    : undefined;
+
+  const generateMarketResearch = async () => {
+    if (!program || !participant || !startupModule || startupModule.slug !== MARKET_RESEARCH_SLUG) return;
+    const ideaMemo = inputData.trim();
+    if (!ideaMemo) return setAiError("시장조사 메모를 먼저 입력해주세요.");
+    const requestBody: MarketResearchInput = {
+      programName: program.name,
+      teamName: team?.name || "",
+      participantName: participant.name || participant.code,
+      ideaMemo,
+      oneLineIdea: oneLineIdeaOutput,
+      diagnosisReport: ideaDiagnosisOutput,
+      personaReport: customerPersonaOutput,
+      problemStatementReport: problemStatementOutput,
+      validationExperimentReport: validationExperimentOutput,
+      operation: operationContext
+    };
+    setGenerating(true);
+    setAiError("");
+    setNotice("AI가 시장조사 리포트 초안을 생성하고 있습니다.");
+    try {
+      const response = await fetch("/api/generate-market-research", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody)
+      });
+      const data = (await response.json()) as { draft?: MarketResearchDraft; error?: string };
+      if (!response.ok || !data.draft) throw new Error(data.error || "시장조사 리포트를 생성하지 못했습니다.");
+      const formattedOutput = formatMarketResearchDraft(data.draft);
+      setOutputData(formattedOutput);
+      await saveProgress("in_progress", { inputData: ideaMemo, outputData: formattedOutput });
+      setNotice("시장조사 초안이 생성되었습니다. '확인 필요' 숫자는 제시된 출처에서 직접 확인해주세요.");
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "시장조사 리포트 생성 중 오류가 발생했습니다.");
+      setNotice("");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const generateCompetitorAnalysis = async () => {
+    if (!program || !participant || !startupModule || startupModule.slug !== COMPETITOR_ANALYSIS_SLUG) return;
+    const ideaMemo = inputData.trim();
+    if (!ideaMemo) return setAiError("경쟁사 분석 메모를 먼저 입력해주세요.");
+    const requestBody: CompetitorAnalysisInput = {
+      programName: program.name,
+      teamName: team?.name || "",
+      participantName: participant.name || participant.code,
+      ideaMemo,
+      oneLineIdea: oneLineIdeaOutput,
+      diagnosisReport: ideaDiagnosisOutput,
+      personaReport: customerPersonaOutput,
+      problemStatementReport: problemStatementOutput,
+      validationExperimentReport: validationExperimentOutput,
+      marketResearchReport: marketResearchOutput,
+      operation: operationContext
+    };
+    setGenerating(true);
+    setAiError("");
+    setNotice("AI가 경쟁사와 현재 대안을 비교하고 있습니다.");
+    try {
+      const response = await fetch("/api/generate-competitor-analysis", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody)
+      });
+      const data = (await response.json()) as { draft?: CompetitorAnalysisDraft; error?: string };
+      if (!response.ok || !data.draft) throw new Error(data.error || "경쟁사 분석표를 생성하지 못했습니다.");
+      const formattedOutput = formatCompetitorAnalysisDraft(data.draft);
+      setOutputData(formattedOutput);
+      await saveProgress("in_progress", { inputData: ideaMemo, outputData: formattedOutput });
+      setNotice("경쟁사 분석표가 생성되었습니다. 가격과 기능은 근거 상태를 확인한 뒤 수정해주세요.");
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "경쟁사 분석표 생성 중 오류가 발생했습니다.");
+      setNotice("");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const generateDifferentiationStrategy = async () => {
+    if (!program || !participant || !startupModule || startupModule.slug !== DIFFERENTIATION_STRATEGY_SLUG) return;
+    const ideaMemo = inputData.trim();
+    if (!ideaMemo) return setAiError("차별화 전략 메모를 먼저 입력해주세요.");
+    const requestBody: DifferentiationStrategyInput = {
+      programName: program.name,
+      teamName: team?.name || "",
+      participantName: participant.name || participant.code,
+      ideaMemo,
+      oneLineIdea: oneLineIdeaOutput,
+      diagnosisReport: ideaDiagnosisOutput,
+      personaReport: customerPersonaOutput,
+      problemStatementReport: problemStatementOutput,
+      validationExperimentReport: validationExperimentOutput,
+      marketResearchReport: marketResearchOutput,
+      competitorAnalysisReport: competitorAnalysisOutput,
+      operation: operationContext
+    };
+    setGenerating(true);
+    setAiError("");
+    setNotice("AI가 가장 강한 차별점 한 가지를 정리하고 있습니다.");
+    try {
+      const response = await fetch("/api/generate-differentiation-strategy", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody)
+      });
+      const data = (await response.json()) as { draft?: DifferentiationStrategyDraft; error?: string };
+      if (!response.ok || !data.draft) throw new Error(data.error || "차별화 전략을 생성하지 못했습니다.");
+      const formattedOutput = formatDifferentiationStrategyDraft(data.draft);
+      setOutputData(formattedOutput);
+      await saveProgress("in_progress", { inputData: ideaMemo, outputData: formattedOutput });
+      setNotice("차별화 전략이 생성되었습니다. 차별점이 고객 선택 행동으로 이어지는지 다음 액션으로 검증해주세요.");
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "차별화 전략 생성 중 오류가 발생했습니다.");
+      setNotice("");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   if (!startupModule) {
     return (
       <main className="mx-auto flex min-h-screen max-w-2xl items-center px-5 py-10">
@@ -1105,6 +1318,48 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
               resultPlaceholder:
                 "AI 생성 버튼을 누르면 실험 목표, 위험 가정, 가설, 실행 단계, 수집 데이터, 성공/실패 기준, 준비물, 일정이 표시됩니다."
             }
+          : isMarketResearchModule
+            ? {
+                inputTitle: "시장조사 메모 입력",
+                inputDescription:
+                  "확인하려는 고객 범위, 지역, 사용 상황과 알고 있는 시장 단서를 적어주세요. AI는 숫자를 확정하지 않고 조사 산식과 출처 계획을 만듭니다.",
+                inputLabel: "시장 범위·조사 메모",
+                inputPlaceholder:
+                  "예: 부산 지역 대학가의 자취생을 초기 고객으로 보고 있다. 늦은 시간 식사 수요, 현재 배달·편의점 지출, 접근 가능한 고객 수를 확인하고 싶다.",
+                resultTitle: "AI 시장조사 리포트 / 수정 가능",
+                resultDescription:
+                  "최신 시장 수치는 자동 추정값으로 확정하지 않습니다. '확인 필요' 항목을 제시된 공공통계와 공식 자료에서 확인한 뒤 수정하세요.",
+                resultPlaceholder:
+                  "AI 생성 버튼을 누르면 시장 정의, 수요 신호, TAM/SAM/SOM 산식, 출처 검색 계획, 현장 조사 계획이 표시됩니다."
+              }
+            : isCompetitorAnalysisModule
+              ? {
+                  inputTitle: "경쟁사·현재 대안 메모 입력",
+                  inputDescription:
+                    "고객이 현재 사용하는 서비스, 직접 해결 방법, 포기하는 상황을 적어주세요. 시장조사 결과가 있으면 함께 비교합니다.",
+                  inputLabel: "경쟁·대안 메모",
+                  inputPlaceholder:
+                    "예: 고객은 배달앱, 편의점 도시락, 직접 조리, 식사 포기를 대안으로 쓴다. 속도, 총비용, 따뜻함, 접근성을 비교하고 싶다.",
+                  resultTitle: "AI 경쟁사 분석표 / 수정 가능",
+                  resultDescription:
+                    "경쟁사 가격과 기능은 최신 공식 자료 확인이 필요합니다. 근거 상태가 '확인 필요'인 항목은 제출 전 직접 검증하세요.",
+                  resultPlaceholder:
+                    "AI 생성 버튼을 누르면 고객 선택 기준, 직접 경쟁, 간접 대안, 무행동, 기회 영역, 확인 과제가 표시됩니다."
+                }
+              : isDifferentiationStrategyModule
+                ? {
+                    inputTitle: "차별화 전략 메모 입력",
+                    inputDescription:
+                      "핵심 고객이 기존 대안을 바꾸게 할 한 가지 이유를 적어주세요. 경쟁사 분석 결과를 바탕으로 차별점과 증거 계획을 좁힙니다.",
+                    inputLabel: "차별화 가설 메모",
+                    inputPlaceholder:
+                      "예: 기능을 많이 제공하기보다 자취생이 3분 안에 따뜻한 한 끼를 준비하게 하는 경험에 집중하고 싶다.",
+                    resultTitle: "AI 차별화 전략 / 수정 가능",
+                    resultDescription:
+                      "차별점은 아직 가설입니다. 포지셔닝 문장보다 증거와 실제 고객 선택 행동을 먼저 검증하세요.",
+                    resultPlaceholder:
+                      "AI 생성 버튼을 누르면 핵심 차별점 1개, 포지셔닝 문장, 증거, 실행 요소, 방어력 계획, 피할 주장이 표시됩니다."
+                  }
       : null;
   const displayInputTitle = moduleCopyOverride?.inputTitle || inputTitle;
   const displayInputDescription = moduleCopyOverride?.inputDescription || inputDescription;
@@ -1243,6 +1498,36 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
                 type="button"
               >
                 {generating ? "AI 생성 중..." : "AI 검증 실험 설계안 생성"}
+              </button>
+            ) : null}
+            {isMarketResearchModule ? (
+              <button
+                className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
+                disabled={generating || !inputData.trim()}
+                onClick={generateMarketResearch}
+                type="button"
+              >
+                {generating ? "AI 생성 중..." : "AI 시장조사 리포트 생성"}
+              </button>
+            ) : null}
+            {isCompetitorAnalysisModule ? (
+              <button
+                className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
+                disabled={generating || !inputData.trim()}
+                onClick={generateCompetitorAnalysis}
+                type="button"
+              >
+                {generating ? "AI 생성 중..." : "AI 경쟁사 분석표 생성"}
+              </button>
+            ) : null}
+            {isDifferentiationStrategyModule ? (
+              <button
+                className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
+                disabled={generating || !inputData.trim()}
+                onClick={generateDifferentiationStrategy}
+                type="button"
+              >
+                {generating ? "AI 생성 중..." : "AI 차별화 전략 생성"}
               </button>
             ) : null}
             <button
