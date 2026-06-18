@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { upsertModuleProgress, type ParticipantModuleProgressRow } from "@/lib/operationsRepository";
+import {
+  getParticipant,
+  syncModuleSubmissionFromProgress,
+  upsertModuleProgress,
+  type ParticipantModuleProgressRow
+} from "@/lib/operationsRepository";
 import { handleOperationsApiError } from "@/lib/operationsApiUtils";
 import { authorizeParticipantRequest } from "@/lib/participantAuth";
+import { getStartupModuleBySlug } from "@/lib/startupModules";
 
 const jsonObjectSchema = z.record(z.string(), z.unknown());
 
@@ -52,8 +58,28 @@ export async function PATCH(request: Request) {
       adminComment: body.adminComment,
       reviewedAt: body.reviewedAt
     });
+    const startupModule = getStartupModuleBySlug(body.moduleSlug);
+    const shouldSyncSubmission = body.moduleSlug !== "lean-canvas" && body.moduleSlug !== "modu-startup-application";
+    const participant = shouldSyncSubmission ? await getParticipant(body.participantId) : null;
+    const submission = shouldSyncSubmission
+      ? await syncModuleSubmissionFromProgress({
+          progress,
+          title: startupModule?.title || body.moduleSlug,
+          teamId: participant?.team_id
+        })
+      : null;
 
-    return NextResponse.json({ progress: toModuleProgressDto(progress) });
+    return NextResponse.json({
+      progress: toModuleProgressDto(progress),
+      submission: submission
+        ? {
+            id: submission.id,
+            status: submission.status,
+            moduleSlug: submission.module_slug,
+            updatedAt: submission.updated_at
+          }
+        : undefined
+    });
   } catch (error) {
     return handleOperationsApiError(error, "모듈 진행 상태 저장 실패");
   }

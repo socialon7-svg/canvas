@@ -254,6 +254,18 @@ export async function getParticipantByCode(programId: string, participantCode: s
   return data ?? null;
 }
 
+export async function getParticipant(participantId: string) {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from("participants")
+    .select("*")
+    .eq("id", participantId)
+    .maybeSingle<OperationsParticipantRow>();
+
+  throwIfError(error);
+  return data ?? null;
+}
+
 export async function createParticipant(input: {
   programId: string;
   teamId?: string | null;
@@ -615,6 +627,73 @@ export async function createModuleSubmission(input: {
 
   throwIfError(error);
   return requireData(data, "모듈 제출 저장 결과가 없습니다.");
+}
+
+export async function syncModuleSubmissionFromProgress(input: {
+  progress: ParticipantModuleProgressRow;
+  title: string;
+  teamId?: string | null;
+}) {
+  const supabase = getClient();
+  const sourceMarker = {
+    source: "participant_module_progress",
+    sourceProgressId: input.progress.id
+  };
+  const status =
+    input.progress.status === "returned"
+      ? "returned"
+      : input.progress.status === "completed" || input.progress.status === "needs_review"
+        ? "submitted"
+        : "draft";
+  const payload = {
+    program_id: input.progress.program_id,
+    participant_id: input.progress.participant_id,
+    team_id: input.teamId ?? null,
+    module_slug: input.progress.module_slug,
+    title: input.title,
+    status,
+    pdf_status: "idle",
+    input_data: { ...input.progress.input_data, ...sourceMarker },
+    output_data: input.progress.output_data,
+    submitted_at: status === "submitted" ? new Date().toISOString() : input.progress.updated_at
+  };
+
+  const findExisting = () =>
+    supabase
+      .from("module_submissions")
+      .select("*")
+      .contains("input_data", sourceMarker)
+      .limit(1)
+      .maybeSingle<ModuleSubmissionRow>();
+
+  const { data: existing, error: findError } = await findExisting();
+  throwIfError(findError);
+
+  if (existing) {
+    const { data, error } = await supabase
+      .from("module_submissions")
+      .update(payload)
+      .eq("id", existing.id)
+      .select("*")
+      .single<ModuleSubmissionRow>();
+    throwIfError(error);
+    return requireData(data, "모듈 제출 동기화 결과가 없습니다.");
+  }
+
+  const { data, error } = await supabase
+    .from("module_submissions")
+    .insert(payload)
+    .select("*")
+    .single<ModuleSubmissionRow>();
+
+  if (error && error.code === "23505") {
+    const { data: raced, error: racedError } = await findExisting();
+    throwIfError(racedError);
+    return requireData(raced, "모듈 제출 동기화 결과가 없습니다.");
+  }
+
+  throwIfError(error);
+  return requireData(data, "모듈 제출 동기화 결과가 없습니다.");
 }
 
 export async function listModuleSubmissions(filters: { programId?: string; moduleSlug?: string; status?: string }) {

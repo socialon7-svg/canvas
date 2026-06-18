@@ -507,6 +507,7 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
   const [notice, setNotice] = useState("");
   const [aiError, setAiError] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [savingProgress, setSavingProgress] = useState(false);
 
   useEffect(() => {
     const loaded = loadOperationsState();
@@ -561,6 +562,8 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
     values?: { inputData?: string; outputData?: string }
   ) => {
     if (!startupModule || !participant) return;
+    setSavingProgress(true);
+    setAiError("");
     const now = new Date().toISOString();
     const nextInputData = values?.inputData ?? inputData;
     const nextOutputData = values?.outputData ?? outputData;
@@ -590,9 +593,9 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
     saveOperationsState(nextState);
     setState(nextState);
 
-    if (program) {
-      try {
-        await fetch("/api/module-progress", {
+    try {
+      if (program) {
+        const response = await fetch("/api/module-progress", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -605,12 +608,32 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
             outputData: { text: nextOutputData }
           })
         });
-      } catch {
-        // localStorage fallback is already saved above.
-      }
-    }
+        const data = (await response.json().catch(() => ({}))) as { code?: string; error?: string };
+        if (!response.ok) {
+          const isDemoFallback =
+            response.status === 503 &&
+            (data.code === "SUPABASE_NOT_CONFIGURED" || data.code === "SUPABASE_TABLE_NOT_READY");
+          if (isDemoFallback) {
+            setNotice(`데모 모드: ${startupModule.title} 상태를 이 브라우저에 임시 저장했습니다.`);
+            return;
+          }
+          throw new Error(data.error || "중앙 저장소에 모듈 상태를 저장하지 못했습니다.");
+        }
 
-    setNotice(`${startupModule.title} 상태를 '${statusLabel(status)}'로 저장했습니다.`);
+        setNotice(
+          status === "completed"
+            ? `${startupModule.title} 완료 결과와 제출 기록을 저장했습니다.`
+            : `${startupModule.title} 상태를 '${statusLabel(status)}'로 저장했습니다.`
+        );
+        return;
+      }
+      setNotice(`데모 모드: ${startupModule.title} 상태를 이 브라우저에 임시 저장했습니다.`);
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "모듈 상태 저장 중 오류가 발생했습니다.");
+      setNotice("이 브라우저에는 임시 저장됐지만 중앙 저장은 확인되지 않았습니다. 다시 저장해주세요.");
+    } finally {
+      setSavingProgress(false);
+    }
   };
 
   const copyOutput = async () => {
@@ -1724,25 +1747,28 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
               </button>
             ) : null}
             <button
-              className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-800"
+              className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={savingProgress}
               onClick={() => saveProgress("in_progress")}
               type="button"
             >
-              임시 저장
+              {savingProgress ? "저장 중..." : "임시 저장"}
             </button>
             <button
-              className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white"
+              className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-400"
+              disabled={savingProgress}
               onClick={() => saveProgress("completed")}
               type="button"
             >
-              완료로 표시
+              {savingProgress ? "저장 중..." : "완료로 표시"}
             </button>
             <button
-              className="rounded-md border border-amber-200 px-4 py-2 text-sm font-bold text-amber-800"
+              className="rounded-md border border-amber-200 px-4 py-2 text-sm font-bold text-amber-800 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={savingProgress}
               onClick={() => saveProgress("needs_review")}
               type="button"
             >
-              검토 필요 표시
+              {savingProgress ? "저장 중..." : "검토 필요 표시"}
             </button>
           </div>
         </form>
@@ -1778,11 +1804,12 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
             />
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               <button
-                className="rounded-md bg-blue-700 px-3 py-2 text-sm font-bold text-white"
+                className="rounded-md bg-blue-700 px-3 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-400"
+                disabled={savingProgress}
                 onClick={() => saveProgress("completed")}
                 type="button"
               >
-                결과 저장
+                {savingProgress ? "저장 중..." : "결과 저장"}
               </button>
               <button
                 className="rounded-md border border-blue-300 bg-white px-3 py-2 text-sm font-bold text-blue-800"
