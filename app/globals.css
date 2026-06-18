@@ -26,6 +26,25 @@ button {
   font: inherit;
 }
 
+.pdf-capture,
+.pdf-capture *,
+.pdf-capture *::before,
+.pdf-capture *::after {
+  border-color: #d1d5db !important;
+  color: #111827 !important;
+  box-shadow: none !important;
+}
+
+.pdf-capture {
+  background-color: #ffffff !important;
+}
+
+.pdf-capture *,
+.pdf-capture *::before,
+.pdf-capture *::after {
+  background-color: transparent !important;
+}
+
 @page {
   size: A4 landscape;
   margin: 4mm;

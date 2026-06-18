@@ -141,6 +141,8 @@ export default function ModuStartupPreview({ id }: { id: string }) {
   const downloadPdf = async () => {
     if (!submission || !printRef.current) return;
 
+    const captureTarget = printRef.current;
+    captureTarget.classList.add("pdf-capture");
     setPdfLoading(true);
     setActionNotice("");
     setActionError("");
@@ -170,7 +172,7 @@ export default function ModuStartupPreview({ id }: { id: string }) {
             mode: ["avoid-all", "css", "legacy"]
           }
         })
-        .from(printRef.current)
+        .from(captureTarget)
         .save();
 
       await persistPdfStatus("success");
@@ -180,6 +182,7 @@ export default function ModuStartupPreview({ id }: { id: string }) {
       await persistPdfStatus("failed", message);
       setActionError(message);
     } finally {
+      captureTarget.classList.remove("pdf-capture");
       setPdfLoading(false);
     }
   };

@@ -109,6 +109,8 @@ export default function PreviewClient({ id }: { id: string }) {
   const downloadPdf = async () => {
     if (!printRef.current) return;
 
+    const captureTarget = printRef.current;
+    captureTarget.classList.add("pdf-capture");
     setPdfLoading(true);
     await persistPdfStatus("generating");
     try {
@@ -133,12 +135,13 @@ export default function PreviewClient({ id }: { id: string }) {
             mode: ["avoid-all", "css", "legacy"]
           }
         })
-        .from(printRef.current)
+        .from(captureTarget)
         .save();
       await persistPdfStatus("success");
     } catch (err) {
       await persistPdfStatus("failed", err instanceof Error ? err.message : "브라우저 PDF 생성에 실패했습니다.");
     } finally {
+      captureTarget.classList.remove("pdf-capture");
       setPdfLoading(false);
     }
   };
