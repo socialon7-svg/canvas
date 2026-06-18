@@ -238,7 +238,7 @@ npm run build
 npm run smoke
 ```
 
-`npm run smoke`는 기본적으로 `http://127.0.0.1:3000`을 검사합니다. 배포 주소는 `SMOKE_BASE_URL`로 지정하고, 관리자 쿠키 발급과 운영 준비상태 API까지 확인하려면 `SMOKE_ADMIN_PASSWORD`를 함께 설정합니다.
+`npm run smoke`는 기본적으로 `http://127.0.0.1:3000`을 검사합니다. 배포 주소는 `SMOKE_BASE_URL`로 지정하고, 관리자 쿠키 발급과 운영 준비상태 API까지 확인하려면 `SMOKE_ADMIN_PASSWORD`를 함께 설정합니다. 참여자 세션과 보호된 draft 조회는 `SMOKE_PARTICIPANT_PROGRAM_CODE`, `SMOKE_PARTICIPANT_CODE`를 함께 설정해 검사합니다.
 
 ## 8. 환경변수
 

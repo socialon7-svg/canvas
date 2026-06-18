@@ -42,6 +42,30 @@ async function run() {
     assert(readiness.status === 200, `운영 준비상태 API가 실패했습니다: ${readiness.status}`);
   }
 
+  if (process.env.SMOKE_PARTICIPANT_PROGRAM_CODE && process.env.SMOKE_PARTICIPANT_CODE) {
+    const join = await request("/api/participants/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        programCode: process.env.SMOKE_PARTICIPANT_PROGRAM_CODE,
+        participantCode: process.env.SMOKE_PARTICIPANT_CODE
+      })
+    });
+    const joinData = await join.json();
+    assert(join.status === 200, `참여자 입장이 실패했습니다: ${join.status}`);
+    assert(joinData.program?.id && joinData.participant?.id, "참여자 입장 응답에 운영 식별자가 없습니다.");
+    const cookie = (join.headers.get("set-cookie") || "").split(";")[0];
+    assert(cookie.startsWith("highview_participant_session="), "참여자 세션 쿠키가 발급되지 않았습니다.");
+
+    const draftQuery = new URLSearchParams({
+      programId: joinData.program.id,
+      participantId: joinData.participant.id,
+      moduleSlug: "one-line-idea"
+    });
+    const draft = await request(`/api/module-drafts?${draftQuery}`, { headers: { Cookie: cookie } });
+    assert(draft.status === 200, `참여자 인증 draft 조회가 실패했습니다: ${draft.status}`);
+  }
+
   console.log(`smoke ok: ${baseUrl}`);
 }
 

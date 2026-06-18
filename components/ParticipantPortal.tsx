@@ -83,6 +83,7 @@ export default function ParticipantPortal() {
   const [participantCode, setParticipantCode] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [joining, setJoining] = useState(false);
   const [latestSubmission, setLatestSubmission] = useState<LeanCanvasSubmission | null>(null);
   const [temporaryStorage, setTemporaryStorage] = useState<BrowserTemporaryStorageSummary>({
     draftCount: 0,
@@ -304,19 +305,9 @@ export default function ParticipantPortal() {
     return true;
   };
 
-  const login = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    const validation = validateAccessCodeInput({
-      programCode: String(formData.get("programCode") || programCode),
-      participantCode: String(formData.get("participantCode") || participantCode)
-    });
-    if (!validation.ok) {
-      setError(validation.message);
-      return;
-    }
-    const { programCode: submittedProgramCode, participantCode: submittedParticipantCode } = validation.value;
-
+  const joinParticipant = async (submittedProgramCode: string, submittedParticipantCode: string) => {
+    setJoining(true);
+    setError("");
     try {
       const response = await fetch("/api/participants/join", {
         method: "POST",
@@ -350,24 +341,36 @@ export default function ParticipantPortal() {
         setError(data.error || "입장에 실패했습니다. 코드를 확인하거나 운영진에게 문의해주세요.");
         return;
       }
+      if (!enterLocalParticipant(submittedProgramCode, submittedParticipantCode)) {
+        setError("데모 입장 정보를 찾을 수 없습니다. 프로그램 코드와 참여자 코드를 다시 확인해주세요.");
+      }
     } catch {
       setError("서버에 연결할 수 없습니다. 네트워크를 확인한 뒤 다시 시도해주세요.");
-      return;
-    }
-
-    if (!enterLocalParticipant(submittedProgramCode, submittedParticipantCode)) {
-      setError("데모 입장 정보를 찾을 수 없습니다. 프로그램 코드와 참여자 코드를 다시 확인해주세요.");
+    } finally {
+      setJoining(false);
     }
   };
 
-  const enterDemo = () => {
+  const login = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const validation = validateAccessCodeInput({
+      programCode: String(formData.get("programCode") || programCode),
+      participantCode: String(formData.get("participantCode") || participantCode)
+    });
+    if (!validation.ok) {
+      setError(validation.message);
+      return;
+    }
+    await joinParticipant(validation.value.programCode, validation.value.participantCode);
+  };
+
+  const enterDemo = async () => {
     const demoProgramCode = "HV-DEMO";
     const demoParticipantCode = "P-DEMO1";
     setProgramCode(demoProgramCode);
     setParticipantCode(demoParticipantCode);
-    if (!enterLocalParticipant(demoProgramCode, demoParticipantCode)) {
-      setError("데모 데이터를 불러오지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해주세요.");
-    }
+    await joinParticipant(demoProgramCode, demoParticipantCode);
   };
 
   const copyEntryError = async () => {
@@ -539,10 +542,11 @@ export default function ParticipantPortal() {
               </div>
             ) : null}
             <button
-              className="w-full rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-800 active:bg-blue-900"
+              className="w-full rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-800 active:bg-blue-900 disabled:bg-gray-400"
+              disabled={joining}
               type="submit"
             >
-              입장하기
+              {joining ? "입장 확인 중..." : "입장하기"}
             </button>
           </form>
           <div className="mt-4 rounded-md border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-800">
@@ -555,10 +559,11 @@ export default function ParticipantPortal() {
             </p>
             <button
               className="mt-3 w-full rounded-md border border-blue-300 bg-white px-3 py-2 font-bold text-blue-800 hover:bg-blue-100"
+              disabled={joining}
               onClick={enterDemo}
               type="button"
             >
-              데모로 바로 입장
+              {joining ? "입장 확인 중..." : "데모로 바로 입장"}
             </button>
           </div>
           <Link className="mt-4 inline-block text-sm font-semibold text-gray-500 hover:text-gray-700" href="/">
