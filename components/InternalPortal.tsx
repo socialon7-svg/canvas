@@ -369,64 +369,28 @@ export default function InternalPortal() {
     programParticipants.find((participant) => participant.id === selectedParticipantId) || programParticipants[0];
 
   useEffect(() => {
-    let changed = false;
-    const requestedTab = searchParams.get("tab");
-    const requestedProgramId = searchParams.get("programId");
-    const requestedSubmissionFilter = searchParams.get("submissionFilter");
-    const requestedModuleReviewFilter = searchParams.get("moduleReviewFilter");
-    const requestedParticipantId = searchParams.get("selectedParticipantId");
+    const params = new URLSearchParams(searchParamString);
+    const requestedTab = params.get("tab");
+    const requestedProgramId = params.get("programId");
+    const requestedSubmissionFilter = params.get("submissionFilter");
+    const requestedModuleReviewFilter = params.get("moduleReviewFilter");
+    const requestedParticipantId = params.get("selectedParticipantId");
     const nextTab = isInternalTab(requestedTab) ? requestedTab : "dashboard";
     const nextSubmissionFilter = isSubmissionFilter(requestedSubmissionFilter) ? requestedSubmissionFilter : "all";
     const nextModuleReviewFilter = isModuleReviewFilter(requestedModuleReviewFilter) ? requestedModuleReviewFilter : "needsReview";
-    const nextProgramId =
-      requestedProgramId && state.programs.some((program) => program.id === requestedProgramId)
-        ? requestedProgramId
-        : currentProgramId;
-    const nextParticipantId =
-      requestedParticipantId && state.participants.some((participant) => participant.id === requestedParticipantId)
-        ? requestedParticipantId
-        : "";
-
-    if (nextTab !== tab) {
-      setTab(nextTab);
-      changed = true;
-    }
-    if (nextProgramId && nextProgramId !== currentProgramId) {
-      setCurrentProgramId(nextProgramId);
-      changed = true;
-    }
-    if (nextSubmissionFilter !== submissionFilter) {
-      setSubmissionFilter(nextSubmissionFilter);
-      changed = true;
-    }
-    if (nextModuleReviewFilter !== moduleReviewFilter) {
-      setModuleReviewFilter(nextModuleReviewFilter);
-      changed = true;
-    }
-    if (nextParticipantId !== selectedParticipantId) {
-      setSelectedParticipantId(nextParticipantId);
-      changed = true;
-    }
-
-    if (!changed) return;
-
     applyingUrlStateRef.current = true;
+    setTab(nextTab);
+    setSubmissionFilter(nextSubmissionFilter);
+    setModuleReviewFilter(nextModuleReviewFilter);
+    setSelectedParticipantId(requestedParticipantId || "");
+    setCurrentProgramId((current) => requestedProgramId || current);
+
     const timer = window.setTimeout(() => {
       applyingUrlStateRef.current = false;
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [
-    currentProgramId,
-    moduleReviewFilter,
-    searchParamString,
-    searchParams,
-    selectedParticipantId,
-    state.participants,
-    state.programs,
-    submissionFilter,
-    tab
-  ]);
+  }, [searchParamString]);
 
   useEffect(() => {
     if (applyingUrlStateRef.current) return;
