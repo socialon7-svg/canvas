@@ -352,6 +352,64 @@ export interface DifferentiationStrategyDraft {
   mentorComment: string;
 }
 
+export interface BusinessModelInput extends DifferentiationStrategyInput {
+  differentiationStrategyReport?: string;
+}
+
+export interface BusinessModelRevenueStream {
+  name: string;
+  payer: string;
+  valueDelivered: string;
+  chargeBasis: string;
+  paymentTiming: string;
+  validationMethod: string;
+}
+
+export interface BusinessModelDraft {
+  businessModelGoal: string;
+  coreCustomer: string;
+  beneficiary: string;
+  payer: string;
+  valueExchange: string;
+  revenueStreams: BusinessModelRevenueStream[];
+  keyCosts: string[];
+  unitEconomicsAssumptions: string[];
+  acquisitionPaths: string[];
+  operatingPartners: string[];
+  risks: string[];
+  validationPlan: string[];
+  nextAction: string;
+  mentorComment: string;
+}
+
+export interface PricingPolicyInput extends BusinessModelInput {
+  businessModelReport?: string;
+}
+
+export interface PricingPackage {
+  name: string;
+  targetCustomer: string;
+  priceProposal: string;
+  included: string;
+  limit: string;
+  purpose: string;
+  validationMethod: string;
+}
+
+export interface PricingPolicyDraft {
+  pricingGoal: string;
+  pricingPrinciple: string;
+  referenceAlternatives: string[];
+  packages: PricingPackage[];
+  discountRules: string[];
+  refundRules: string[];
+  pricingExperiments: string[];
+  metrics: string[];
+  risks: string[];
+  nextAction: string;
+  mentorComment: string;
+}
+
 export interface LeanCanvasDraft {
   problem: string[];
   existingAlternatives: string[];

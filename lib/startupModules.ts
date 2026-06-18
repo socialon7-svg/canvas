@@ -191,7 +191,7 @@ export const STARTUP_MODULES: StartupModule[] = [
     isAdminOnly: false,
     status: "ready",
     slug: "lean-canvas",
-    route: "/participant/modules/lean-canvas"
+    route: "/participant/canvas"
   },
   {
     id: 15,

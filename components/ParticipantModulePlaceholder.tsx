@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type {
+  BusinessModelDraft,
+  BusinessModelInput,
   CompetitorAnalysisDraft,
   CompetitorAnalysisInput,
   CustomerInterviewDraft,
@@ -24,6 +26,8 @@ import type {
   OneLineIdeaInput,
   ParticipantModuleProgress,
   ParticipantModuleProgressStatus,
+  PricingPolicyDraft,
+  PricingPolicyInput,
   ProblemStatementDraft,
   ProblemStatementInput,
   ValidationExperimentDraft,
@@ -49,6 +53,8 @@ const VALIDATION_EXPERIMENT_SLUG = "validation-experiment";
 const MARKET_RESEARCH_SLUG = "market-research-report";
 const COMPETITOR_ANALYSIS_SLUG = "competitor-analysis";
 const DIFFERENTIATION_STRATEGY_SLUG = "differentiation-strategy";
+const BUSINESS_MODEL_SLUG = "business-model";
+const PRICING_POLICY_SLUG = "pricing-policy";
 
 function readSessionValue(key: string) {
   try {
@@ -438,6 +444,60 @@ function formatDifferentiationStrategyDraft(draft: DifferentiationStrategyDraft)
   ].join("\n");
 }
 
+function formatBusinessModelDraft(draft: BusinessModelDraft) {
+  return [
+    "사업모델 목표", draft.businessModelGoal, "",
+    "핵심 고객", draft.coreCustomer, "",
+    "수혜자", draft.beneficiary, "",
+    "지불자", draft.payer, "",
+    "가치 교환", draft.valueExchange, "",
+    "수익원",
+    ...draft.revenueStreams.flatMap((item, index) => [
+      `${index + 1}. ${item.name}`,
+      `- 지불자: ${item.payer}`,
+      `- 제공 가치: ${item.valueDelivered}`,
+      `- 과금 기준: ${item.chargeBasis}`,
+      `- 결제 시점: ${item.paymentTiming}`,
+      `- 검증 방법: ${item.validationMethod}`,
+      ""
+    ]),
+    "핵심 비용", ...draft.keyCosts.map((item) => `- ${item}`), "",
+    "단위경제 가정", ...draft.unitEconomicsAssumptions.map((item) => `- ${item}`), "",
+    "고객 획득 경로", ...draft.acquisitionPaths.map((item) => `- ${item}`), "",
+    "운영 파트너", ...draft.operatingPartners.map((item) => `- ${item}`), "",
+    "주요 위험", ...draft.risks.map((item) => `- ${item}`), "",
+    "검증 계획", ...draft.validationPlan.map((item) => `- ${item}`), "",
+    "오늘 바로 할 일", draft.nextAction, "",
+    "멘토 코멘트", draft.mentorComment
+  ].join("\n");
+}
+
+function formatPricingPolicyDraft(draft: PricingPolicyDraft) {
+  return [
+    "가격정책 목표", draft.pricingGoal, "",
+    "가격 원칙", draft.pricingPrinciple, "",
+    "비교할 현재 대안", ...draft.referenceAlternatives.map((item) => `- ${item}`), "",
+    "가격 패키지",
+    ...draft.packages.flatMap((item, index) => [
+      `${index + 1}. ${item.name}`,
+      `- 대상 고객: ${item.targetCustomer}`,
+      `- 가격 제안: ${item.priceProposal}`,
+      `- 포함 범위: ${item.included}`,
+      `- 이용 한도: ${item.limit}`,
+      `- 패키지 역할: ${item.purpose}`,
+      `- 검증 방법: ${item.validationMethod}`,
+      ""
+    ]),
+    "할인 규칙", ...draft.discountRules.map((item) => `- ${item}`), "",
+    "환불 규칙", ...draft.refundRules.map((item) => `- ${item}`), "",
+    "가격 실험", ...draft.pricingExperiments.map((item) => `- ${item}`), "",
+    "확인 지표", ...draft.metrics.map((item) => `- ${item}`), "",
+    "가격 위험", ...draft.risks.map((item) => `- ${item}`), "",
+    "오늘 바로 할 일", draft.nextAction, "",
+    "멘토 코멘트", draft.mentorComment
+  ].join("\n");
+}
+
 export default function ParticipantModulePlaceholder({ slug }: { slug: string }) {
   const [state, setState] = useState<HighViewOperationsState>(() => defaultOperationsState());
   const [programId, setProgramId] = useState("");
@@ -481,6 +541,8 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
   const isMarketResearchModule = startupModule?.slug === MARKET_RESEARCH_SLUG;
   const isCompetitorAnalysisModule = startupModule?.slug === COMPETITOR_ANALYSIS_SLUG;
   const isDifferentiationStrategyModule = startupModule?.slug === DIFFERENTIATION_STRATEGY_SLUG;
+  const isBusinessModelModule = startupModule?.slug === BUSINESS_MODEL_SLUG;
+  const isPricingPolicyModule = startupModule?.slug === PRICING_POLICY_SLUG;
   const oneLineIdeaOutput = participant?.moduleProgress?.[ONE_LINE_IDEA_SLUG]?.outputData || "";
   const ideaDiagnosisOutput = participant?.moduleProgress?.[IDEA_DIAGNOSIS_SLUG]?.outputData || "";
   const customerPersonaOutput = participant?.moduleProgress?.[CUSTOMER_PERSONA_SLUG]?.outputData || "";
@@ -491,6 +553,8 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
   const validationExperimentOutput = participant?.moduleProgress?.[VALIDATION_EXPERIMENT_SLUG]?.outputData || "";
   const marketResearchOutput = participant?.moduleProgress?.[MARKET_RESEARCH_SLUG]?.outputData || "";
   const competitorAnalysisOutput = participant?.moduleProgress?.[COMPETITOR_ANALYSIS_SLUG]?.outputData || "";
+  const differentiationStrategyOutput = participant?.moduleProgress?.[DIFFERENTIATION_STRATEGY_SLUG]?.outputData || "";
+  const businessModelOutput = participant?.moduleProgress?.[BUSINESS_MODEL_SLUG]?.outputData || "";
 
   const saveProgress = async (
     status: ParticipantModuleProgressStatus,
@@ -1150,6 +1214,87 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
     }
   };
 
+  const generateBusinessModel = async () => {
+    if (!program || !participant || !startupModule || startupModule.slug !== BUSINESS_MODEL_SLUG) return;
+    const ideaMemo = inputData.trim();
+    if (!ideaMemo) return setAiError("사업모델 메모를 먼저 입력해주세요.");
+    const requestBody: BusinessModelInput = {
+      programName: program.name,
+      teamName: team?.name || "",
+      participantName: participant.name || participant.code,
+      ideaMemo,
+      oneLineIdea: oneLineIdeaOutput,
+      diagnosisReport: ideaDiagnosisOutput,
+      personaReport: customerPersonaOutput,
+      problemStatementReport: problemStatementOutput,
+      validationExperimentReport: validationExperimentOutput,
+      marketResearchReport: marketResearchOutput,
+      competitorAnalysisReport: competitorAnalysisOutput,
+      differentiationStrategyReport: differentiationStrategyOutput,
+      operation: operationContext
+    };
+    setGenerating(true);
+    setAiError("");
+    setNotice("AI가 고객, 지불자, 수익원과 비용 가정을 정리하고 있습니다.");
+    try {
+      const response = await fetch("/api/generate-business-model", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody)
+      });
+      const data = (await response.json()) as { draft?: BusinessModelDraft; error?: string };
+      if (!response.ok || !data.draft) throw new Error(data.error || "사업모델 초안을 생성하지 못했습니다.");
+      const formattedOutput = formatBusinessModelDraft(data.draft);
+      setOutputData(formattedOutput);
+      await saveProgress("in_progress", { inputData: ideaMemo, outputData: formattedOutput });
+      setNotice("사업모델 초안이 생성되었습니다. 수익원 하나를 골라 실제 결제 행동으로 먼저 검증해주세요.");
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "사업모델 생성 중 오류가 발생했습니다.");
+      setNotice("");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const generatePricingPolicy = async () => {
+    if (!program || !participant || !startupModule || startupModule.slug !== PRICING_POLICY_SLUG) return;
+    const ideaMemo = inputData.trim();
+    if (!ideaMemo) return setAiError("가격정책 메모를 먼저 입력해주세요.");
+    const requestBody: PricingPolicyInput = {
+      programName: program.name,
+      teamName: team?.name || "",
+      participantName: participant.name || participant.code,
+      ideaMemo,
+      oneLineIdea: oneLineIdeaOutput,
+      diagnosisReport: ideaDiagnosisOutput,
+      personaReport: customerPersonaOutput,
+      problemStatementReport: problemStatementOutput,
+      validationExperimentReport: validationExperimentOutput,
+      marketResearchReport: marketResearchOutput,
+      competitorAnalysisReport: competitorAnalysisOutput,
+      differentiationStrategyReport: differentiationStrategyOutput,
+      businessModelReport: businessModelOutput,
+      operation: operationContext
+    };
+    setGenerating(true);
+    setAiError("");
+    setNotice("AI가 세 가지 가격 패키지와 현장 운영 규칙을 설계하고 있습니다.");
+    try {
+      const response = await fetch("/api/generate-pricing-policy", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody)
+      });
+      const data = (await response.json()) as { draft?: PricingPolicyDraft; error?: string };
+      if (!response.ok || !data.draft) throw new Error(data.error || "가격정책 초안을 생성하지 못했습니다.");
+      const formattedOutput = formatPricingPolicyDraft(data.draft);
+      setOutputData(formattedOutput);
+      await saveProgress("in_progress", { inputData: ideaMemo, outputData: formattedOutput });
+      setNotice("가격정책 초안이 생성되었습니다. 표시된 금액은 가설이므로 실제 선택·결제 데이터로 조정해주세요.");
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "가격정책 생성 중 오류가 발생했습니다.");
+      setNotice("");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   if (!startupModule) {
     return (
       <main className="mx-auto flex min-h-screen max-w-2xl items-center px-5 py-10">
@@ -1360,7 +1505,35 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
                     resultPlaceholder:
                       "AI 생성 버튼을 누르면 핵심 차별점 1개, 포지셔닝 문장, 증거, 실행 요소, 방어력 계획, 피할 주장이 표시됩니다."
                   }
-      : null;
+                : isBusinessModelModule
+                  ? {
+                      inputTitle: "사업모델 메모 입력",
+                      inputDescription:
+                        "누가 가치를 받고 누가 비용을 지불하는지, 예상 수익원과 제공 비용을 적어주세요. 앞선 시장·경쟁·차별화 결과를 함께 반영합니다.",
+                      inputLabel: "수익 구조·지불자 메모",
+                      inputPlaceholder:
+                        "예: 자취 대학생이 1회 이용료를 내고 따뜻한 식사를 받는다. 반복 고객용 월 패키지와 대학 기숙사 단체 공급도 검증하고 싶다.",
+                      resultTitle: "AI 사업모델 설계안 / 수정 가능",
+                      resultDescription:
+                        "수익원과 단위경제 수치는 가설입니다. 가장 가능성이 높은 수익원 하나부터 예약금, 결제, 실제 제공 비용으로 확인하세요.",
+                      resultPlaceholder:
+                        "AI 생성 버튼을 누르면 수혜자·지불자, 수익원, 과금 기준, 핵심 비용, 단위경제 가정, 검증 계획이 표시됩니다."
+                    }
+                  : isPricingPolicyModule
+                    ? {
+                        inputTitle: "가격정책 메모 입력",
+                        inputDescription:
+                          "고객이 현재 대안에 쓰는 비용, 예상 제공 원가, 생각 중인 가격과 할인 조건을 적어주세요. 사업모델 결과를 바탕으로 세 가지 패키지를 만듭니다.",
+                        inputLabel: "가격·패키지 메모",
+                        inputPlaceholder:
+                          "예: 1회 이용, 4회 묶음, 기숙사 단체 계약을 고민 중이다. 아직 실제 원가와 고객 지불의사는 확인하지 못했다.",
+                        resultTitle: "AI 가격정책 설계안 / 수정 가능",
+                        resultDescription:
+                          "제안 가격은 확정값이 아니라 검증 가설입니다. 할인·환불 조건을 현장 운영이 가능한 수준으로 단순하게 유지하세요.",
+                        resultPlaceholder:
+                          "AI 생성 버튼을 누르면 입문형·핵심형·확장형 패키지, 할인·환불 규칙, 가격 실험과 지표가 표시됩니다."
+                      }
+                    : null;
   const displayInputTitle = moduleCopyOverride?.inputTitle || inputTitle;
   const displayInputDescription = moduleCopyOverride?.inputDescription || inputDescription;
   const displayInputLabel = moduleCopyOverride?.inputLabel || inputLabel;
@@ -1528,6 +1701,26 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
                 type="button"
               >
                 {generating ? "AI 생성 중..." : "AI 차별화 전략 생성"}
+              </button>
+            ) : null}
+            {isBusinessModelModule ? (
+              <button
+                className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
+                disabled={generating || !inputData.trim()}
+                onClick={generateBusinessModel}
+                type="button"
+              >
+                {generating ? "AI 생성 중..." : "AI 사업모델 설계안 생성"}
+              </button>
+            ) : null}
+            {isPricingPolicyModule ? (
+              <button
+                className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
+                disabled={generating || !inputData.trim()}
+                onClick={generatePricingPolicy}
+                type="button"
+              >
+                {generating ? "AI 생성 중..." : "AI 가격정책 설계안 생성"}
               </button>
             ) : null}
             <button

@@ -1,4 +1,7 @@
 import {
+  type BusinessModelDraft,
+  type BusinessModelInput,
+  type BusinessModelRevenueStream,
   type CompetitorAnalysisDraft,
   type CompetitorAnalysisInput,
   type CompetitorComparisonItem,
@@ -25,6 +28,9 @@ import {
   type OneLineIdeaDraft,
   type OneLineIdeaInput,
   type ParticipantInput,
+  type PricingPackage,
+  type PricingPolicyDraft,
+  type PricingPolicyInput,
   type ProblemStatementDraft,
   type ProblemStatementInput,
   type DifferentiationStrategyDraft,
@@ -286,6 +292,54 @@ const differentiationStrategyDraftSchema = z.object({
   avoidClaims: z.array(marketTextSchema).min(3).max(6),
   messageOptions: z.array(marketTextSchema).min(3).max(5),
   nextActions: z.array(marketTextSchema).min(3).max(6),
+  mentorComment: marketTextSchema
+});
+
+const businessModelRevenueStreamSchema = z.object({
+  name: marketTextSchema,
+  payer: marketTextSchema,
+  valueDelivered: marketTextSchema,
+  chargeBasis: marketTextSchema,
+  paymentTiming: marketTextSchema,
+  validationMethod: marketTextSchema
+});
+const businessModelDraftSchema = z.object({
+  businessModelGoal: marketTextSchema,
+  coreCustomer: marketTextSchema,
+  beneficiary: marketTextSchema,
+  payer: marketTextSchema,
+  valueExchange: marketTextSchema,
+  revenueStreams: z.array(businessModelRevenueStreamSchema).min(2).max(4),
+  keyCosts: z.array(marketTextSchema).min(3).max(6),
+  unitEconomicsAssumptions: z.array(marketTextSchema).min(3).max(6),
+  acquisitionPaths: z.array(marketTextSchema).min(3).max(6),
+  operatingPartners: z.array(marketTextSchema).min(2).max(5),
+  risks: z.array(marketTextSchema).min(3).max(6),
+  validationPlan: z.array(marketTextSchema).min(3).max(6),
+  nextAction: marketTextSchema,
+  mentorComment: marketTextSchema
+});
+
+const pricingPackageSchema = z.object({
+  name: marketTextSchema,
+  targetCustomer: marketTextSchema,
+  priceProposal: marketTextSchema,
+  included: marketTextSchema,
+  limit: marketTextSchema,
+  purpose: marketTextSchema,
+  validationMethod: marketTextSchema
+});
+const pricingPolicyDraftSchema = z.object({
+  pricingGoal: marketTextSchema,
+  pricingPrinciple: marketTextSchema,
+  referenceAlternatives: z.array(marketTextSchema).min(3).max(6),
+  packages: z.array(pricingPackageSchema).min(3).max(3),
+  discountRules: z.array(marketTextSchema).min(3).max(6),
+  refundRules: z.array(marketTextSchema).min(3).max(6),
+  pricingExperiments: z.array(marketTextSchema).min(3).max(6),
+  metrics: z.array(marketTextSchema).min(3).max(6),
+  risks: z.array(marketTextSchema).min(3).max(6),
+  nextAction: marketTextSchema,
   mentorComment: marketTextSchema
 });
 
@@ -2070,6 +2124,249 @@ export function createMockDifferentiationStrategyDraft(input: DifferentiationStr
   }));
 }
 
+export function buildBusinessModelPrompt(input: BusinessModelInput) {
+  return [
+    "너는 초기 창업팀의 수익 구조를 검증 가능한 사업모델로 정리하는 창업교육 멘토다.",
+    "고객과 실제 지불자가 다를 수 있으므로 beneficiary와 payer를 분리해서 작성하라.",
+    "수익원은 2~4개만 제시하고 각 수익원마다 제공 가치, 과금 기준, 결제 시점, 검증 방법을 연결하라.",
+    "시장 가격, 원가, 전환율을 확인하지 않았다면 사실처럼 만들지 말고 unitEconomicsAssumptions에 가정과 확인 방법을 적어라.",
+    "광고, 구독, 수수료를 근거 없이 나열하지 말고 핵심 고객의 지불 행동과 운영 비용에 맞는 구조를 우선하라.",
+    "반드시 JSON만 반환하라. 설명, 마크다운, 코드블록, 주석은 포함하지 마라.",
+    "",
+    "반환 JSON 형식:",
+    JSON.stringify(
+      {
+        businessModelGoal: "사업모델 검증 목표",
+        coreCustomer: "핵심 고객",
+        beneficiary: "가치를 받는 사람 또는 조직",
+        payer: "비용을 지불하는 사람 또는 조직",
+        valueExchange: "고객이 받는 가치와 지불 이유",
+        revenueStreams: [
+          {
+            name: "수익원 이름",
+            payer: "지불자",
+            valueDelivered: "지불자가 받는 가치",
+            chargeBasis: "건당/월간/성과 등 과금 기준",
+            paymentTiming: "결제 시점",
+            validationMethod: "지불의사 검증 방법"
+          }
+        ],
+        keyCosts: ["핵심 비용 1", "핵심 비용 2", "핵심 비용 3"],
+        unitEconomicsAssumptions: ["단위경제 가정 1", "단위경제 가정 2", "단위경제 가정 3"],
+        acquisitionPaths: ["고객 획득 경로 1", "고객 획득 경로 2", "고객 획득 경로 3"],
+        operatingPartners: ["운영 파트너 1", "운영 파트너 2"],
+        risks: ["사업모델 위험 1", "사업모델 위험 2", "사업모델 위험 3"],
+        validationPlan: ["검증 행동 1", "검증 행동 2", "검증 행동 3"],
+        nextAction: "오늘 바로 할 행동",
+        mentorComment: "멘토 코멘트"
+      },
+      null,
+      2
+    ),
+    "",
+    "참가자 입력:",
+    JSON.stringify(input, null, 2)
+  ].join("\n");
+}
+
+function normalizeBusinessModelRevenueStreams(
+  value: unknown,
+  fallback: BusinessModelRevenueStream[]
+): BusinessModelRevenueStream[] {
+  const normalized = Array.isArray(value)
+    ? value
+        .map((item, index) => {
+          const source = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+          const fallbackItem = fallback[Math.min(index, fallback.length - 1)] || fallback[0];
+          return {
+            name: truncateByCharacters(normalizeText(source.name, fallbackItem.name), 160),
+            payer: truncateByCharacters(normalizeText(source.payer, fallbackItem.payer), 180),
+            valueDelivered: truncateByCharacters(normalizeText(source.valueDelivered, fallbackItem.valueDelivered), 220),
+            chargeBasis: truncateByCharacters(normalizeText(source.chargeBasis, fallbackItem.chargeBasis), 180),
+            paymentTiming: truncateByCharacters(normalizeText(source.paymentTiming, fallbackItem.paymentTiming), 180),
+            validationMethod: truncateByCharacters(normalizeText(source.validationMethod, fallbackItem.validationMethod), 240)
+          };
+        })
+        .slice(0, 4)
+    : [];
+  return normalized.length >= 2 ? normalized : fallback;
+}
+
+export function parseBusinessModelJson(raw: string): BusinessModelDraft {
+  const jsonText = extractJsonObject(raw);
+  const parsed = JSON.parse(jsonText) as Partial<Record<keyof BusinessModelDraft, unknown>>;
+  const fallbackStreams: BusinessModelRevenueStream[] = [
+    {
+      name: "핵심 서비스 이용료",
+      payer: "문제를 자주 겪고 빠른 해결이 필요한 핵심 고객",
+      valueDelivered: "기존 대안보다 짧은 시간 안에 원하는 결과를 얻는 경험",
+      chargeBasis: "1회 이용 또는 결과 단위 과금 가정",
+      paymentTiming: "서비스 이용을 확정할 때 결제",
+      validationMethod: "가격이 표시된 사전신청 페이지에서 결제 의향을 확인"
+    },
+    {
+      name: "반복 이용 패키지",
+      payer: "같은 문제를 매달 반복해서 겪는 고객",
+      valueDelivered: "반복 이용 비용과 준비 시간을 줄이는 묶음 혜택",
+      chargeBasis: "월간 이용 횟수 또는 구독 기간 기준 가정",
+      paymentTiming: "월 시작 또는 첫 이용 시 선결제",
+      validationMethod: "1회 이용 고객에게 패키지 전환 의향과 예약금을 확인"
+    },
+    {
+      name: "기관·파트너 공급",
+      payer: "핵심 고객에게 서비스를 제공하려는 기관 또는 사업자",
+      valueDelivered: "대상 고객의 참여와 운영 효율을 높이는 공급 구조",
+      chargeBasis: "참여 인원, 운영 회차 또는 계약 기간 기준 가정",
+      paymentTiming: "운영 전 계약금과 완료 후 잔금",
+      validationMethod: "잠재 파트너 3곳에 제안서와 견적 가정을 제시해 미팅 의향 확인"
+    }
+  ];
+  const draft: BusinessModelDraft = {
+    businessModelGoal: truncateByCharacters(normalizeText(parsed.businessModelGoal, "누가 어떤 가치에 언제 비용을 지불하는지 작은 거래로 검증합니다."), 240),
+    coreCustomer: truncateByCharacters(normalizeText(parsed.coreCustomer, "현재 대안에 불만이 있고 문제 해결을 위해 시간이나 비용을 쓰는 초기 고객"), 220),
+    beneficiary: truncateByCharacters(normalizeText(parsed.beneficiary, "서비스를 직접 사용하고 문제 해결 가치를 얻는 핵심 고객"), 220),
+    payer: truncateByCharacters(normalizeText(parsed.payer, "직접 사용자 또는 사용자 성과에 비용을 지불하는 기관"), 220),
+    valueExchange: truncateByCharacters(normalizeText(parsed.valueExchange, "고객의 시행착오와 시간을 줄이는 결과를 제공하고 이용료를 받습니다."), 260),
+    revenueStreams: normalizeBusinessModelRevenueStreams(parsed.revenueStreams, fallbackStreams),
+    keyCosts: normalizeRequiredStringArray(parsed.keyCosts, ["서비스를 제공하는 인력·운영 비용", "고객 획득과 판매에 필요한 비용", "제품 개발·도구·결제·유지보수 비용"], 3, 6, 220),
+    unitEconomicsAssumptions: normalizeRequiredStringArray(parsed.unitEconomicsAssumptions, ["고객 1명당 예상 매출은 가격 실험 전 가정입니다.", "고객 1명 제공에 드는 변동비를 실제 운영 5건에서 측정합니다.", "획득 비용은 채널별 문의·예약·결제 전환을 기록해 계산합니다."], 3, 6, 240),
+    acquisitionPaths: normalizeRequiredStringArray(parsed.acquisitionPaths, ["문제를 자주 언급하는 커뮤니티에서 초기 고객을 모집합니다.", "관련 기관·현장 파트너의 기존 고객 접점을 활용합니다.", "검증 사례와 추천을 바탕으로 후속 고객을 확보합니다."], 3, 6, 220),
+    operatingPartners: normalizeRequiredStringArray(parsed.operatingPartners, ["초기 고객을 만날 수 있는 현장·기관 파트너", "서비스 제공에 필요한 공급·기술 파트너"], 2, 5, 220),
+    risks: normalizeRequiredStringArray(parsed.risks, ["사용자와 지불자가 달라 구매 결정이 늦어질 수 있습니다.", "고객 1명당 제공 비용이 예상보다 높을 수 있습니다.", "호감도는 높지만 실제 결제로 이어지지 않을 수 있습니다."], 3, 6, 220),
+    validationPlan: normalizeRequiredStringArray(parsed.validationPlan, ["핵심 고객 10명에게 현재 지출과 결제 기준을 확인합니다.", "가격이 포함된 사전신청으로 예약금 또는 결제 의향을 확인합니다.", "최소 5건을 직접 제공해 매출·변동비·소요시간을 기록합니다."], 3, 6, 240),
+    nextAction: truncateByCharacters(normalizeText(parsed.nextAction, "오늘 가장 가능성이 높은 수익원 하나를 골라 가격이 표시된 사전신청 페이지를 만듭니다."), 240),
+    mentorComment: truncateByCharacters(normalizeText(parsed.mentorComment, "좋은 수익모델은 수익원 개수가 아니라 고객의 지불 행동과 제공 비용을 동시에 확인한 구조입니다."), 260)
+  };
+  return businessModelDraftSchema.parse(draft);
+}
+
+export function createMockBusinessModelDraft(input: BusinessModelInput): BusinessModelDraft {
+  return parseBusinessModelJson(JSON.stringify({
+    coreCustomer: input.personaReport || "현재 대안에 불만이 있는 초기 고객",
+    valueExchange: input.differentiationStrategyReport
+      ? "차별화 전략에서 정의한 고객 결과를 제공하고 검증 가능한 이용료를 받습니다."
+      : "고객의 시행착오와 시간을 줄이는 결과를 제공하고 이용료를 받습니다."
+  }));
+}
+
+export function buildPricingPolicyPrompt(input: PricingPolicyInput) {
+  return [
+    "너는 초기 창업팀이 현장에서 검증할 가격정책을 만드는 창업교육 멘토다.",
+    "사업모델과 고객의 현재 대안을 바탕으로 입문형·핵심형·확장형의 정확히 3개 패키지를 작성하라.",
+    "실시간 조사 없이 경쟁사의 실제 가격이나 시장 평균을 사실처럼 만들지 마라. 확인되지 않은 금액은 '가정 가격' 또는 '확인 필요'라고 표시하라.",
+    "할인과 환불은 예외를 무제한 허용하지 말고 적용 조건, 기간, 승인 기준이 분명한 운영 규칙으로 작성하라.",
+    "가격은 확정안이 아니라 고객 행동으로 검증할 가설이어야 하며, 가격 실험과 관찰 지표를 연결하라.",
+    "반드시 JSON만 반환하라. 설명, 마크다운, 코드블록, 주석은 포함하지 마라.",
+    "",
+    "반환 JSON 형식:",
+    JSON.stringify(
+      {
+        pricingGoal: "가격정책 검증 목표",
+        pricingPrinciple: "가격을 정하는 핵심 원칙",
+        referenceAlternatives: ["현재 대안 1", "현재 대안 2", "현재 대안 3"],
+        packages: [
+          {
+            name: "입문형/핵심형/확장형",
+            targetCustomer: "대상 고객",
+            priceProposal: "가정 가격과 과금 단위",
+            included: "포함 범위",
+            limit: "제외 범위 또는 이용 한도",
+            purpose: "이 패키지의 역할",
+            validationMethod: "가격 검증 방법"
+          }
+        ],
+        discountRules: ["할인 규칙 1", "할인 규칙 2", "할인 규칙 3"],
+        refundRules: ["환불 규칙 1", "환불 규칙 2", "환불 규칙 3"],
+        pricingExperiments: ["가격 실험 1", "가격 실험 2", "가격 실험 3"],
+        metrics: ["확인 지표 1", "확인 지표 2", "확인 지표 3"],
+        risks: ["가격 위험 1", "가격 위험 2", "가격 위험 3"],
+        nextAction: "오늘 바로 할 행동",
+        mentorComment: "멘토 코멘트"
+      },
+      null,
+      2
+    ),
+    "",
+    "참가자 입력:",
+    JSON.stringify(input, null, 2)
+  ].join("\n");
+}
+
+function normalizePricingPackages(value: unknown, fallback: PricingPackage[]): PricingPackage[] {
+  const normalized = Array.isArray(value)
+    ? value.slice(0, 3).map((item, index) => {
+        const source = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+        const fallbackItem = fallback[index] || fallback[0];
+        return {
+          name: truncateByCharacters(normalizeText(source.name, fallbackItem.name), 120),
+          targetCustomer: truncateByCharacters(normalizeText(source.targetCustomer, fallbackItem.targetCustomer), 200),
+          priceProposal: truncateByCharacters(normalizeText(source.priceProposal, fallbackItem.priceProposal), 180),
+          included: truncateByCharacters(normalizeText(source.included, fallbackItem.included), 240),
+          limit: truncateByCharacters(normalizeText(source.limit, fallbackItem.limit), 220),
+          purpose: truncateByCharacters(normalizeText(source.purpose, fallbackItem.purpose), 220),
+          validationMethod: truncateByCharacters(normalizeText(source.validationMethod, fallbackItem.validationMethod), 240)
+        };
+      })
+    : [];
+  return normalized.length === 3 ? normalized : fallback;
+}
+
+export function parsePricingPolicyJson(raw: string): PricingPolicyDraft {
+  const jsonText = extractJsonObject(raw);
+  const parsed = JSON.parse(jsonText) as Partial<Record<keyof PricingPolicyDraft, unknown>>;
+  const fallbackPackages: PricingPackage[] = [
+    {
+      name: "입문형",
+      targetCustomer: "처음 문제 해결 효과를 확인하려는 고객",
+      priceProposal: "가정 가격: 1회 이용 단위, 고객 인터뷰 후 확정",
+      included: "핵심 결과를 경험하는 최소 범위",
+      limit: "추가 지원과 맞춤 작업은 제외",
+      purpose: "첫 결제 장벽을 낮추고 문제·가치 적합성을 확인",
+      validationMethod: "가격이 표시된 사전신청의 클릭·예약금 전환 비교"
+    },
+    {
+      name: "핵심형",
+      targetCustomer: "반복 문제를 해결하고 전체 결과가 필요한 핵심 고객",
+      priceProposal: "가정 가격: 핵심 서비스 1회 또는 기본 패키지",
+      included: "핵심 서비스 전체와 기본 지원",
+      limit: "정해진 이용 횟수·기간·수정 범위 적용",
+      purpose: "주력 매출과 고객 1명당 공헌이익을 검증",
+      validationMethod: "실제 상담 10건에서 제안·결제·이탈 이유 기록"
+    },
+    {
+      name: "확장형",
+      targetCustomer: "더 빠른 처리, 맞춤 지원 또는 팀 이용이 필요한 고객",
+      priceProposal: "가정 가격: 핵심형보다 높은 패키지 또는 기간 계약",
+      included: "우선 지원, 추가 이용, 맞춤 범위",
+      limit: "계약서에 인원·기간·추가 요청 범위를 명시",
+      purpose: "높은 지불의사와 추가 운영비의 균형을 확인",
+      validationMethod: "핵심형 고객에게 업그레이드 선택률과 지불 이유 확인"
+    }
+  ];
+  const draft: PricingPolicyDraft = {
+    pricingGoal: truncateByCharacters(normalizeText(parsed.pricingGoal, "세 가지 가격 가설 중 고객의 실제 결제 행동이 가장 높은 구조를 찾습니다."), 240),
+    pricingPrinciple: truncateByCharacters(normalizeText(parsed.pricingPrinciple, "고객이 얻는 결과, 현재 대안 비용, 제공 원가를 함께 확인해 가격을 조정합니다."), 260),
+    referenceAlternatives: normalizeRequiredStringArray(parsed.referenceAlternatives, ["고객이 현재 대안에 직접 지출하는 비용", "고객이 직접 해결하며 쓰는 시간과 실패 비용", "비슷한 문제를 해결하는 서비스의 공식 공개 가격(확인 필요)"], 3, 6, 220),
+    packages: normalizePricingPackages(parsed.packages, fallbackPackages),
+    discountRules: normalizeRequiredStringArray(parsed.discountRules, ["초기 검증 할인은 기간·인원·목적을 명시하고 종료일 이후 자동 연장하지 않습니다.", "묶음 할인은 실제 절감되는 제공 비용 범위 안에서만 적용합니다.", "개별 협상 할인은 승인자와 사유를 기록해 같은 조건에 일관되게 적용합니다."], 3, 6, 240),
+    refundRules: normalizeRequiredStringArray(parsed.refundRules, ["서비스 시작 전 취소와 시작 후 취소 기준을 구분해 안내합니다.", "고객 귀책과 제공 실패의 환불 범위를 계약 또는 결제 화면에 명시합니다.", "디지털·맞춤 결과물은 제공 단계별 완료 기준과 환불 가능 금액을 사전에 고지합니다."], 3, 6, 240),
+    pricingExperiments: normalizeRequiredStringArray(parsed.pricingExperiments, ["같은 제안에서 두 가격의 상담 신청률과 예약금 전환율을 비교합니다.", "입문형과 핵심형을 함께 제시해 선택 이유와 이탈 이유를 기록합니다.", "할인 없이 핵심 가치를 설명한 뒤 결제 거절 이유를 인터뷰합니다."], 3, 6, 240),
+    metrics: normalizeRequiredStringArray(parsed.metrics, ["가격 제안 대비 상담·사전신청·결제 전환율", "패키지별 고객 1명당 매출과 변동비", "환불률·재구매율·업그레이드율"], 3, 6, 200),
+    risks: normalizeRequiredStringArray(parsed.risks, ["근거 없는 저가 정책이 제공 품질과 운영 지속성을 해칠 수 있습니다.", "할인 고객 반응을 정상 가격의 지불의사로 오해할 수 있습니다.", "복잡한 패키지와 예외 규칙이 고객과 운영진 모두에게 혼란을 줄 수 있습니다."], 3, 6, 220),
+    nextAction: truncateByCharacters(normalizeText(parsed.nextAction, "오늘 세 가지 패키지와 가정 가격을 한 화면에 만들고 잠재 고객 10명에게 선택과 이유를 확인합니다."), 240),
+    mentorComment: truncateByCharacters(normalizeText(parsed.mentorComment, "가격은 계산만으로 확정되지 않습니다. 고객이 실제로 선택하고 결제한 기록을 기준으로 단순하게 조정하세요."), 260)
+  };
+  return pricingPolicyDraftSchema.parse(draft);
+}
+
+export function createMockPricingPolicyDraft(input: PricingPolicyInput): PricingPolicyDraft {
+  return parsePricingPolicyJson(JSON.stringify({
+    pricingPrinciple: input.businessModelReport
+      ? "사업모델의 지불자와 제공 비용을 기준으로 세 가지 가격 가설을 검증합니다."
+      : "고객 결과, 현재 대안 비용, 제공 원가를 함께 확인해 가격을 조정합니다."
+  }));
+}
+
 const moduStartupKeys: Array<keyof ModuStartupDraft> = [
   "q1IdeaIntro",
   "q2BackgroundStory",
@@ -2579,6 +2876,42 @@ export async function generateDifferentiationStrategyDraft(
       ]
     });
     return parseDifferentiationStrategyJson(content);
+  } catch (error) {
+    if (isAbortError(error)) throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");
+    throw error;
+  }
+}
+
+export async function generateBusinessModelDraft(input: BusinessModelInput): Promise<BusinessModelDraft> {
+  if (process.env.AI_MOCK === "true") return createMockBusinessModelDraft(input);
+  try {
+    const content = await fetchChatCompletionContent({
+      temperature: 0.25,
+      timeoutMs: 50000,
+      messages: [
+        { role: "system", content: "너는 지불자와 단위경제 가정을 구분하고 JSON만 반환하는 창업교육 사업모델 멘토다." },
+        { role: "user", content: buildBusinessModelPrompt(input) }
+      ]
+    });
+    return parseBusinessModelJson(content);
+  } catch (error) {
+    if (isAbortError(error)) throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");
+    throw error;
+  }
+}
+
+export async function generatePricingPolicyDraft(input: PricingPolicyInput): Promise<PricingPolicyDraft> {
+  if (process.env.AI_MOCK === "true") return createMockPricingPolicyDraft(input);
+  try {
+    const content = await fetchChatCompletionContent({
+      temperature: 0.2,
+      timeoutMs: 50000,
+      messages: [
+        { role: "system", content: "너는 가격을 검증 가능한 가설로 설계하고 JSON만 반환하는 창업교육 가격정책 멘토다." },
+        { role: "user", content: buildPricingPolicyPrompt(input) }
+      ]
+    });
+    return parsePricingPolicyJson(content);
   } catch (error) {
     if (isAbortError(error)) throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");
     throw error;
