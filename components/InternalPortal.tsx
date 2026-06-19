@@ -69,6 +69,13 @@ type FeedbackQuickTemplate = {
   nextAction: string;
 };
 
+type PendingConfirmation = {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  action: () => void | Promise<void>;
+};
+
 const submissionFilterLabels: Record<SubmissionFilter, string> = {
   all: "전체",
   notEntered: "미입장",
@@ -259,6 +266,51 @@ function isModuleReviewFilter(value: string | null): value is ModuleReviewFilter
   return moduleReviewFilters.includes(value as ModuleReviewFilter);
 }
 
+function ActionConfirmDialog({
+  confirmation,
+  confirming,
+  onCancel,
+  onConfirm
+}: {
+  confirmation: PendingConfirmation;
+  confirming: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="no-print fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center" role="presentation">
+      <section
+        aria-describedby="action-confirm-description"
+        aria-labelledby="action-confirm-title"
+        aria-modal="true"
+        className="app-surface w-full max-w-md p-5 shadow-xl sm:p-6"
+        role="dialog"
+      >
+        <p className="text-sm font-bold text-red-600">삭제 전 확인</p>
+        <h2 className="mt-1 text-xl font-bold text-[#191f28]" id="action-confirm-title">
+          {confirmation.title}
+        </h2>
+        <p className="mt-2 whitespace-pre-line text-sm leading-6 text-[#6b7684]" id="action-confirm-description">
+          {confirmation.description}
+        </p>
+        <div className="mt-5 grid gap-2 sm:grid-cols-2">
+          <button className="app-secondary-button w-full text-sm" disabled={confirming} onClick={onCancel} type="button">
+            취소
+          </button>
+          <button
+            className="min-h-11 rounded-lg bg-red-600 px-4 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-[#d1d6db]"
+            disabled={confirming}
+            onClick={onConfirm}
+            type="button"
+          >
+            {confirming ? "처리 중..." : confirmation.confirmLabel}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export default function InternalPortal() {
   const router = useRouter();
   const pathname = usePathname();
@@ -300,6 +352,33 @@ export default function InternalPortal() {
   const [currentProgramModuleDraftIds, setCurrentProgramModuleDraftIds] = useState<number[]>(DEFAULT_STARTUP_MODULE_IDS);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
+  const [confirmingAction, setConfirmingAction] = useState(false);
+
+  useEffect(() => {
+    if (!pendingConfirmation || confirmingAction) return;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPendingConfirmation(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [confirmingAction, pendingConfirmation]);
+
+  const runConfirmedAction = async () => {
+    if (!pendingConfirmation || confirmingAction) return;
+    const action = pendingConfirmation.action;
+    setConfirmingAction(true);
+    setError("");
+    try {
+      await action();
+      setPendingConfirmation(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "요청한 작업을 처리하지 못했습니다.");
+    } finally {
+      setConfirmingAction(false);
+    }
+  };
 
   useEffect(() => {
     const loaded = loadOperationsState();
@@ -1474,27 +1553,33 @@ export default function InternalPortal() {
     const participant = state.participants.find((item) => item.id === participantId);
     if (!participant) return;
     const label = participant.name || participant.code;
-    if (!window.confirm(`${label} 참여자 코드를 삭제할까요?\n제출물 자체는 삭제되지 않지만 운영 목록에서는 사라집니다.`)) return;
-    const nextState = {
-      ...state,
-      participants: state.participants.filter((item) => item.id !== participantId),
-      feedbacks: state.feedbacks.filter((feedback) => feedback.participantId !== participantId)
-    };
-    try {
-      const result = await writeOperationsApi<{ ok: boolean }>(`/api/participants/${participantId}`, {
-        method: "DELETE"
-      });
-      if (result.fallback) {
-        persistState(nextState);
-        setOperationsFallbackMode(true);
-      } else {
-        await refreshSubmissions();
+    setPendingConfirmation({
+      title: "선택한 참여자를 삭제할까요?",
+      description: `대상: ${label}\n참여자 코드와 피드백이 운영 목록에서 사라집니다. 이미 제출된 결과물 자체는 삭제되지 않습니다.`,
+      confirmLabel: "참여자 삭제",
+      action: async () => {
+        const nextState = {
+          ...state,
+          participants: state.participants.filter((item) => item.id !== participantId),
+          feedbacks: state.feedbacks.filter((feedback) => feedback.participantId !== participantId)
+        };
+        try {
+          const result = await writeOperationsApi<{ ok: boolean }>(`/api/participants/${participantId}`, {
+            method: "DELETE"
+          });
+          if (result.fallback) {
+            persistState(nextState);
+            setOperationsFallbackMode(true);
+          } else {
+            await refreshSubmissions();
+          }
+          if (selectedParticipantId === participantId) setSelectedParticipantId("");
+          setNotice(`${label} 참여자 코드를 삭제했습니다.`);
+        } catch (caught) {
+          setError(caught instanceof Error ? caught.message : "참여자 삭제에 실패했습니다.");
+        }
       }
-      if (selectedParticipantId === participantId) setSelectedParticipantId("");
-      setNotice(`${label} 참여자 코드를 삭제했습니다.`);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "참여자 삭제에 실패했습니다.");
-    }
+    });
   };
 
   const addTeam = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -1566,30 +1651,35 @@ export default function InternalPortal() {
     const team = state.teams.find((item) => item.id === teamId);
     if (!team) return;
     const memberCount = state.participants.filter((participant) => participant.teamId === teamId).length;
-    const message =
-      memberCount > 0
-        ? `${team.name} 팀을 삭제할까요?\n소속 멤버 ${memberCount}명은 미배정 상태로 변경됩니다.`
-        : `${team.name} 팀을 삭제할까요?`;
-    if (!window.confirm(message)) return;
-    const nextState = {
-      ...state,
-      teams: state.teams.filter((item) => item.id !== teamId),
-      participants: state.participants.map((participant) =>
-        participant.teamId === teamId ? { ...participant, teamId: "" } : participant
-      )
-    };
-    try {
-      const result = await writeOperationsApi<{ ok: boolean }>(`/api/teams/${teamId}`, { method: "DELETE" });
-      if (result.fallback) {
-        persistState(nextState);
-        setOperationsFallbackMode(true);
-      } else {
-        await refreshSubmissions();
+    setPendingConfirmation({
+      title: "선택한 팀을 삭제할까요?",
+      description:
+        memberCount > 0
+          ? `대상: ${team.name}\n소속 멤버 ${memberCount}명은 팀 미배정 상태로 변경됩니다. 참여자와 제출물은 삭제되지 않습니다.`
+          : `대상: ${team.name}\n팀 정보만 운영 목록에서 삭제됩니다. 이 작업은 되돌리기 어렵습니다.`,
+      confirmLabel: "팀 삭제",
+      action: async () => {
+        const nextState = {
+          ...state,
+          teams: state.teams.filter((item) => item.id !== teamId),
+          participants: state.participants.map((participant) =>
+            participant.teamId === teamId ? { ...participant, teamId: "" } : participant
+          )
+        };
+        try {
+          const result = await writeOperationsApi<{ ok: boolean }>(`/api/teams/${teamId}`, { method: "DELETE" });
+          if (result.fallback) {
+            persistState(nextState);
+            setOperationsFallbackMode(true);
+          } else {
+            await refreshSubmissions();
+          }
+          setNotice(`${team.name} 팀을 삭제했습니다.`);
+        } catch (caught) {
+          setError(caught instanceof Error ? caught.message : "팀 삭제에 실패했습니다.");
+        }
       }
-      setNotice(`${team.name} 팀을 삭제했습니다.`);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "팀 삭제에 실패했습니다.");
-    }
+    });
   };
 
   const assignTeam = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -1622,11 +1712,17 @@ export default function InternalPortal() {
   };
 
   const handleReset = () => {
-    if (!window.confirm("운영 데모 데이터를 초기화할까요? 제출물은 삭제되지 않습니다.")) return;
-    const nextState = resetOperationsState();
-    setState(nextState);
-    setCurrentProgramId(nextState.programs[0]?.id || "");
-    setNotice("운영 데모 데이터를 초기화했습니다.");
+    setPendingConfirmation({
+      title: "데모 운영 데이터를 초기화할까요?",
+      description: "이 브라우저의 프로그램, 참여자, 팀, 피드백 데모 데이터가 기본값으로 돌아갑니다. 서버 제출물은 삭제되지 않습니다.",
+      confirmLabel: "데모 데이터 초기화",
+      action: () => {
+        const nextState = resetOperationsState();
+        setState(nextState);
+        setCurrentProgramId(nextState.programs[0]?.id || "");
+        setNotice("운영 데모 데이터를 초기화했습니다.");
+      }
+    });
   };
 
   const handleFeedback = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -1752,24 +1848,31 @@ export default function InternalPortal() {
     }
   };
 
-  const removeSubmission = async (submission: LeanCanvasSubmission) => {
-    if (!window.confirm(`${submission.participant.ideaName || "선택한 제출물"}을 삭제할까요?`)) return;
+  const removeSubmission = (submission: LeanCanvasSubmission) => {
+    const label = submission.participant.ideaName || "선택한 제출물";
+    setPendingConfirmation({
+      title: "선택한 제출물을 삭제할까요?",
+      description: `대상: ${label}\n운영 제출 목록과 해당 제출 데이터에서 제거됩니다. 삭제 후에는 복구하기 어렵습니다.`,
+      confirmLabel: "제출물 삭제",
+      action: async () => {
+        if (fallbackMode) {
+          setSubmissions(deleteSubmission(submission.id));
+          setNotice(`${label}을 삭제했습니다.`);
+          return;
+        }
 
-    if (fallbackMode) {
-      setSubmissions(deleteSubmission(submission.id));
-      return;
-    }
-
-    const response = await fetch(`/api/submissions/${submission.id}/delete`, {
-      method: "POST",
-      credentials: "same-origin"
+        const response = await fetch(`/api/submissions/${submission.id}/delete`, {
+          method: "POST",
+          credentials: "same-origin"
+        });
+        const data = (await response.json()) as { ok?: boolean; error?: string };
+        if (!response.ok || !data.ok) {
+          throw new Error(data.error || "제출물 삭제에 실패했습니다.");
+        }
+        setSubmissions((current) => current.filter((item) => item.id !== submission.id));
+        setNotice(`${label}을 삭제했습니다.`);
+      }
     });
-    const data = (await response.json()) as { ok?: boolean; error?: string };
-    if (!response.ok || !data.ok) {
-      alert(data.error || "삭제에 실패했습니다.");
-      return;
-    }
-    setSubmissions((current) => current.filter((item) => item.id !== submission.id));
   };
 
   if (!authorized) {
@@ -3203,6 +3306,15 @@ export default function InternalPortal() {
             </table>
           </div>
         </main>
+      ) : null}
+
+      {pendingConfirmation ? (
+        <ActionConfirmDialog
+          confirmation={pendingConfirmation}
+          confirming={confirmingAction}
+          onCancel={() => setPendingConfirmation(null)}
+          onConfirm={() => void runConfirmedAction()}
+        />
       ) : null}
     </div>
   );
