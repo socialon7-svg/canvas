@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useDebouncedServerDraft } from "@/hooks/useDebouncedServerDraft";
+import { loadModuleDraft } from "@/lib/moduleDraftClient";
 import type {
   BusinessModelDraft,
   BusinessModelInput,
@@ -525,9 +527,30 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
     if (progress?.inputData) setInputData(progress.inputData);
     if (progress?.outputData) setOutputData(progress.outputData);
 
+    const restoreDraft = async (nextProgramId: string, nextParticipantId: string, progressUpdatedAt?: string) => {
+      const savedDraft = await loadModuleDraft<{ inputData?: string; outputData?: string }>({
+        programId: nextProgramId,
+        participantId: nextParticipantId,
+        moduleSlug: slug
+      });
+      if (cancelled || !savedDraft?.draftData) return;
+
+      const draftSavedAt = Date.parse(savedDraft.savedAt || "");
+      const progressSavedAt = Date.parse(progressUpdatedAt || "");
+      if (Number.isFinite(progressSavedAt) && Number.isFinite(draftSavedAt) && draftSavedAt < progressSavedAt) return;
+
+      if (typeof savedDraft.draftData.inputData === "string") setInputData(savedDraft.draftData.inputData);
+      if (typeof savedDraft.draftData.outputData === "string") setOutputData(savedDraft.draftData.outputData);
+      setNotice(
+        savedDraft.fallback
+          ? "이 브라우저에 임시 저장된 작성 내용을 복구했습니다."
+          : "서버에 자동 저장된 작성 내용을 복구했습니다."
+      );
+    };
+
     if (storedProgramId && storedParticipantId) {
       fetchParticipantWorkspace()
-        .then(({ response, data }) => {
+        .then(async ({ response, data }) => {
           if (cancelled) return;
           if (response.ok && data.program && data.participant) {
             const nextState = mergeParticipantEntryIntoOperationsState({
@@ -545,6 +568,7 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
               setInputData(freshProgress.inputData || "");
               setOutputData(freshProgress.outputData || "");
             }
+            await restoreDraft(data.program.id, data.participant.id, freshProgress?.updatedAt);
             return;
           }
           if (response.status === 401 || response.status === 404) {
@@ -552,10 +576,14 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
             setProgramId("");
             setParticipantId("");
             setAiError("참여자 세션이 만료되었습니다. 참여자 포털에서 다시 입장해주세요.");
+            return;
           }
+          await restoreDraft(storedProgramId, storedParticipantId, progress?.updatedAt);
         })
-        .catch(() => {
-          if (!cancelled) setNotice("네트워크 확인 중에는 이 브라우저의 임시 저장 내용을 표시합니다.");
+        .catch(async () => {
+          if (cancelled) return;
+          await restoreDraft(storedProgramId, storedParticipantId, progress?.updatedAt);
+          if (!cancelled) setNotice("네트워크 연결이 불안정해 이 브라우저의 임시 저장 내용을 표시합니다.");
         });
     }
     return () => {
@@ -571,6 +599,17 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
   const isAllowed = Boolean(startupModule && visibleModules.some((item) => item.slug === startupModule.slug));
   const progress = startupModule ? participant?.moduleProgress?.[startupModule.slug] : undefined;
   const currentStatus = progress?.status || "not_started";
+  const draftSave = useDebouncedServerDraft({
+    programId: program?.id,
+    participantId: participant?.id,
+    moduleSlug: startupModule?.slug || slug,
+    draftData: { inputData, outputData },
+    currentStep: outputData.trim() ? 2 : inputData.trim() ? 1 : 0,
+    enabled: Boolean(program && participant && startupModule && isAllowed),
+    shouldSave: Boolean(inputData.trim() || outputData.trim()),
+    debounceMs: 1000
+  });
+  const saveDraftNow = draftSave.saveNow;
   const isOneLineIdeaModule = startupModule?.slug === ONE_LINE_IDEA_SLUG;
   const isIdeaDiagnosisModule = startupModule?.slug === IDEA_DIAGNOSIS_SLUG;
   const isCustomerPersonaModule = startupModule?.slug === CUSTOMER_PERSONA_SLUG;
@@ -597,6 +636,17 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
   const competitorAnalysisOutput = participant?.moduleProgress?.[COMPETITOR_ANALYSIS_SLUG]?.outputData || "";
   const differentiationStrategyOutput = participant?.moduleProgress?.[DIFFERENTIATION_STRATEGY_SLUG]?.outputData || "";
   const businessModelOutput = participant?.moduleProgress?.[BUSINESS_MODEL_SLUG]?.outputData || "";
+
+  useEffect(() => {
+    const saveWithShortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        void saveDraftNow();
+      }
+    };
+    window.addEventListener("keydown", saveWithShortcut);
+    return () => window.removeEventListener("keydown", saveWithShortcut);
+  }, [saveDraftNow]);
 
   const saveProgress = async (
     status: ParticipantModuleProgressStatus,
@@ -1651,9 +1701,32 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
   const displayResultDescription = activeModuleCopy?.resultDescription || resultDescription;
   const displayResultPlaceholder = activeModuleCopy?.resultPlaceholder || resultPlaceholder;
   const hasModuleContent = Boolean(inputData.trim() || outputData.trim());
+  const workspaceSteps = [
+    { label: "메모 작성", description: "아이디어와 현장 정보를 정리합니다.", done: Boolean(inputData.trim()) },
+    { label: "초안 만들기", description: "AI 초안을 만들고 직접 다듬습니다.", done: Boolean(outputData.trim()) },
+    { label: "검토 후 완료", description: "최종 내용을 확인하고 제출합니다.", done: currentStatus === "completed" }
+  ];
+  const completedWorkspaceSteps = workspaceSteps.filter((step) => step.done).length;
+  const workspaceProgress = Math.round((completedWorkspaceSteps / workspaceSteps.length) * 100);
+  const lastSavedAt = draftSave.lastSavedAt
+    ? new Date(draftSave.lastSavedAt)
+    : progress?.updatedAt
+      ? new Date(progress.updatedAt)
+      : null;
+  const draftStatusText =
+    draftSave.status === "saving"
+      ? "자동 저장 중..."
+      : draftSave.status === "error"
+        ? "자동 저장 실패"
+        : lastSavedAt
+          ? `${draftSave.fallbackMode ? "이 브라우저에" : "저장됨"} · ${lastSavedAt.toLocaleTimeString("ko-KR", {
+              hour: "2-digit",
+              minute: "2-digit"
+            })}`
+          : "입력하면 자동 저장됩니다";
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-5 pb-20 sm:px-5 sm:py-8">
+    <main className="mx-auto max-w-[1440px] px-4 py-5 pb-20 sm:px-5 sm:py-8 lg:px-6">
       <header className="app-surface p-5 sm:p-6">
         <Link className="text-sm font-bold text-[#6b7684] hover:text-[#333d4b]" href="/participant">
           모듈 목록으로 돌아가기
@@ -1670,24 +1743,6 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
             {statusLabel(currentStatus)}
           </span>
         </div>
-        <div className="mt-6 grid gap-3 border-t border-[#e5e8eb] pt-5 sm:grid-cols-3">
-          {[
-            { label: "메모 작성", done: Boolean(inputData.trim()) },
-            { label: "초안 만들기", done: Boolean(outputData.trim()) },
-            { label: "검토 후 완료", done: currentStatus === "completed" }
-          ].map((step, index) => (
-            <div className="flex items-center gap-3" key={step.label}>
-              <span
-                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-black ${
-                  step.done ? "bg-green-100 text-green-700" : "bg-[#f2f4f6] text-[#8b95a1]"
-                }`}
-              >
-                {step.done ? "OK" : index + 1}
-              </span>
-              <span className={`text-sm font-bold ${step.done ? "text-green-700" : "text-[#6b7684]"}`}>{step.label}</span>
-            </div>
-          ))}
-        </div>
       </header>
 
       {notice ? (
@@ -1700,25 +1755,67 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
         </p>
       ) : null}
 
-      {progress?.adminComment ? (
-        <section className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-5 shadow-sm">
-          <p className="text-sm font-bold text-amber-800">운영진 검토 코멘트</p>
-          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-amber-950">{progress.adminComment}</p>
-          {progress.reviewedAt ? (
-            <p className="mt-2 text-xs text-amber-800">검토 시각: {new Date(progress.reviewedAt).toLocaleString("ko-KR")}</p>
-          ) : null}
-        </section>
-      ) : null}
+      <section className="mt-4 grid items-start gap-4 lg:grid-cols-[220px_minmax(0,1fr)] min-[1280px]:grid-cols-[230px_minmax(0,1fr)_300px]">
+        <nav className="app-surface p-4 lg:sticky lg:top-4" aria-label="모듈 작성 단계">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold text-[#8b95a1]">진행 상황</p>
+              <p className="mt-1 text-xl font-black text-[#191f28]">{workspaceProgress}%</p>
+            </div>
+            <span className="rounded-full bg-[#e8f3ff] px-2.5 py-1 text-xs font-bold text-[#1b64da]">
+              {completedWorkspaceSteps}/{workspaceSteps.length} 완료
+            </span>
+          </div>
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#f2f4f6]">
+            <div className="h-full rounded-full bg-[#3182f6] transition-all" style={{ width: `${workspaceProgress}%` }} />
+          </div>
+          <ol className="mt-5 grid gap-3 md:grid-cols-3 lg:grid-cols-1">
+            {workspaceSteps.map((step, index) => (
+              <li className="flex gap-3 rounded-md border border-[#e5e8eb] p-3" key={step.label}>
+                <span
+                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-black ${
+                    step.done ? "bg-green-100 text-green-700" : "bg-[#f2f4f6] text-[#8b95a1]"
+                  }`}
+                >
+                  {step.done ? "OK" : index + 1}
+                </span>
+                <span className="min-w-0">
+                  <span className={`block text-sm font-bold ${step.done ? "text-green-700" : "text-[#333d4b]"}`}>
+                    {step.label}
+                  </span>
+                  <span className="mt-1 block text-xs leading-5 text-[#8b95a1]">{step.description}</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+          <div
+            className={`mt-4 rounded-md border px-3 py-3 text-xs leading-5 ${
+              draftSave.status === "error"
+                ? "border-red-200 bg-red-50 text-red-700"
+                : draftSave.fallbackMode
+                  ? "border-amber-200 bg-amber-50 text-amber-800"
+                  : "border-blue-100 bg-blue-50 text-[#1b64da]"
+            }`}
+          >
+            <p className="font-bold">{draftStatusText}</p>
+            <p className="mt-1 text-current/80">Ctrl+S로 즉시 저장 · Tab으로 다음 입력 이동</p>
+            {draftSave.error ? <p className="mt-1">{draftSave.error}</p> : null}
+          </div>
+        </nav>
 
-      <section className="mt-4 grid gap-4 lg:grid-cols-2">
-        <form className="app-surface p-5 sm:p-6" onSubmit={(event) => event.preventDefault()}>
+        <div className="grid min-w-0 gap-4">
+        <form
+          className="app-surface p-5 sm:p-6"
+          onBlurCapture={() => void saveDraftNow()}
+          onSubmit={(event) => event.preventDefault()}
+        >
           <p className="text-sm font-bold text-[#3182f6]">1. 아이디어 메모</p>
           <h2 className="mt-1 text-xl font-bold text-[#191f28]">{displayInputTitle}</h2>
           <p className="mt-2 text-sm leading-6 text-[#6b7684]">{displayInputDescription}</p>
           <label className="mt-4 block">
             <span className="mb-2 block text-sm font-bold text-[#333d4b]">{displayInputLabel}</span>
             <textarea
-              className="min-h-72 w-full resize-y rounded-md border border-[#d1d6db] px-4 py-3 text-sm leading-6 outline-none transition-colors focus:border-[#3182f6] focus:ring-3 focus:ring-blue-100"
+              className="min-h-80 w-full resize-y rounded-md border border-[#d1d6db] px-4 py-3 text-sm leading-6 outline-none transition-colors focus:border-[#3182f6] focus:ring-3 focus:ring-blue-100 lg:min-h-[360px]"
               maxLength={6000}
               onChange={(event) => setInputData(event.target.value)}
               placeholder={displayInputPlaceholder}
@@ -1886,13 +1983,15 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
           </div>
         </form>
 
-        <aside className="grid content-start gap-4">
-          <section className="app-surface border-blue-100 p-5 sm:p-6">
+          <section
+            className="app-surface border-blue-100 p-5 sm:p-6"
+            onBlurCapture={() => void saveDraftNow()}
+          >
             <p className="text-sm font-bold text-[#3182f6]">2. AI 초안 확인</p>
             <h2 className="mt-1 text-xl font-bold text-[#191f28]">{displayResultTitle}</h2>
             <p className="mt-2 text-sm leading-6 text-[#6b7684]">{displayResultDescription}</p>
             <textarea
-              className="mt-4 min-h-72 w-full resize-y rounded-md border border-[#d1d6db] bg-white px-4 py-3 text-sm leading-6 outline-none transition-colors focus:border-[#3182f6] focus:ring-3 focus:ring-blue-100"
+              className="mt-4 min-h-80 w-full resize-y rounded-md border border-[#d1d6db] bg-white px-4 py-3 text-sm leading-6 outline-none transition-colors focus:border-[#3182f6] focus:ring-3 focus:ring-blue-100 lg:min-h-[360px]"
               maxLength={12000}
               onChange={(event) => setOutputData(event.target.value)}
               placeholder={displayResultPlaceholder}
@@ -1920,14 +2019,45 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
               <p className="mt-3 text-xs leading-5 text-[#8b95a1]">메모를 작성하거나 AI 초안을 만든 뒤 완료할 수 있어요.</p>
             ) : null}
           </section>
-          <details className="app-surface p-4 text-sm">
-            <summary className="cursor-pointer select-none font-bold text-[#4e5968]">참여 정보와 마지막 저장 시각</summary>
+        </div>
+
+        <aside className="grid content-start gap-4 lg:col-span-2 lg:grid-cols-2 min-[1280px]:sticky min-[1280px]:top-4 min-[1280px]:col-span-1 min-[1280px]:grid-cols-1">
+          {progress?.adminComment ? (
+            <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 shadow-sm">
+              <p className="text-sm font-bold text-amber-800">멘토·운영진 피드백</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-amber-950">{progress.adminComment}</p>
+              {progress.reviewedAt ? (
+                <p className="mt-3 text-xs text-amber-800">검토 시각: {new Date(progress.reviewedAt).toLocaleString("ko-KR")}</p>
+              ) : null}
+            </section>
+          ) : (
+            <section className="app-surface p-4">
+              <p className="text-sm font-bold text-[#333d4b]">멘토 피드백</p>
+              <p className="mt-2 text-sm leading-6 text-[#8b95a1]">검토가 등록되면 이곳에서 바로 확인할 수 있습니다.</p>
+            </section>
+          )}
+
+          <section className="app-surface p-4">
+            <p className="text-sm font-bold text-[#333d4b]">작성 예시와 AI 도움말</p>
+            <div className="mt-3 rounded-md bg-[#f7f8fa] p-3">
+              <p className="text-xs font-bold text-[#6b7684]">예시</p>
+              <p className="mt-1 text-sm leading-6 text-[#4e5968]">{displayInputPlaceholder}</p>
+            </div>
+            <ul className="mt-3 space-y-2 text-sm leading-6 text-[#6b7684]">
+              <li>• 고객, 상황, 행동을 구체적으로 적어주세요.</li>
+              <li>• 확인한 숫자나 현장 근거가 있으면 함께 적어주세요.</li>
+              <li>• AI 결과는 그대로 제출하지 않고 직접 수정할 수 있습니다.</li>
+            </ul>
+          </section>
+
+          <section className="app-surface p-4 text-sm">
+            <p className="font-bold text-[#4e5968]">참여 정보</p>
             <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3 lg:grid-cols-1">
               <div><dt className="text-[#8b95a1]">프로그램</dt><dd className="mt-1 font-bold text-[#333d4b]">{program.name}</dd></div>
               <div><dt className="text-[#8b95a1]">참여자</dt><dd className="mt-1 font-bold text-[#333d4b]">{participant.name || participant.code}</dd></div>
-              <div><dt className="text-[#8b95a1]">마지막 저장</dt><dd className="mt-1 font-bold text-[#333d4b]">{progress?.updatedAt ? new Date(progress.updatedAt).toLocaleString("ko-KR") : "아직 없음"}</dd></div>
+              <div><dt className="text-[#8b95a1]">마지막 저장</dt><dd className="mt-1 font-bold text-[#333d4b]">{lastSavedAt ? lastSavedAt.toLocaleString("ko-KR") : "아직 없음"}</dd></div>
             </dl>
-          </details>
+          </section>
         </aside>
       </section>
     </main>

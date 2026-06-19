@@ -26,6 +26,7 @@ import {
   normalizeStartupModuleIds
 } from "@/lib/startupModules";
 import {
+  STATUS_LABELS,
   getFeedbackProgressStatus,
   getParticipantStatus,
   getPdfStatus,
@@ -1926,7 +1927,7 @@ export default function InternalPortal() {
   ];
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-5 sm:px-5 sm:py-8">
+    <div className="mx-auto max-w-[1600px] px-4 py-5 sm:px-5 sm:py-8 lg:px-6">
       <header className="app-surface mb-4 p-5 sm:p-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -2777,7 +2778,57 @@ export default function InternalPortal() {
               ))}
             </div>
           </section>
-          <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <section className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px] min-[1280px]:grid-cols-[220px_minmax(0,1fr)_320px]">
+            <aside className="hidden rounded-lg border border-gray-200 bg-white p-4 shadow-sm min-[1280px]:sticky min-[1280px]:top-4 min-[1280px]:block">
+              <p className="text-xs font-bold text-blue-700">현재 프로그램</p>
+              <h2 className="mt-1 truncate text-base font-bold text-gray-950">{currentProgram?.name || "프로그램 없음"}</h2>
+              <p className="mt-1 text-xs text-gray-500">{currentProgram?.programCode || "-"} · 참여자 {filteredStatusRows.length}명</p>
+              <div className="mt-4 border-t border-gray-200 pt-4">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-bold text-gray-900">참여자 상태</p>
+                  <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-600">
+                    {activeSubmissionFilterLabel}
+                  </span>
+                </div>
+                <div className="mt-3 max-h-[62vh] space-y-1 overflow-y-auto pr-1">
+                  {filteredStatusRows.map((row) => {
+                    const active = selectedStatusRow?.participant.id === row.participant.id;
+                    const teamName = programTeams.find((team) => team.id === row.participant.teamId)?.name || "미배정";
+                    return (
+                      <button
+                        className={`w-full rounded-md border px-3 py-2.5 text-left transition-colors ${
+                          active
+                            ? "border-blue-300 bg-blue-50 text-blue-950"
+                            : "border-transparent text-gray-700 hover:border-gray-200 hover:bg-gray-50"
+                        }`}
+                        key={row.participant.id}
+                        onClick={() => setSelectedParticipantId(row.participant.id)}
+                        type="button"
+                      >
+                        <span className="flex items-center justify-between gap-2">
+                          <span className="truncate text-sm font-bold">{row.participant.name || row.participant.code}</span>
+                          <span
+                            className={`h-2 w-2 shrink-0 rounded-full ${
+                              row.pdfStatus === "failed"
+                                ? "bg-red-500"
+                                : row.submission
+                                  ? "bg-green-500"
+                                  : row.participantStatus === "invited"
+                                    ? "bg-gray-300"
+                                    : "bg-amber-500"
+                            }`}
+                          />
+                        </span>
+                        <span className="mt-1 block truncate text-xs text-gray-500">{teamName} · {STATUS_LABELS.submission[row.submissionStatus]}</span>
+                      </button>
+                    );
+                  })}
+                  {filteredStatusRows.length === 0 ? (
+                    <p className="rounded-md bg-gray-50 px-3 py-4 text-center text-xs leading-5 text-gray-500">현재 필터에 해당하는 참여자가 없습니다.</p>
+                  ) : null}
+                </div>
+              </div>
+            </aside>
             <div className="grid gap-4">
               {filteredStatusRows.length === 0 ? (
                 <section className="rounded-lg border border-gray-200 bg-white p-8 text-center text-sm text-gray-600 shadow-sm">
