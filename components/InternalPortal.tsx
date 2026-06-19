@@ -2141,6 +2141,20 @@ export default function InternalPortal() {
             </div>
           </section>
 
+          <details className="group app-surface p-5 sm:p-6">
+            <summary className="cursor-pointer select-none list-none">
+              <span className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <span>
+                  <span className="block text-sm font-bold text-[#3182f6]">세부 운영 현황</span>
+                  <span className="mt-1 block text-lg font-bold text-[#191f28]">전체 지표와 프로그램 설정 보기</span>
+                </span>
+                <span className="text-sm font-bold text-[#6b7684]">
+                  <span className="group-open:hidden">펼쳐보기 +</span>
+                  <span className="hidden group-open:inline">접기 −</span>
+                </span>
+              </span>
+            </summary>
+            <div className="mt-5 grid gap-4 border-t border-[#e5e8eb] pt-5">
           <section className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
             <MetricCard label="현재 참여자" value={operationalMetrics.totalParticipants} hint="선택 프로그램 기준" />
             <MetricCard label="입장 완료" value={operationalMetrics.entered} hint={`미입장 ${operationalMetrics.notEntered}명`} tone={operationalMetrics.notEntered > 0 ? "amber" : "green"} />
@@ -2264,6 +2278,8 @@ export default function InternalPortal() {
             </p>
             <p className="mt-3 text-sm text-gray-700">{currentProgram.brief}</p>
           </section>
+            </div>
+          </details>
         </main>
       ) : null}
 

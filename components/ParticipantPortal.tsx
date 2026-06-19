@@ -244,9 +244,9 @@ export default function ParticipantPortal() {
     if (nextIncompleteModule) {
       return {
         title: `${nextIncompleteModule.title}이 남았습니다`,
-        description: "운영진이 배정한 모듈만 순서대로 표시됩니다. 시작 전인 모듈부터 차례로 진행하세요.",
-        action: "모듈 목록 보기",
-        onClick: () => setTab("write")
+        description: "저장된 내용이 있으면 이어서 열립니다. 작성 후 완료 표시까지 확인해주세요.",
+        action: "바로 이어서 작성",
+        onClick: () => openModule(nextIncompleteModule)
       };
     }
     if (feedback) {
@@ -515,7 +515,7 @@ export default function ParticipantPortal() {
     router.push("/modu-startup");
   };
 
-  const openModule = (module: StartupModule) => {
+  function openModule(module: StartupModule) {
     if (module.slug === "lean-canvas") {
       startCanvas();
       return;
@@ -525,7 +525,7 @@ export default function ParticipantPortal() {
       return;
     }
     router.push(module.route);
-  };
+  }
 
   const copyFeedback = async () => {
     if (!feedback) return;
@@ -617,15 +617,15 @@ export default function ParticipantPortal() {
     );
   }
 
-  const tabs: Array<{ key: ParticipantTab; label: string }> = [
+  const tabs: Array<{ key: ParticipantTab; label: string; badge?: string }> = [
     { key: "home", label: "홈" },
-    { key: "profile", label: "내 정보" },
-    { key: "write", label: "모듈" },
-    { key: "feedback", label: "피드백" }
+    { key: "profile", label: "내 정보", badge: hasProfile ? undefined : "확인" },
+    { key: "write", label: "모듈", badge: `${completedModuleCount}/${visibleModules.length}` },
+    { key: "feedback", label: "피드백", badge: feedback ? "도착" : undefined }
   ];
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-5 pb-28 sm:px-5 sm:py-8 sm:pb-10">
+    <div className="mx-auto max-w-[1400px] px-4 py-5 pb-28 sm:px-5 sm:py-8 sm:pb-10 lg:px-6">
       <header className="app-surface mb-5 flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -648,7 +648,12 @@ export default function ParticipantPortal() {
               onClick={() => setTab(item.key)}
               type="button"
             >
-              {item.label}
+              <span>{item.label}</span>
+              {item.badge ? (
+                <span className={`ml-1 rounded-full px-2 py-0.5 text-[11px] font-bold ${tab === item.key ? "bg-white/20 text-current" : "bg-[#f2f4f6] text-[#6b7684]"}`}>
+                  {item.badge}
+                </span>
+              ) : null}
             </button>
           ))}
           <button className="app-secondary-button ml-1 min-h-10 text-sm text-red-600" onClick={logout}>
@@ -665,7 +670,8 @@ export default function ParticipantPortal() {
             onClick={() => setTab(item.key)}
             type="button"
           >
-            {item.label}
+            <span>{item.label}</span>
+            {item.badge ? <span className="ml-1 text-[10px] font-bold">{item.badge}</span> : null}
           </button>
         ))}
       </nav>
@@ -694,28 +700,32 @@ export default function ParticipantPortal() {
         <div className="mt-5 h-2 overflow-hidden rounded-full bg-[#e5e8eb]">
           <div className="h-full rounded-full bg-[#3182f6] transition-all" style={{ width: `${studentProgressPercent}%` }} />
         </div>
-        <div className="mt-5 grid gap-3 sm:grid-cols-4">
-          {studentProgressSteps.map((step, index) => (
-            <div
-              key={step.label}
-              className={`border-l-2 px-3 py-1 text-sm ${
-                step.done ? "border-green-500 text-green-800" : "border-[#d1d6db] text-[#6b7684]"
-              }`}
-            >
-              <p className="text-xs font-bold opacity-70">{index + 1}단계 · {step.done ? "완료" : "진행 전"}</p>
-              <p className="mt-1 font-bold">{step.label}</p>
+        {tab === "home" ? (
+          <>
+            <div className="mt-5 grid gap-3 sm:grid-cols-4">
+              {studentProgressSteps.map((step, index) => (
+                <div
+                  key={step.label}
+                  className={`border-l-2 px-3 py-1 text-sm ${
+                    step.done ? "border-green-500 text-green-800" : "border-[#d1d6db] text-[#6b7684]"
+                  }`}
+                >
+                  <p className="text-xs font-bold opacity-70">{index + 1}단계 · {step.done ? "완료" : "진행 전"}</p>
+                  <p className="mt-1 font-bold">{step.label}</p>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
-          {statusCards.map((card) => (
-            <div key={card.label} className={`rounded-md border px-4 py-3 ${card.className}`}>
-              <p className="text-xs font-bold opacity-80">{card.label}</p>
-              <strong className="mt-1 block text-lg">{card.value}</strong>
-              <p className="mt-1 line-clamp-2 text-xs leading-5 opacity-80">{card.hint}</p>
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              {statusCards.map((card) => (
+                <div key={card.label} className={`rounded-md border px-4 py-3 ${card.className}`}>
+                  <p className="text-xs font-bold opacity-80">{card.label}</p>
+                  <strong className="mt-1 block text-lg">{card.value}</strong>
+                  <p className="mt-1 line-clamp-2 text-xs leading-5 opacity-80">{card.hint}</p>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </>
+        ) : null}
         <p className="mt-4 rounded-md bg-[#f2f7ff] px-4 py-3 text-sm leading-6 text-[#1b64da]">
           {nextAction.description}
         </p>
@@ -753,28 +763,6 @@ export default function ParticipantPortal() {
 
       {tab === "home" ? (
         <main className="grid gap-4 md:grid-cols-3">
-          <section className="rounded-lg border border-blue-200 bg-blue-50 p-5 shadow-sm md:col-span-3">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="text-sm font-semibold text-blue-700">오늘의 모듈</p>
-                <h2 className="mt-1 text-xl font-bold text-gray-950">
-                  {nextIncompleteModule ? nextIncompleteModule.title : "배정된 모듈을 모두 확인했습니다"}
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-gray-700">
-                  {nextIncompleteModule
-                    ? nextIncompleteModule.description
-                    : "운영진이 추가 모듈을 열면 이곳에 다음 과제가 표시됩니다."}
-                </p>
-              </div>
-              <button
-                className="rounded-md bg-blue-700 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-blue-800 active:bg-blue-900"
-                onClick={() => (nextIncompleteModule ? openModule(nextIncompleteModule) : setTab("write"))}
-                type="button"
-              >
-                {nextIncompleteModule ? "시작하기" : "모듈 목록 보기"}
-              </button>
-            </div>
-          </section>
           <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm md:col-span-3">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
@@ -803,15 +791,23 @@ export default function ParticipantPortal() {
               <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                 {visibleModules.slice(0, 6).map((module) => {
                   const moduleStatus = getModuleProgressStatus(module);
+                  const isNextModule = nextIncompleteModule?.id === module.id;
                   return (
                     <button
                       key={module.id}
-                      className="rounded-md border border-gray-200 bg-gray-50 p-3 text-left transition-colors hover:border-blue-300 hover:bg-blue-50"
+                      className={`rounded-md border p-3 text-left transition-colors ${
+                        isNextModule
+                          ? "border-blue-300 bg-blue-50 ring-2 ring-blue-100"
+                          : "border-gray-200 bg-gray-50 hover:border-blue-300 hover:bg-blue-50"
+                      }`}
                       onClick={() => openModule(module)}
                       type="button"
                     >
-                      <span className="text-xs font-bold text-blue-700">{module.order}. {moduleStatusLabels[moduleStatus]}</span>
+                      <span className="text-xs font-bold text-blue-700">
+                        {module.order}. {moduleStatusLabels[moduleStatus]}{isNextModule ? " · 다음 할 일" : ""}
+                      </span>
                       <span className="mt-1 block font-bold text-gray-950">{module.title}</span>
+                      {isNextModule ? <span className="mt-2 block text-xs font-bold text-blue-700">바로 이어서 작성 →</span> : null}
                     </button>
                   );
                 })}
@@ -899,27 +895,6 @@ export default function ParticipantPortal() {
               </p>
             </section>
           )}
-          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-gray-500">내 상태</p>
-            <strong className="mt-2 block text-2xl text-gray-950">{participant.name ? "등록" : "미등록"}</strong>
-            <p className="mt-2 text-sm text-gray-600">내 정보를 먼저 저장하면 결과보고서 품질이 좋아집니다.</p>
-          </section>
-          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-gray-500">팀</p>
-            <strong className="mt-2 block text-2xl text-gray-950">{team?.name || "미배정"}</strong>
-            <p className="mt-2 text-sm text-gray-600">{team?.memo || "내부직원이 팀을 배정합니다."}</p>
-          </section>
-          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-gray-500">제출</p>
-            <strong className="mt-2 block text-2xl text-gray-950">{participant.latestSubmissionId ? "완료" : "대기"}</strong>
-            <p className="mt-2 text-sm text-gray-600">피드백: {feedback ? "도착" : "대기 중"}</p>
-          </section>
-          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm md:col-span-3">
-            <h2 className="text-lg font-bold text-gray-950">사용 순서</h2>
-            <p className="mt-2 text-sm leading-6 text-gray-600">
-              내 정보 확인 → 배정 모듈 수행 → 최종 제출 확인 → 피드백 확인 → 필요하면 다시 보완
-            </p>
-          </section>
         </main>
       ) : null}
 
