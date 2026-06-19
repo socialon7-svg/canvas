@@ -292,6 +292,7 @@ export default function ModuStartupGenerator() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [resetRequested, setResetRequested] = useState(false);
   const [localDraftToResume, setLocalDraftToResume] = useState<{
     input: ModuStartupInput;
     savedAt: string;
@@ -302,6 +303,7 @@ export default function ModuStartupGenerator() {
   const currentStepMeta = moduStartupSteps[currentStep];
   const currentStepId: ModuStartupStepId = currentStepMeta.id;
   const progressPercent = Math.round(((currentStep + 1) / moduStartupSteps.length) * 100);
+  const hasParticipantContext = Boolean(input.operation?.programId && input.operation?.participantId);
   const draftSave = useDebouncedServerDraft({
     programId: input.operation?.programId,
     participantId: input.operation?.participantId,
@@ -375,6 +377,16 @@ export default function ModuStartupGenerator() {
     return () => window.clearTimeout(timer);
   }, [draftReady, input, submittedSubmission]);
 
+  useEffect(() => {
+    if (!resetRequested) return;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setResetRequested(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [resetRequested]);
+
   const updateInput = <K extends keyof ModuStartupInput>(key: K, value: ModuStartupInput[K]) => {
     setInput((current) => ({ ...current, [key]: value }));
   };
@@ -406,6 +418,10 @@ export default function ModuStartupGenerator() {
   };
 
   const generateDraft = async () => {
+    if (!hasParticipantContext) {
+      setError("참여자 포털에서 입장한 뒤 AI 초안을 만들 수 있습니다.");
+      return;
+    }
     if (!validateBeforeStep(moduStartupSteps.length - 1)) return;
     setLoading(true);
     setError("");
@@ -446,6 +462,10 @@ export default function ModuStartupGenerator() {
 
   const submitDraft = async () => {
     if (!draft) return;
+    if (!hasParticipantContext) {
+      setError("참여자 포털에서 입장한 뒤 운영 시스템에 제출할 수 있습니다.");
+      return;
+    }
     setSubmitting(true);
     setError("");
     setNotice("");
@@ -490,17 +510,37 @@ export default function ModuStartupGenerator() {
     }
   };
 
-  const resetAll = () => {
-    if ((hasMeaningfulInput(input) || draft) && !window.confirm("작성 중인 내용을 지우고 새로 작성할까요?")) return;
-    setInput(initialInput);
+  const performReset = () => {
+    const operation = input.operation;
+    setInput(
+      operation
+        ? {
+            ...initialInput,
+            programName: operation.programName || input.programName,
+            teamName: operation.teamName || input.teamName,
+            participantName: input.participantName,
+            operation
+          }
+        : initialInput
+    );
     setCurrentStep(0);
     setDraft(null);
     setSubmittedSubmission(null);
     setError("");
     setNotice("");
     setLastSavedAt("");
-    clearModuStartupPrefill();
+    setLocalDraftToResume(null);
+    setResetRequested(false);
+    if (!operation) clearModuStartupPrefill();
     clearModuStartupDraftFromLocal();
+  };
+
+  const requestReset = () => {
+    if (!hasMeaningfulInput(input) && !draft) {
+      performReset();
+      return;
+    }
+    setResetRequested(true);
   };
 
   const moveStep = (nextStep: number) => {
@@ -526,7 +566,7 @@ export default function ModuStartupGenerator() {
               <label>
                 <span className="mb-1 block text-sm font-semibold text-gray-800">교육명</span>
                 <input
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  className="app-input text-sm"
                   value={input.programName}
                   onChange={(event) => updateInput("programName", event.target.value)}
                   placeholder="예: 모두의창업 캠프"
@@ -535,7 +575,7 @@ export default function ModuStartupGenerator() {
               <label>
                 <span className="mb-1 block text-sm font-semibold text-gray-800">팀명</span>
                 <input
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  className="app-input text-sm"
                   value={input.teamName}
                   onChange={(event) => updateInput("teamName", event.target.value)}
                   placeholder="예: 하이팀"
@@ -545,7 +585,7 @@ export default function ModuStartupGenerator() {
             <label>
               <span className="mb-1 block text-sm font-semibold text-gray-800">참가자명</span>
               <input
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                className="app-input text-sm"
                 value={input.participantName}
                 onChange={(event) => updateInput("participantName", event.target.value)}
                 placeholder="예: 김하이"
@@ -554,7 +594,7 @@ export default function ModuStartupGenerator() {
             <label>
               <span className="mb-1 block text-sm font-semibold text-gray-800">아이디어명</span>
               <input
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                className="app-input text-sm"
                 value={input.ideaTitle}
                 onChange={(event) => updateInput("ideaTitle", event.target.value)}
                 placeholder="예: 1인 브런치 카페 운영 도우미"
@@ -567,7 +607,7 @@ export default function ModuStartupGenerator() {
           <label className="block">
             <span className="mb-1 block text-sm font-semibold text-gray-800">Q1. 한 줄 소개</span>
             <input
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              className="app-input text-sm"
               maxLength={120}
               value={input.ideaOneLine}
               onChange={(event) => updateInput("ideaOneLine", event.target.value)}
@@ -582,7 +622,7 @@ export default function ModuStartupGenerator() {
             <label className="block">
               <span className="mb-1 block text-sm font-semibold text-gray-800">Q2. 배경 이야기</span>
               <textarea
-                className="min-h-32 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                className="app-input min-h-32 h-auto py-3 text-sm"
                 value={input.backgroundStory}
                 onChange={(event) => updateInput("backgroundStory", event.target.value)}
                 placeholder="직접 겪은 장면, 관찰한 순간, 왜 시작했는지"
@@ -591,7 +631,7 @@ export default function ModuStartupGenerator() {
             <label className="block">
               <span className="mb-1 block text-sm font-semibold text-gray-800">Q3. 고객과 문제</span>
               <textarea
-                className="min-h-32 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                className="app-input min-h-32 h-auto py-3 text-sm"
                 value={input.customerProblem}
                 onChange={(event) => updateInput("customerProblem", event.target.value)}
                 placeholder="좁은 고객군, 해결하려는 문제, 현재 대안"
@@ -604,7 +644,7 @@ export default function ModuStartupGenerator() {
           <label className="block">
             <span className="mb-1 block text-sm font-semibold text-gray-800">Q4. 실행 계획과 증거</span>
             <textarea
-              className="min-h-40 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              className="app-input min-h-40 h-auto py-3 text-sm"
               value={input.executionPlan}
               onChange={(event) => updateInput("executionPlan", event.target.value)}
               placeholder="베타 유저, 인터뷰, 매출, MOU, 수상, 특허 등"
@@ -618,7 +658,7 @@ export default function ModuStartupGenerator() {
               <label>
                 <span className="mb-1 block text-sm font-semibold text-gray-800">Q5. 분야</span>
                 <select
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  className="app-input text-sm"
                   value={input.category}
                   onChange={(event) => updateInput("category", event.target.value)}
                 >
@@ -633,7 +673,7 @@ export default function ModuStartupGenerator() {
               <label>
                 <span className="mb-1 block text-sm font-semibold text-gray-800">Q6. 창업 여부</span>
                 <select
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  className="app-input text-sm"
                   value={input.businessStatus}
                   onChange={(event) => updateInput("businessStatus", event.target.value)}
                 >
@@ -648,7 +688,7 @@ export default function ModuStartupGenerator() {
             <label className="block">
               <span className="mb-1 block text-sm font-semibold text-gray-800">Q7. 팀원</span>
               <input
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                className="app-input text-sm"
                 value={input.teamMembers}
                 onChange={(event) => updateInput("teamMembers", event.target.value)}
                 placeholder="예: 김하이-기획, 박뷰-개발"
@@ -657,7 +697,7 @@ export default function ModuStartupGenerator() {
             <label className="block">
               <span className="mb-1 block text-sm font-semibold text-gray-800">Q8. 영상 링크</span>
               <input
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                className="app-input text-sm"
                 value={input.videoUrl}
                 onChange={(event) => updateInput("videoUrl", event.target.value)}
                 placeholder="https://"
@@ -679,12 +719,12 @@ export default function ModuStartupGenerator() {
               </ul>
             </div>
             <button
-              className="w-full rounded-md bg-blue-700 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-gray-400"
-              disabled={loading}
+              className="app-primary-button w-full text-sm"
+              disabled={loading || !hasParticipantContext}
               onClick={generateDraft}
               type="button"
             >
-              {loading ? "AI 초안 생성 중..." : "AI 모두의창업 초안 생성"}
+              {loading ? "AI 초안 생성 중..." : hasParticipantContext ? "AI 모두의창업 초안 생성" : "참여자 입장 후 생성 가능"}
             </button>
           </div>
         );
@@ -692,49 +732,65 @@ export default function ModuStartupGenerator() {
   };
 
   return (
-    <main className="mx-auto max-w-7xl px-5 py-8">
-      <section className="no-print mb-6 rounded-lg border border-blue-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <main className="mx-auto max-w-6xl px-4 py-5 pb-24 sm:px-5 sm:py-8">
+      <section className="app-surface no-print mb-5 overflow-hidden border-blue-100 p-5 sm:p-6">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-sm font-semibold text-blue-700">AI 작성 도구</p>
-            <h1 className="mt-1 text-3xl font-bold text-gray-950">모두의창업 초안 생성</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-600">
-              첨부한 합격 노하우를 기준으로 Q1~Q8 신청서 초안, 증거 문장, 정책 키워드, 최종 체크리스트를 자동 생성합니다.
-              API 호출은 서버 라우트에서 처리되어 키가 브라우저에 노출되지 않습니다.
+            <p className="text-sm font-bold text-[#3182f6]">모두의창업 · AI 작성 도구</p>
+            <h1 className="mt-1 text-2xl font-bold text-[#191f28] sm:text-3xl">신청서 초안을 단계별로 완성해요</h1>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-[#6b7684]">
+              핵심 정보만 입력하면 Q1~Q8 초안을 만들고, 직접 다듬어 운영 시스템에 제출할 수 있습니다.
             </p>
+            <div className="mt-4 flex flex-wrap gap-2 text-xs font-bold">
+              {[
+                { label: "1. 아이디어 정리", done: currentStep >= 2 },
+                { label: "2. 근거 입력", done: currentStep >= 4 },
+                { label: "3. 초안 생성·제출", done: Boolean(draft) }
+              ].map((item) => (
+                <span
+                  key={item.label}
+                  className={`rounded-full px-3 py-1.5 ${item.done ? "bg-[#e8f3ff] text-[#1b64da]" : "bg-[#f2f4f6] text-[#6b7684]"}`}
+                >
+                  {item.done ? "완료 · " : ""}{item.label}
+                </span>
+              ))}
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700" href="/">
-              홈으로
+            <Link className="app-secondary-button inline-flex items-center text-sm" href="/participant">
+              참여자 홈
             </Link>
-            <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700" onClick={resetAll} type="button">
+            <button className="app-secondary-button text-sm text-red-600" onClick={requestReset} type="button">
               새로 작성
             </button>
           </div>
         </div>
+        <div className="mt-5 h-2 overflow-hidden rounded-full bg-[#f2f4f6]" aria-label={`작성 진행률 ${progressPercent}%`}>
+          <div className="h-full rounded-full bg-[#3182f6] transition-all" style={{ width: `${progressPercent}%` }} />
+        </div>
       </section>
 
       {notice ? (
-        <p className="no-print mb-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-900">
+        <p className="no-print mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-900" aria-live="polite">
           {notice}
         </p>
       ) : null}
       {error ? (
-        <p className="no-print mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+        <p className="no-print mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700" role="alert">
           {error}
         </p>
       ) : null}
 
       {localDraftToResume ? (
-        <section className="no-print mb-5 rounded-lg border border-amber-200 bg-amber-50 p-5 shadow-sm">
-          <p className="text-sm font-semibold text-amber-800">이전에 작성하던 내용이 있어요</p>
-          <h2 className="mt-1 text-lg font-bold text-gray-950">저장된 모두의창업 초안을 이어서 작성할까요?</h2>
-          <p className="mt-2 text-sm text-amber-900">
+        <section className="app-surface no-print mb-5 border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-bold text-amber-700">이전에 작성하던 내용이 있어요</p>
+          <h2 className="mt-1 text-lg font-bold text-[#191f28]">저장된 내용부터 이어서 작성할까요?</h2>
+          <p className="mt-2 text-sm text-[#6b7684]">
             마지막 저장 {new Date(localDraftToResume.savedAt).toLocaleString("ko-KR")}
           </p>
           <div className="mt-4 flex flex-col gap-2 sm:flex-row">
             <button
-              className="rounded-md bg-amber-700 px-4 py-2 text-sm font-bold text-white"
+              className="app-primary-button text-sm"
               onClick={() => {
                 setInput((current) => ({ ...current, ...localDraftToResume.input }));
                 setLastSavedAt(localDraftToResume.savedAt);
@@ -746,7 +802,7 @@ export default function ModuStartupGenerator() {
               이어서 작성
             </button>
             <button
-              className="rounded-md border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-900"
+              className="app-secondary-button text-sm"
               onClick={() => {
                 clearModuStartupDraftFromLocal();
                 setLocalDraftToResume(null);
@@ -761,12 +817,12 @@ export default function ModuStartupGenerator() {
       ) : null}
 
       {submittedSubmission ? (
-        <section className="no-print mb-5 rounded-lg border border-green-200 bg-green-50 p-5 shadow-sm">
+        <section className="app-surface no-print mb-5 border-green-200 bg-green-50 p-5 sm:p-6" aria-live="polite">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
-              <p className="text-sm font-semibold text-green-700">제출 완료</p>
-              <h2 className="mt-1 text-xl font-bold text-gray-950">
-                모두의창업 초안이 운영 시스템에 접수되었습니다.
+              <p className="text-sm font-bold text-green-700">제출 완료</p>
+              <h2 className="mt-1 text-xl font-bold text-[#191f28]">
+                제출이 정상적으로 접수됐어요
               </h2>
               <p className="mt-2 text-sm leading-6 text-green-900">
                 제출번호 {submittedSubmission.id.slice(0, 8).toUpperCase()} ·{" "}
@@ -775,12 +831,12 @@ export default function ModuStartupGenerator() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Link
-                className="rounded-md bg-green-700 px-4 py-2 text-sm font-bold text-white"
+                className="app-primary-button inline-flex items-center text-sm"
                 href={`/modu-startup/preview/${submittedSubmission.id}`}
               >
                 제출물 열람
               </Link>
-              <Link className="rounded-md border border-green-300 px-4 py-2 text-sm font-semibold text-green-800" href="/participant">
+              <Link className="app-secondary-button inline-flex items-center text-sm" href="/participant">
                 참여자 포털
               </Link>
             </div>
@@ -788,37 +844,43 @@ export default function ModuStartupGenerator() {
         </section>
       ) : null}
 
-      <div className="grid gap-5 xl:grid-cols-[420px_minmax(0,1fr)]">
-        <section className="no-print rounded-lg border border-gray-200 bg-white p-5 shadow-sm" onBlurCapture={draftSave.saveNow}>
-          <h2 className="text-lg font-bold text-gray-950">입력 정보</h2>
-          <p className="mt-2 text-sm leading-6 text-gray-600">
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+        <section className="app-surface no-print p-5 sm:p-6" onBlurCapture={draftSave.saveNow}>
+          <h2 className="text-lg font-bold text-[#191f28]">입력 정보</h2>
+          <p className="mt-2 text-sm leading-6 text-[#6b7684]">
             내용이 부족해도 생성은 가능하지만, 숫자 2개 이상과 직접 경험 한 문장을 넣으면 결과가 좋아집니다.
           </p>
 
-          {input.operation?.participantCode ? (
-            <div className="mt-4 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-900">
+          {hasParticipantContext ? (
+            <div className="mt-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-900">
               <p className="font-bold">운영 시스템 연동됨</p>
               <p className="mt-1">
-                참가자 코드 {input.operation.participantCode} · {input.operation.teamName || input.teamName || "팀 미배정"}
+                참가자 코드 {input.operation?.participantCode || "확인됨"} · {input.operation?.teamName || input.teamName || "팀 미배정"}
                 으로 제출 현황이 기록됩니다.
               </p>
             </div>
           ) : (
-            <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              참여자 포털에서 입장하면 교육명, 팀명, 참가자명이 자동 연동됩니다. 지금 화면에서도 직접 작성과 제출은 가능합니다.
+            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+              <p className="font-bold">참여자 입장이 필요해요</p>
+              <p className="mt-1 leading-6 text-amber-900">
+                교육 정보와 제출 대상을 안전하게 연결하기 위해 참여자 포털에서 먼저 입장해주세요. 작성 화면으로 다시 돌아오면 입력값이 자동 연동됩니다.
+              </p>
+              <Link className="app-secondary-button mt-3 inline-flex min-h-10 items-center border-amber-300 text-sm text-amber-900" href="/participant">
+                참여자 포털에서 입장
+              </Link>
             </div>
           )}
 
           <div className="mt-5">
             <div className="mb-4">
-              <div className="flex items-center justify-between text-xs font-semibold text-gray-500">
+              <div className="flex items-center justify-between text-xs font-semibold text-[#8b95a1]">
                 <span>
                   {currentStep + 1} / {moduStartupSteps.length} · {currentStepMeta.title}
                 </span>
                 <span>{progressPercent}%</span>
               </div>
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-100">
-                <div className="h-full rounded-full bg-blue-700 transition-all" style={{ width: `${progressPercent}%` }} />
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#f2f4f6]">
+                <div className="h-full rounded-full bg-[#3182f6] transition-all" style={{ width: `${progressPercent}%` }} />
               </div>
             </div>
 
@@ -826,12 +888,12 @@ export default function ModuStartupGenerator() {
               {moduStartupSteps.map((step, index) => (
                 <button
                   key={step.id}
-                  className={`rounded-md border px-3 py-2 text-left text-xs font-semibold transition-colors ${
+                  className={`min-h-10 rounded-lg border px-3 py-2 text-left text-xs font-bold transition-colors ${
                     currentStep === index
-                      ? "border-blue-700 bg-blue-700 text-white"
+                      ? "border-[#3182f6] bg-[#3182f6] text-white"
                       : index < currentStep
                         ? "border-green-200 bg-green-50 text-green-800"
-                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                        : "border-[#e5e8eb] bg-white text-[#6b7684] hover:bg-[#f7f8fa]"
                   }`}
                   onClick={() => moveStep(index)}
                   type="button"
@@ -841,14 +903,14 @@ export default function ModuStartupGenerator() {
               ))}
             </div>
 
-            <section className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-              <p className="text-sm font-bold text-gray-950">{currentStepMeta.title}</p>
-              <p className="mt-1 text-sm leading-6 text-gray-600">{currentStepMeta.description}</p>
+            <section className="rounded-lg border border-[#e5e8eb] bg-[#f7f8fa] p-4 sm:p-5">
+              <p className="text-sm font-bold text-[#191f28]">{currentStepMeta.title}</p>
+              <p className="mt-1 text-sm leading-6 text-[#6b7684]">{currentStepMeta.description}</p>
               <div className="mt-4">{renderStepFields()}</div>
             </section>
 
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-[#8b95a1]" aria-live="polite">
                 {draftSave.status === "saving"
                   ? "자동저장 중..."
                   : draftSave.status === "saved" && draftSave.lastSavedAt
@@ -861,7 +923,7 @@ export default function ModuStartupGenerator() {
               </p>
               <div className="flex gap-2">
                 <button
-                  className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 disabled:cursor-not-allowed disabled:text-gray-400"
+                  className="app-secondary-button min-h-11 text-sm disabled:cursor-not-allowed disabled:text-[#b0b8c1]"
                   disabled={currentStep === 0}
                   onClick={() => moveStep(currentStep - 1)}
                   type="button"
@@ -869,7 +931,7 @@ export default function ModuStartupGenerator() {
                   이전
                 </button>
                 <button
-                  className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-400"
+                  className="app-primary-button min-h-11 text-sm"
                   disabled={currentStep === moduStartupSteps.length - 1}
                   onClick={() => moveStep(currentStep + 1)}
                   type="button"
@@ -881,15 +943,15 @@ export default function ModuStartupGenerator() {
           </div>
         </section>
 
-        <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm" onBlurCapture={draftSave.saveNow}>
-          <div className="no-print flex flex-col gap-3 border-b border-gray-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
+        <section className="app-surface p-5 sm:p-6" onBlurCapture={draftSave.saveNow}>
+          <div className="no-print flex flex-col gap-3 border-b border-[#e5e8eb] pb-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-sm font-semibold text-blue-700">생성 결과 수정</p>
-              <h2 className="mt-1 text-xl font-bold text-gray-950">신청서 초안</h2>
+              <p className="text-sm font-bold text-[#3182f6]">생성 결과 수정</p>
+              <h2 className="mt-1 text-xl font-bold text-[#191f28]">신청서 초안</h2>
             </div>
             <div className="flex flex-wrap gap-2">
               <button
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 disabled:cursor-not-allowed disabled:text-gray-400"
+                className="app-secondary-button min-h-11 text-sm disabled:cursor-not-allowed disabled:text-[#b0b8c1]"
                 disabled={!draft}
                 onClick={copyDraft}
                 type="button"
@@ -897,7 +959,7 @@ export default function ModuStartupGenerator() {
                 전체 복사
               </button>
               <button
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 disabled:cursor-not-allowed disabled:text-gray-400"
+                className="app-secondary-button min-h-11 text-sm disabled:cursor-not-allowed disabled:text-[#b0b8c1]"
                 disabled={!draft}
                 onClick={() => window.print()}
                 type="button"
@@ -905,21 +967,22 @@ export default function ModuStartupGenerator() {
                 바로 인쇄
               </button>
               <button
-                className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-400"
-                disabled={!draft || submitting}
+                className="app-primary-button min-h-11 text-sm"
+                disabled={!draft || submitting || !hasParticipantContext}
                 onClick={submitDraft}
                 type="button"
               >
-                {submitting ? "제출 중..." : submittedSubmission ? "다시 제출" : "운영 시스템에 제출"}
+                {submitting ? "제출 중..." : !hasParticipantContext ? "참여자 입장 후 제출 가능" : submittedSubmission ? "다시 제출" : "운영 시스템에 제출"}
               </button>
             </div>
           </div>
 
           {!draft ? (
-            <div className="mt-6 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-8 text-center">
-              <p className="text-lg font-bold text-gray-900">아직 생성된 초안이 없습니다.</p>
-              <p className="mt-2 text-sm leading-6 text-gray-600">
-                왼쪽 입력값을 작성한 뒤 AI 초안 생성 버튼을 누르세요. 결과는 모두 textarea로 수정할 수 있습니다.
+            <div className="mt-6 rounded-lg border border-dashed border-[#d1d6db] bg-[#f7f8fa] p-8 text-center sm:p-12">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#e8f3ff] text-lg font-bold text-[#3182f6]">AI</span>
+              <p className="mt-3 text-lg font-bold text-[#191f28]">아직 생성된 초안이 없어요</p>
+              <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#6b7684]">
+                입력 단계를 마치고 AI 초안을 만들면 이곳에서 문장을 직접 수정할 수 있습니다.
               </p>
             </div>
           ) : (
@@ -937,7 +1000,7 @@ export default function ModuStartupGenerator() {
                   <span className="mb-1 block text-sm font-bold text-gray-900">{field.label}</span>
                   <span className="mb-2 block text-xs text-gray-500">{field.help}</span>
                   <textarea
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm leading-6 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                    className="app-input h-auto py-3 text-sm leading-6"
                     rows={field.rows}
                     value={draft[field.key]}
                     onChange={(event) => updateDraftText(field.key, event.target.value)}
@@ -950,7 +1013,7 @@ export default function ModuStartupGenerator() {
                   <span className="mb-1 block text-sm font-bold text-gray-900">{field.label}</span>
                   <span className="mb-2 block text-xs text-gray-500">{field.help}</span>
                   <textarea
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm leading-6 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                    className="app-input h-auto py-3 text-sm leading-6"
                     rows={field.rows}
                     value={draft[field.key].join("\n")}
                     onChange={(event) => updateDraftArray(field.key, event.target.value)}
@@ -969,14 +1032,40 @@ export default function ModuStartupGenerator() {
         </section>
       </div>
 
-      <section className="no-print mt-5 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-bold text-gray-950">반영한 작성 원칙</h2>
-        <div className="mt-3 grid gap-3 text-sm leading-6 text-gray-700 md:grid-cols-3">
-          <p className="rounded-md bg-gray-50 p-3">첫 문장은 흥미를 만들고, Q1은 무엇을 누구에게 어떻게 제공하는지 선명하게 씁니다.</p>
-          <p className="rounded-md bg-gray-50 p-3">Q2~Q4에는 직접 경험, 좁은 고객, 숫자 2개 이상, 객관 증거를 우선 배치합니다.</p>
-          <p className="rounded-md bg-gray-50 p-3">마지막은 개인 성과보다 고객, 지역, 사회에 남길 변화로 마무리합니다.</p>
+      <section className="app-surface no-print mt-5 p-5 sm:p-6">
+        <h2 className="text-lg font-bold text-[#191f28]">좋은 초안을 만드는 기준</h2>
+        <div className="mt-3 grid gap-3 text-sm leading-6 text-[#4e5968] md:grid-cols-3">
+          <p className="rounded-lg bg-[#f7f8fa] p-4"><strong className="block text-[#191f28]">한 줄로 선명하게</strong>무엇을 누구에게 어떻게 제공하는지 바로 이해되게 씁니다.</p>
+          <p className="rounded-lg bg-[#f7f8fa] p-4"><strong className="block text-[#191f28]">경험과 숫자로 구체적으로</strong>Q2~Q4에는 직접 경험, 좁은 고객, 객관 증거를 우선 배치합니다.</p>
+          <p className="rounded-lg bg-[#f7f8fa] p-4"><strong className="block text-[#191f28]">변화로 마무리</strong>개인 성과보다 고객, 지역, 사회에 남길 변화를 보여줍니다.</p>
         </div>
       </section>
+
+      {resetRequested ? (
+        <div className="no-print fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center" role="presentation">
+          <section
+            aria-describedby="reset-description"
+            aria-labelledby="reset-title"
+            aria-modal="true"
+            className="app-surface w-full max-w-md p-5 shadow-xl sm:p-6"
+            role="dialog"
+          >
+            <p className="text-sm font-bold text-red-600">작성 내용 초기화</p>
+            <h2 className="mt-1 text-xl font-bold text-[#191f28]" id="reset-title">새로 작성할까요?</h2>
+            <p className="mt-2 text-sm leading-6 text-[#6b7684]" id="reset-description">
+              현재 입력한 내용과 생성된 초안, 이 브라우저의 임시 저장이 모두 삭제됩니다. 이 작업은 되돌릴 수 없습니다.
+            </p>
+            <div className="mt-5 grid gap-2 sm:grid-cols-2">
+              <button className="app-secondary-button w-full text-sm" onClick={() => setResetRequested(false)} type="button">
+                계속 작성
+              </button>
+              <button className="min-h-11 rounded-lg bg-red-600 px-4 text-sm font-bold text-white hover:bg-red-700" onClick={performReset} type="button">
+                삭제하고 새로 작성
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }
