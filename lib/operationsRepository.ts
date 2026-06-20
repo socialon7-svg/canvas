@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { createSupabaseServerClient, hasSupabaseServerConfig } from "@/lib/supabaseServer";
 
 export type JsonObject = Record<string, unknown>;
@@ -30,6 +31,9 @@ export interface OperationsParticipantRow {
   team_id: string | null;
   participant_code: string;
   join_token: string;
+  join_token_expires_at: string;
+  join_token_revoked_at: string | null;
+  is_active: boolean;
   name: string;
   email: string;
   phone: string;
@@ -345,9 +349,10 @@ export async function updateParticipant(input: {
   school?: string;
   major?: string;
   role?: string;
+  isActive?: boolean;
 }) {
   const supabase = getClient();
-  const patch: Record<string, string | null> = {};
+  const patch: Record<string, string | boolean | null> = {};
   if (input.teamId !== undefined) patch.team_id = input.teamId;
   if (input.name !== undefined) patch.name = input.name;
   if (input.email !== undefined) patch.email = input.email;
@@ -355,6 +360,7 @@ export async function updateParticipant(input: {
   if (input.school !== undefined) patch.school = input.school;
   if (input.major !== undefined) patch.major = input.major;
   if (input.role !== undefined) patch.role = input.role;
+  if (input.isActive !== undefined) patch.is_active = input.isActive;
 
   const { data, error } = await supabase
     .from("participants")
@@ -382,6 +388,42 @@ export async function getParticipantByJoinToken(joinToken: string) {
 
   throwIfError(error);
   return data ?? null;
+}
+
+export async function reissueParticipantJoinToken(input: {
+  participantId: string;
+  expiresAt?: string;
+}) {
+  const supabase = getClient();
+  const defaultExpiry = new Date();
+  defaultExpiry.setDate(defaultExpiry.getDate() + 180);
+  const { data, error } = await supabase
+    .from("participants")
+    .update({
+      join_token: randomBytes(24).toString("hex"),
+      join_token_expires_at: input.expiresAt ?? defaultExpiry.toISOString(),
+      join_token_revoked_at: null,
+      is_active: true
+    })
+    .eq("id", input.participantId)
+    .select("*")
+    .single<OperationsParticipantRow>();
+
+  throwIfError(error);
+  return requireData(data, "Participant join link could not be reissued.");
+}
+
+export async function revokeParticipantJoinToken(participantId: string) {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from("participants")
+    .update({ join_token_revoked_at: new Date().toISOString() })
+    .eq("id", participantId)
+    .select("*")
+    .single<OperationsParticipantRow>();
+
+  throwIfError(error);
+  return requireData(data, "Participant join link could not be revoked.");
 }
 
 export async function touchParticipantSeen(participantId: string, joined = false) {
@@ -709,6 +751,24 @@ export async function listModuleSubmissions(filters: { programId?: string; modul
   return data ?? [];
 }
 
+export async function getModuleSubmission(submissionId: string) {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from("module_submissions")
+    .select("*")
+    .eq("id", submissionId)
+    .maybeSingle<ModuleSubmissionRow>();
+
+  throwIfError(error);
+  return data ?? null;
+}
+
+export async function deleteModuleSubmission(submissionId: string) {
+  const supabase = getClient();
+  const { error } = await supabase.from("module_submissions").delete().eq("id", submissionId);
+  throwIfError(error);
+}
+
 export async function updateModuleSubmissionPdfStatus(input: {
   submissionId: string;
   pdfStatus: "idle" | "generating" | "success" | "failed";
@@ -728,44 +788,6 @@ export async function updateModuleSubmissionPdfStatus(input: {
 
   throwIfError(error);
   return requireData(data, "모듈 제출 PDF 상태 저장 결과가 없습니다.");
-}
-
-export async function updateModuleSubmissionPdfStatusBySource(input: {
-  source: string;
-  sourceSubmissionId: string;
-  pdfStatus: "idle" | "generating" | "success" | "failed";
-  pdfErrorMessage?: string;
-}) {
-  const supabase = getClient();
-  const { data, error } = await supabase
-    .from("module_submissions")
-    .update({
-      pdf_status: input.pdfStatus,
-      pdf_error_message: input.pdfStatus === "failed" ? (input.pdfErrorMessage ?? "") : null,
-      pdf_generated_at: input.pdfStatus === "success" ? new Date().toISOString() : null
-    })
-    .contains("input_data", {
-      source: input.source,
-      sourceSubmissionId: input.sourceSubmissionId
-    })
-    .select("*")
-    .returns<ModuleSubmissionRow[]>();
-
-  throwIfError(error);
-  return data ?? [];
-}
-
-export async function deleteModuleSubmissionsBySource(input: { source: string; sourceSubmissionId: string }) {
-  const supabase = getClient();
-  const { error } = await supabase
-    .from("module_submissions")
-    .delete()
-    .contains("input_data", {
-      source: input.source,
-      sourceSubmissionId: input.sourceSubmissionId
-    });
-
-  throwIfError(error);
 }
 
 export async function createFeedback(input: {

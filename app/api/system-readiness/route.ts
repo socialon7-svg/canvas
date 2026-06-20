@@ -5,23 +5,22 @@ import { createSupabaseServerClient, hasSupabaseServerConfig } from "@/lib/supab
 const readinessChecks = [
   { key: "programs", label: "프로그램", table: "programs", columns: "id" },
   { key: "teams", label: "팀", table: "teams", columns: "id" },
-  { key: "participants", label: "참여자·입장 토큰", table: "participants", columns: "id,join_token" },
+  {
+    key: "participants",
+    label: "참여자 입장 토큰",
+    table: "participants",
+    columns: "id,join_token,join_token_expires_at,join_token_revoked_at,is_active"
+  },
   { key: "programModules", label: "프로그램 모듈", table: "program_modules", columns: "id" },
-  { key: "moduleProgress", label: "모듈 진행상태", table: "participant_module_progress", columns: "id" },
+  { key: "moduleProgress", label: "모듈 진행 상태", table: "participant_module_progress", columns: "id" },
   { key: "moduleDrafts", label: "서버 임시저장", table: "module_drafts", columns: "id" },
   {
     key: "moduleSubmissions",
-    label: "공통 제출·PDF 상태",
+    label: "통합 제출 및 PDF 상태",
     table: "module_submissions",
-    columns: "id,pdf_status,pdf_generated_at"
-  },
-  { key: "feedbacks", label: "피드백", table: "feedbacks", columns: "id" },
-  {
-    key: "leanCanvasPdf",
-    label: "린캔버스 PDF 상태",
-    table: "lean_canvas_submissions",
     columns: "id,pdf_status,pdf_error_message,pdf_generated_at"
-  }
+  },
+  { key: "feedbacks", label: "피드백", table: "feedbacks", columns: "id" }
 ] as const;
 
 export async function GET(request: Request) {
@@ -48,11 +47,12 @@ export async function GET(request: Request) {
       };
     })
   );
+  const ready = checks.every((check) => check.ready);
 
   return NextResponse.json({
-    ready: checks.every((check) => check.ready),
-    mode: checks.every((check) => check.ready) ? "server" : "demo",
-    code: checks.every((check) => check.ready) ? undefined : "SUPABASE_SCHEMA_NOT_READY",
+    ready,
+    mode: ready ? "server" : "demo",
+    code: ready ? undefined : "SUPABASE_SCHEMA_NOT_READY",
     checks
   });
 }

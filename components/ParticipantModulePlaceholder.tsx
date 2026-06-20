@@ -1739,9 +1739,22 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
             <h1 className="mt-2 text-2xl font-bold text-[#191f28] sm:text-3xl">{startupModule.title}</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-[#6b7684]">{startupModule.description}</p>
           </div>
-          <span className="mt-4 w-fit rounded-full bg-[#e8f3ff] px-3 py-1.5 text-sm font-bold text-[#1b64da]">
-            {statusLabel(currentStatus)}
-          </span>
+          <div className="mt-4 flex flex-wrap items-center gap-2 md:justify-end">
+            <span className="w-fit rounded-full bg-[#e8f3ff] px-3 py-1.5 text-sm font-bold text-[#1b64da]">
+              {statusLabel(currentStatus)}
+            </span>
+            <span
+              className={`w-fit rounded-full px-3 py-1.5 text-sm font-bold ${
+                draftSave.status === "error"
+                  ? "bg-red-50 text-red-700"
+                  : draftSave.fallbackMode
+                    ? "bg-amber-50 text-amber-800"
+                    : "bg-green-50 text-green-700"
+              }`}
+            >
+              {draftStatusText}
+            </span>
+          </div>
         </div>
       </header>
 
@@ -1755,7 +1768,7 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
         </p>
       ) : null}
 
-      <section className="mt-4 grid items-start gap-4 lg:grid-cols-[220px_minmax(0,1fr)] min-[1280px]:grid-cols-[230px_minmax(0,1fr)_300px]">
+      <section className="mt-4 grid items-start gap-4 lg:grid-cols-[200px_minmax(0,1fr)_260px] min-[1280px]:grid-cols-[230px_minmax(0,1fr)_300px]">
         <nav className="app-surface p-4 lg:sticky lg:top-4" aria-label="모듈 작성 단계">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -2021,7 +2034,7 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
           </section>
         </div>
 
-        <aside className="grid content-start gap-4 lg:col-span-2 lg:grid-cols-2 min-[1280px]:sticky min-[1280px]:top-4 min-[1280px]:col-span-1 min-[1280px]:grid-cols-1">
+        <aside className="grid content-start gap-4 lg:sticky lg:top-4 lg:grid-cols-1">
           {progress?.adminComment ? (
             <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 shadow-sm">
               <p className="text-sm font-bold text-amber-800">멘토·운영진 피드백</p>
@@ -2047,6 +2060,21 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
               <li>• 고객, 상황, 행동을 구체적으로 적어주세요.</li>
               <li>• 확인한 숫자나 현장 근거가 있으면 함께 적어주세요.</li>
               <li>• AI 결과는 그대로 제출하지 않고 직접 수정할 수 있습니다.</li>
+            </ul>
+          </section>
+
+          <section className="app-surface p-4">
+            <p className="text-sm font-bold text-[#333d4b]">제출 전 체크리스트</p>
+            <ul className="mt-3 space-y-2 text-sm leading-6 text-[#6b7684]">
+              <li className={inputData.trim() ? "font-semibold text-green-700" : ""}>
+                {inputData.trim() ? "완료" : "대기"} · 아이디어와 현장 정보를 입력했나요?
+              </li>
+              <li className={outputData.trim() ? "font-semibold text-green-700" : ""}>
+                {outputData.trim() ? "완료" : "대기"} · AI 초안을 직접 검토하고 수정했나요?
+              </li>
+              <li className={currentStatus === "completed" ? "font-semibold text-green-700" : ""}>
+                {currentStatus === "completed" ? "완료" : "대기"} · 검토 완료 버튼을 눌렀나요?
+              </li>
             </ul>
           </section>
 

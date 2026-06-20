@@ -978,6 +978,40 @@ export default function InternalPortal() {
     downloadCsv(`${currentProgram.programCode}-participants.csv`, rows);
   };
 
+  const downloadParticipantLinksCsv = () => {
+    if (!currentProgram) return;
+    const origin = getBrowserOrigin();
+    const rows = [
+      ["프로그램", "팀", "참여자명", "참여자 코드", "개인 입장 링크", "링크 만료일", "링크 상태"],
+      ...programParticipants.map((participant) => {
+        const team = programTeams.find((item) => item.id === participant.teamId);
+        const expired = participant.joinTokenExpiresAt
+          ? new Date(participant.joinTokenExpiresAt).getTime() <= Date.now()
+          : false;
+        const status = !participant.isActive
+          ? "비활성"
+          : participant.joinTokenRevokedAt
+            ? "회수됨"
+            : expired
+              ? "만료됨"
+              : "사용 가능";
+        return [
+          currentProgram.name,
+          team?.name || "",
+          participant.name || participant.code,
+          participant.code,
+          getParticipantJoinUrl(origin, participant.joinToken),
+          participant.joinTokenExpiresAt
+            ? new Date(participant.joinTokenExpiresAt).toLocaleString("ko-KR")
+            : "",
+          status
+        ];
+      })
+    ];
+    downloadCsv(`${currentProgram.programCode}-participant-links.csv`, rows);
+    setNotice("개인별 입장 링크 CSV를 다운로드했습니다.");
+  };
+
   const downloadSubmissionsCsv = () => {
     if (!currentProgram) return;
     const rows = [
@@ -1192,6 +1226,27 @@ export default function InternalPortal() {
       setNotice(`${participant.name || participant.code} 입장 안내를 클립보드에 복사했습니다.`);
     } catch {
       setNotice(text);
+    }
+  };
+
+  const reissueParticipantJoinLink = async (participant: HighViewParticipant) => {
+    try {
+      const result = await writeOperationsApi<{ participant: HighViewParticipant }>(
+        `/api/participants/${participant.id}/join-token`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ expiresInDays: 180 })
+        }
+      );
+      if (result.fallback || !result.data?.participant) {
+        throw new Error("데모 모드에서는 개인 링크를 재발급할 수 없습니다.");
+      }
+      await refreshSubmissions({ silentUnauthorized: true });
+      await copyParticipantJoinLink(result.data.participant);
+      setNotice(`${participant.name || participant.code}님의 새 입장 링크를 발급하고 복사했습니다.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "입장 링크 재발급에 실패했습니다.");
     }
   };
 
@@ -1992,6 +2047,7 @@ export default function InternalPortal() {
               <div className="mt-3 flex flex-wrap gap-2">
                 <button className="app-secondary-button min-h-9 px-3 text-xs" onClick={() => exportOperationsState(state)}>운영 데이터 백업</button>
                 <button className="app-secondary-button min-h-9 px-3 text-xs" onClick={downloadParticipantsCsv}>참여자 CSV</button>
+                <button className="app-secondary-button min-h-9 px-3 text-xs" onClick={downloadParticipantLinksCsv}>입장 링크 CSV</button>
                 <button className="app-secondary-button min-h-9 px-3 text-xs" onClick={downloadSubmissionsCsv}>제출 CSV</button>
                 <button className="app-secondary-button min-h-9 px-3 text-xs" onClick={downloadModuleProgressCsv}>모듈 CSV</button>
                 <button className="app-secondary-button min-h-9 px-3 text-xs" onClick={downloadReportCsv}>전체 결과 CSV</button>
@@ -2018,15 +2074,16 @@ export default function InternalPortal() {
       </header>
 
       {operationsFallbackMode || fallbackMode || systemReadiness?.ready === false ? (
-        <section className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          <p className="font-bold">데모 모드: 이 브라우저 임시 데이터입니다. 다른 기기와 공유되지 않습니다.</p>
+        <section className="mb-4 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-950">
+          <p className="font-bold">운영 금지: 현재 데이터는 이 브라우저에만 임시 저장되며 다른 운영진과 공유되지 않습니다.</p>
+          <p className="mt-1">현장 운영을 시작하기 전에 Supabase 연결과 필수 테이블을 복구하세요.</p>
           {systemReadiness?.ready === false ? (
             <>
               <p className="mt-2">
                 운영 DB 미준비 항목: {systemReadiness.checks.filter((check) => !check.ready).map((check) => check.label).join(", ")}
               </p>
               <p className="mt-1 text-xs leading-5">
-                Supabase SQL Editor에서 <code>001_operations_core.sql</code>과 <code>20260618010000_reconcile_pdf_status_schema.sql</code>을 순서대로 실행하세요.
+                Supabase SQL Editor에서 <code>001_operations_core.sql</code>과 <code>20260620010000_unify_submissions_and_secure_join_tokens.sql</code>까지 순서대로 실행하세요.
               </p>
             </>
           ) : null}
@@ -2452,6 +2509,15 @@ export default function InternalPortal() {
             <MetricCard label="입장 완료" value={operationalMetrics.entered} hint={`미입장 ${operationalMetrics.notEntered}명`} tone={operationalMetrics.notEntered > 0 ? "amber" : "green"} />
             <MetricCard label="제출 완료" value={operationalMetrics.submitted} hint={`미제출 ${operationalMetrics.notSubmitted}명`} tone={operationalMetrics.notSubmitted > 0 ? "amber" : "green"} />
           </section>
+          <section className="flex flex-col gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-bold text-blue-950">개인별 입장 링크 배포</p>
+              <p className="mt-1 text-sm text-blue-800">카카오톡, 이메일, 문자에 바로 붙여넣을 수 있는 링크 목록입니다.</p>
+            </div>
+            <button className="app-primary-button whitespace-nowrap" onClick={downloadParticipantLinksCsv} type="button">
+              입장 링크 CSV 다운로드
+            </button>
+          </section>
           <form className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm md:flex md:items-end md:gap-3" onSubmit={addInvites}>
             <label className="block">
               <span className="mb-1 block text-sm font-semibold text-gray-800">생성 인원</span>
@@ -2479,6 +2545,18 @@ export default function InternalPortal() {
                   <p className="mt-2 text-sm text-blue-950">
                     참여자 코드 <span className="font-mono font-bold">{selectedParticipantForEdit.code}</span>
                   </p>
+                  <p className="mt-1 text-xs font-semibold text-blue-800">
+                    입장 링크: {selectedParticipantForEdit.isActive === false
+                      ? "참여자 비활성"
+                      : selectedParticipantForEdit.joinTokenRevokedAt
+                        ? "회수됨"
+                        : selectedParticipantForEdit.joinTokenExpiresAt &&
+                            new Date(selectedParticipantForEdit.joinTokenExpiresAt).getTime() <= (lastSyncedAt?.getTime() || 0)
+                          ? "만료됨"
+                          : selectedParticipantForEdit.joinTokenExpiresAt
+                            ? `${new Date(selectedParticipantForEdit.joinTokenExpiresAt).toLocaleDateString("ko-KR")}까지 사용 가능`
+                            : "사용 가능"}
+                  </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
@@ -2487,6 +2565,13 @@ export default function InternalPortal() {
                     type="button"
                   >
                     입장 링크 복사
+                  </button>
+                  <button
+                    className="rounded-md border border-blue-200 bg-white px-4 py-2 text-sm font-bold text-blue-800"
+                    onClick={() => reissueParticipantJoinLink(selectedParticipantForEdit)}
+                    type="button"
+                  >
+                    새 링크 발급
                   </button>
                   <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white" type="submit">
                     참여자 저장

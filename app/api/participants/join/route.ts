@@ -39,6 +39,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "입장 정보를 찾을 수 없습니다." }, { status: 404 });
     }
 
+    if (!participant.is_active) {
+      return NextResponse.json(
+        { error: "비활성화된 참여자입니다. 운영진에게 문의해 주세요.", code: "PARTICIPANT_INACTIVE" },
+        { status: 403 }
+      );
+    }
+
     const [modules, team, touchedParticipant, progress, submissions, feedbacks] = await Promise.all([
       listProgramModules(program.id),
       getTeam(participant.team_id),

@@ -234,7 +234,7 @@ const configs: StartupModuleAutomationConfig[] = [
 ];
 
 const textSchema = z.string().trim().min(1);
-const draftSchema = z.object({
+export const automatedStartupModuleDraftSchema = z.object({
   title: textSchema,
   summary: textSchema,
   sections: z.array(z.object({ heading: textSchema, items: z.array(textSchema).min(1).max(6) })).min(1).max(8),
@@ -321,7 +321,7 @@ export function parseStartupModuleAutomationJson(
       items: normalizeList(matched?.items, [`${heading} 내용을 입력 자료와 실제 근거로 보완하세요.`])
     };
   });
-  return draftSchema.parse({
+  return automatedStartupModuleDraftSchema.parse({
     title: truncate(parsed.title, 120, config.title),
     summary: truncate(parsed.summary, 500, "입력 자료를 바탕으로 핵심 내용을 정리했습니다."),
     sections,

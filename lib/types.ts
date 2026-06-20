@@ -538,6 +538,9 @@ export interface HighViewParticipant {
   programId: string;
   code: string;
   joinToken?: string;
+  joinTokenExpiresAt?: string;
+  joinTokenRevokedAt?: string;
+  isActive?: boolean;
   name: string;
   email: string;
   phone: string;

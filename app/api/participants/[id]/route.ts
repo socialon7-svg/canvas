@@ -13,7 +13,8 @@ const participantUpdateSchema = z.object({
   phone: z.string().trim().optional(),
   school: z.string().trim().optional(),
   major: z.string().trim().optional(),
-  role: z.string().trim().optional()
+  role: z.string().trim().optional(),
+  isActive: z.boolean().optional()
 });
 
 export async function PATCH(request: Request, { params }: { params: Promise<unknown> }) {
@@ -26,7 +27,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<unkn
       participantId: id,
       ...body,
       teamId: authorization.mode === "participant" ? undefined : body.teamId,
-      role: authorization.mode === "participant" ? undefined : body.role
+      role: authorization.mode === "participant" ? undefined : body.role,
+      isActive: authorization.mode === "participant" ? undefined : body.isActive
     });
     return NextResponse.json({ participant: toParticipantDto(participant) });
   } catch (error) {

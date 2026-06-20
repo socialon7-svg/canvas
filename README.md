@@ -322,13 +322,17 @@ P0 안정화부터는 다음 공통 운영 테이블을 추가합니다.
 ```bash
 supabase/migrations/001_operations_core.sql
 supabase/migrations/20260618010000_reconcile_pdf_status_schema.sql
+supabase/migrations/20260620010000_unify_submissions_and_secure_join_tokens.sql
+supabase/migrations/20260620020000_deduplicate_module_submission_mirrors.sql
 ```
 
 `20260618010000_reconcile_pdf_status_schema.sql`은 기존 설치에도 PDF 상태 컬럼과 제약조건을 안전하게 보강합니다. `module_submissions.pdf_generated_at`도 이 migration에서 추가하므로 PDF 생성 성공 시각 저장 코드와 DB schema가 일치합니다.
 
-기존 `lean_canvas_submissions`, `modu_startup_submissions`는 호환을 위해 유지합니다. 신규 기능은 가능한 한 공통 `module_submissions`와 관련 운영 테이블을 사용하도록 점진적으로 이관합니다.
+`module_submissions`가 린캔버스, 모두의창업, 일반 모듈 제출과 PDF 상태의 단일 원천입니다. 기존 `lean_canvas_submissions`, `modu_startup_submissions`는 과거 데이터 보존과 이관을 위해서만 유지하며 신규 요청은 더 이상 두 테이블에 쓰지 않습니다.
 
-현재 린캔버스와 모두의창업 제출은 기존 제출 테이블에 먼저 저장한 뒤, 운영 context(`programId`, `participantId`)가 있는 경우 공통 `module_submissions`에도 mirror합니다. PDF 생성 상태 변경도 `sourceSubmissionId` 기준으로 공통 제출 테이블에 함께 반영합니다. 운영 context가 없거나 운영 테이블이 아직 준비되지 않은 레거시 제출은 기존 제출 흐름을 깨지 않도록 공통 mirror만 건너뜁니다.
+`20260620010000_unify_submissions_and_secure_join_tokens.sql`은 운영 context가 있는 기존 제출을 동일한 ID로 `module_submissions`에 이관합니다. 따라서 기존 미리보기 URL은 유지됩니다. 운영 context가 없어 참여자를 특정할 수 없는 과거 제출은 legacy 테이블에 보존되며 수동 매핑 대상입니다.
+
+참여자 개인 링크는 기본 180일 동안 유효합니다. 운영진은 `/internal`에서 링크 만료 상태를 확인하고 새 링크를 발급할 수 있습니다. 재발급하면 기존 토큰은 즉시 무효화됩니다.
 
 ### 9.4 운영 API 1차
 
@@ -366,15 +370,13 @@ P0 Phase 2에서 다음 서버 API를 추가했습니다.
 
 ## 10. 현재 MVP의 한계
 
-현재 MVP는 빠른 현장 검증을 위해 일부 데이터를 jsonb와 localStorage fallback 중심으로 처리합니다.
+현재 MVP는 운영 데이터는 Supabase를 단일 원천으로 사용하고, localStorage는 Supabase 미설정 시 데모 fallback으로만 사용합니다.
 
 현재 한계:
 
-- 모듈별 제출 테이블이 분리되어 있음
-- 기존 제출 테이블과 공통 `module_submissions`가 병행 운영 중임
-- 기존 제출과 공통 제출의 연결은 `input_data.sourceSubmissionId` 기반 mirror 구조임
+- 운영 context가 없는 일부 과거 legacy 제출은 자동 이관할 수 없음
 - Supabase Realtime 기반 실시간 관제는 아직 미적용
-- Schema-driven Form Renderer는 아직 미적용
+- 기존 1~14번 특화 모듈은 개별 renderer를 사용하며 신규 자동화 모듈부터 Module Runner 구조를 사용함
 - 기관용 대시보드, 멘토/강사 권한은 아직 미구현
 
 ## 11. 향후 로드맵

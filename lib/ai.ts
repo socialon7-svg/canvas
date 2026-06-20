@@ -39,11 +39,10 @@ import {
   type ValidationExperimentInput
 } from "@/lib/types";
 import { z } from "zod";
+import { getModuleRunnerDefinition } from "@/lib/moduleRunner";
 import {
-  buildStartupModuleAutomationPrompt,
   createMockStartupModuleDraft,
   getStartupModuleAutomationConfig,
-  parseStartupModuleAutomationJson,
   type AutomatedStartupModuleDraft,
   type AutomatedStartupModuleInput
 } from "@/lib/startupModuleAutomation";
@@ -2930,7 +2929,8 @@ export async function generateAutomatedStartupModuleDraft(
   input: AutomatedStartupModuleInput
 ): Promise<AutomatedStartupModuleDraft> {
   const config = getStartupModuleAutomationConfig(input.moduleSlug);
-  if (!config) throw new Error("지원하지 않는 자동화 모듈입니다.");
+  const runner = getModuleRunnerDefinition(input.moduleSlug);
+  if (!config || !runner) throw new Error("지원하지 않는 자동화 모듈입니다.");
   if (process.env.AI_MOCK === "true") return createMockStartupModuleDraft(input, config);
 
   try {
@@ -2942,10 +2942,10 @@ export async function generateAutomatedStartupModuleDraft(
           role: "system",
           content: "너는 근거와 가정을 구분하며 JSON 객체만 반환하는 창업교육 산출물 작성 도우미다."
         },
-        { role: "user", content: buildStartupModuleAutomationPrompt(input, config) }
+        { role: "user", content: runner.promptTemplate(input) }
       ]
     });
-    return parseStartupModuleAutomationJson(content, config);
+    return runner.outputSchema.parse(runner.parseOutput(content));
   } catch (error) {
     if (isAbortError(error)) throw new Error("AI 응답 시간이 초과되었습니다. 다시 시도해주세요.");
     throw error;

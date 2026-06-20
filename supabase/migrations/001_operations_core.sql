@@ -39,6 +39,9 @@ create table if not exists public.participants (
   team_id uuid references public.teams(id) on delete set null,
   participant_code text not null,
   join_token text not null unique default encode(extensions.gen_random_bytes(24), 'hex'),
+  join_token_expires_at timestamptz not null default (now() + interval '180 days'),
+  join_token_revoked_at timestamptz,
+  is_active boolean not null default true,
   name text not null,
   email text not null default '',
   phone text not null default '',
@@ -129,6 +132,9 @@ create table if not exists public.feedbacks (
 create index if not exists idx_teams_program_id on public.teams(program_id);
 create index if not exists idx_participants_program_id on public.participants(program_id);
 create index if not exists idx_participants_join_token on public.participants(join_token);
+create index if not exists idx_participants_active_join_token
+  on public.participants(join_token)
+  where is_active = true and join_token_revoked_at is null;
 create index if not exists idx_program_modules_program_id on public.program_modules(program_id);
 create index if not exists idx_module_submissions_program_module_submitted
   on public.module_submissions(program_id, module_slug, submitted_at desc);

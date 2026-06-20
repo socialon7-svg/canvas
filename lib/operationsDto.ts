@@ -40,7 +40,7 @@ function jsonText(value: Record<string, unknown>) {
 
 function sourceSubmissionId(submission?: ModuleSubmissionRow) {
   const value = submission?.input_data.sourceSubmissionId;
-  return typeof value === "string" ? value : "";
+  return typeof value === "string" ? value : submission?.id || "";
 }
 
 export function toParticipantDto(
@@ -80,6 +80,9 @@ export function toParticipantDto(
     programId: participant.program_id,
     code: participant.participant_code,
     joinToken: participant.join_token,
+    joinTokenExpiresAt: participant.join_token_expires_at,
+    joinTokenRevokedAt: participant.join_token_revoked_at || undefined,
+    isActive: participant.is_active,
     name: participant.name,
     email: participant.email,
     phone: participant.phone,
