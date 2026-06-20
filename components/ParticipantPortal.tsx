@@ -38,6 +38,7 @@ import {
 } from "@/lib/operationsStorage";
 
 type ParticipantTab = "home" | "profile" | "write" | "feedback";
+type ParticipantModuleFilter = "all" | "todo" | "needs_review" | "completed";
 
 interface ParticipantJoinResponse {
   program?: HighViewOperationsState["programs"][number];
@@ -53,6 +54,13 @@ const moduleStatusLabels: Record<ParticipantModuleProgressStatus, string> = {
   in_progress: "진행 중",
   completed: "완료",
   needs_review: "검토 필요"
+};
+
+const participantModuleFilterLabels: Record<ParticipantModuleFilter, string> = {
+  all: "전체",
+  todo: "할 일",
+  needs_review: "검토 필요",
+  completed: "완료"
 };
 
 const feedbackStatusLabels: Record<FeedbackStatus, string> = {
@@ -87,6 +95,7 @@ export default function ParticipantPortal() {
   const [joining, setJoining] = useState(false);
   const [sessionSyncing, setSessionSyncing] = useState(false);
   const [latestSubmission, setLatestSubmission] = useState<LeanCanvasSubmission | null>(null);
+  const [moduleFilter, setModuleFilter] = useState<ParticipantModuleFilter>("all");
   const [temporaryStorage, setTemporaryStorage] = useState<BrowserTemporaryStorageSummary>({
     draftCount: 0,
     fallbackSubmissionCount: 0,
@@ -184,6 +193,19 @@ export default function ParticipantPortal() {
   const completedModuleCount = visibleModules.filter((module) => getModuleProgressStatus(module) === "completed").length;
   const moduleProgressPercent = visibleModules.length ? Math.round((completedModuleCount / visibleModules.length) * 100) : 0;
   const nextIncompleteModule = visibleModules.find((module) => getModuleProgressStatus(module) !== "completed");
+  const moduleFilterCounts: Record<ParticipantModuleFilter, number> = {
+    all: visibleModules.length,
+    todo: visibleModules.filter((module) => ["not_started", "in_progress"].includes(getModuleProgressStatus(module))).length,
+    needs_review: visibleModules.filter((module) => getModuleProgressStatus(module) === "needs_review").length,
+    completed: completedModuleCount
+  };
+  const filteredVisibleModules = visibleModules.filter((module) => {
+    const status = getModuleProgressStatus(module);
+    if (moduleFilter === "todo") return status === "not_started" || status === "in_progress";
+    if (moduleFilter === "needs_review") return status === "needs_review";
+    if (moduleFilter === "completed") return status === "completed";
+    return true;
+  });
   const studentProgressSteps = [
     { label: "입장", done: Boolean(program && participant), hint: "코드 확인" },
     { label: "내 정보", done: hasProfile, hint: "이름/소속" },
@@ -950,10 +972,27 @@ export default function ParticipantPortal() {
                 {completedModuleCount}/{visibleModules.length}개 완료
               </span>
             </div>
+            <div className="mt-5 flex flex-wrap gap-2 border-t border-gray-200 pt-4" aria-label="모듈 상태 필터">
+              {(Object.keys(participantModuleFilterLabels) as ParticipantModuleFilter[]).map((filter) => (
+                <button
+                  aria-pressed={moduleFilter === filter}
+                  className={`rounded-full border px-3 py-1.5 text-sm font-bold transition-colors ${
+                    moduleFilter === filter
+                      ? "border-blue-700 bg-blue-700 text-white"
+                      : "border-gray-200 bg-white text-gray-600 hover:border-blue-300 hover:text-blue-700"
+                  }`}
+                  key={filter}
+                  onClick={() => setModuleFilter(filter)}
+                  type="button"
+                >
+                  {participantModuleFilterLabels[filter]} {moduleFilterCounts[filter]}
+                </button>
+              ))}
+            </div>
           </section>
-          {visibleModules.length ? (
+          {visibleModules.length && filteredVisibleModules.length ? (
             <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {visibleModules.map((module) => {
+              {filteredVisibleModules.map((module) => {
                 const moduleStatus = getModuleProgressStatus(module);
                 return (
                   <article key={module.id} className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
@@ -977,6 +1016,13 @@ export default function ParticipantPortal() {
                   </article>
                 );
               })}
+            </section>
+          ) : visibleModules.length ? (
+            <section className="rounded-lg border border-gray-200 bg-white p-8 text-center shadow-sm">
+              <p className="font-bold text-gray-950">이 상태에 해당하는 모듈이 없습니다.</p>
+              <button className="mt-3 text-sm font-bold text-blue-700" onClick={() => setModuleFilter("all")} type="button">
+                전체 모듈 보기
+              </button>
             </section>
           ) : (
             <section className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-sm leading-6 text-amber-900">

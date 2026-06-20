@@ -2812,6 +2812,7 @@ export default function InternalPortal() {
                     const teamName = programTeams.find((team) => team.id === row.participant.teamId)?.name || "미배정";
                     return (
                       <button
+                        aria-current={active ? "true" : undefined}
                         className={`w-full rounded-md border px-3 py-2.5 text-left transition-colors ${
                           active
                             ? "border-blue-300 bg-blue-50 text-blue-950"
@@ -2852,7 +2853,7 @@ export default function InternalPortal() {
                 </section>
               ) : (
                 filteredStatusRows.map((row) => {
-                  const { participant, submission, feedback } = row;
+                  const { participant, submission } = row;
                   const teamName = submission?.participant.teamName || programTeams.find((team) => team.id === participant.teamId)?.name || "팀명 없음";
                   const active = selectedStatusRow?.participant.id === participant.id;
                   return (
@@ -2861,7 +2862,7 @@ export default function InternalPortal() {
                       className={`rounded-lg border bg-white p-5 shadow-sm ${active ? "border-blue-300 ring-2 ring-blue-100" : "border-gray-200"}`}
                     >
                       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                        <button className="text-left" onClick={() => setSelectedParticipantId(participant.id)} type="button">
+                        <button aria-current={active ? "true" : undefined} className="text-left" onClick={() => setSelectedParticipantId(participant.id)} type="button">
                           <h2 className="text-lg font-bold text-gray-950">{submission?.participant.ideaName || "아직 제출 전"}</h2>
                           <p className="mt-1 text-sm text-gray-600">{teamName} · {participant.name || participant.code}</p>
                           <div className="mt-3 flex flex-wrap gap-2">
@@ -2904,56 +2905,12 @@ export default function InternalPortal() {
                           PDF 생성 실패 기록이 있습니다. PDF 재시도 버튼으로 다시 생성하고, 계속 실패하면 미리보기에서 바로 인쇄를 이용하세요.
                         </p>
                       ) : null}
-                      {submission ? (
-                        <form className="mt-4 grid gap-3" data-submission-id={submission.id} onSubmit={handleFeedback}>
-                          <div className="rounded-md border border-blue-100 bg-blue-50 p-3">
-                            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                              <div>
-                                <p className="text-sm font-bold text-blue-900">빠른 피드백 템플릿</p>
-                                <p className="mt-1 text-xs text-blue-800">버튼으로 초안을 채운 뒤 필요한 부분만 고쳐 저장하세요.</p>
-                              </div>
-                              <div className="flex flex-wrap gap-2">
-                                {feedbackQuickTemplates.map((template) => (
-                                  <button
-                                    key={template.label}
-                                    className="rounded-md border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-blue-800 transition-colors hover:bg-blue-100"
-                                    onClick={() => applyFeedbackTemplate(submission.id, template)}
-                                    type="button"
-                                  >
-                                    {template.label}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                          <textarea
-                            name="comment"
-                            className="min-h-24 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                            defaultValue={feedback?.comment || ""}
-                            placeholder="참여자가 다음 수정에 바로 쓸 수 있는 구체적 피드백"
-                          />
-                          <div className="grid gap-3 md:grid-cols-[1fr_180px_auto]">
-                            <input
-                              name="nextAction"
-                              className="rounded-md border border-gray-300 px-3 py-2 text-sm"
-                              defaultValue={feedback?.nextAction || ""}
-                              placeholder="다음 액션"
-                            />
-                            <select name="status" className="rounded-md border border-gray-300 px-3 py-2 text-sm" defaultValue={feedback?.status || "needs_revision"}>
-                              <option value="needs_revision">수정 필요</option>
-                              <option value="good">양호</option>
-                              <option value="excellent">우수</option>
-                            </select>
-                            <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white">피드백 저장</button>
-                          </div>
-                        </form>
-                      ) : null}
                     </article>
                   );
                 })
               )}
             </div>
-            <aside className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm lg:sticky lg:top-4 lg:self-start">
+            <aside className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:self-start lg:overflow-y-auto">
               <p className="text-sm font-semibold text-blue-700">선택 상세</p>
               {selectedStatusRow ? (
                 <div className="mt-3 space-y-4 text-sm">
@@ -3013,6 +2970,59 @@ export default function InternalPortal() {
                           {selectedStatusRow.pdfStatus === "failed" ? "PDF 재생성" : "PDF 다운로드"}
                         </Link>
                       </div>
+                      <form
+                        className="grid gap-3 border-t border-gray-200 pt-4"
+                        data-submission-id={selectedStatusRow.submission.id}
+                        key={selectedStatusRow.submission.id}
+                        onSubmit={handleFeedback}
+                      >
+                        <div>
+                          <p className="text-sm font-bold text-gray-950">선택 참여자 피드백</p>
+                          <p className="mt-1 text-xs leading-5 text-gray-500">템플릿을 선택한 뒤 참여자에게 필요한 내용만 수정하세요.</p>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {feedbackQuickTemplates.map((template) => (
+                            <button
+                              className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-bold text-blue-800 hover:bg-blue-100"
+                              key={template.label}
+                              onClick={() => applyFeedbackTemplate(selectedStatusRow.submission!.id, template)}
+                              type="button"
+                            >
+                              {template.label}
+                            </button>
+                          ))}
+                        </div>
+                        <label>
+                          <span className="mb-1 block text-xs font-bold text-gray-600">코멘트</span>
+                          <textarea
+                            className="min-h-28 w-full rounded-md border border-gray-300 px-3 py-2 text-sm leading-6"
+                            defaultValue={selectedStatusRow.feedback?.comment || ""}
+                            name="comment"
+                            placeholder="다음 수정에 바로 쓸 수 있는 구체적 피드백"
+                          />
+                        </label>
+                        <label>
+                          <span className="mb-1 block text-xs font-bold text-gray-600">다음 액션</span>
+                          <input
+                            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                            defaultValue={selectedStatusRow.feedback?.nextAction || ""}
+                            name="nextAction"
+                            placeholder="참여자가 다음에 할 행동"
+                          />
+                        </label>
+                        <div className="grid gap-2 sm:grid-cols-[1fr_auto] lg:grid-cols-1">
+                          <select
+                            className="rounded-md border border-gray-300 px-3 py-2 text-sm"
+                            defaultValue={selectedStatusRow.feedback?.status || "needs_revision"}
+                            name="status"
+                          >
+                            <option value="needs_revision">수정 필요</option>
+                            <option value="good">양호</option>
+                            <option value="excellent">우수</option>
+                          </select>
+                          <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white">피드백 저장</button>
+                        </div>
+                      </form>
                     </div>
                   ) : (
                     <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
