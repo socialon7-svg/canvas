@@ -3240,7 +3240,9 @@ export default function InternalPortal() {
         </main>
       ) : null}
 
-      {tab === "moduStartup" ? <ModuStartupAdminList embedded /> : null}
+      {tab === "moduStartup" ? (
+        <ModuStartupAdminList embedded programId={currentProgram?.id} programName={currentProgram?.name} />
+      ) : null}
 
       {tab === "moduleReviews" && currentProgram ? (
         <main className="grid gap-4">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { ModuStartupSubmission, PdfStatus } from "@/lib/types";
 import { deleteModuStartupSubmission, loadModuStartupSubmissions } from "@/lib/storage";
@@ -83,8 +83,10 @@ function downloadCsv(submissions: ModuStartupSubmission[]) {
   URL.revokeObjectURL(url);
 }
 
-async function loadServerSubmissions() {
-  const response = await fetch("/api/modu-startup-submissions", {
+async function loadServerSubmissions(programId?: string, programName?: string) {
+  const params = new URLSearchParams();
+  if (programId) params.set("programId", programId);
+  const response = await fetch(`/api/modu-startup-submissions${params.size ? `?${params.toString()}` : ""}`, {
     credentials: "same-origin"
   });
   const data = (await response.json()) as {
@@ -98,7 +100,11 @@ async function loadServerSubmissions() {
   }
 
   if (response.status === 503 && (data.code === "SUPABASE_NOT_CONFIGURED" || data.code === "SUPABASE_TABLE_NOT_READY")) {
-    return { submissions: loadModuStartupSubmissions(), fallback: true, unauthorized: false };
+    const localSubmissions = loadModuStartupSubmissions().filter((submission) => {
+      if (!programId && !programName) return true;
+      return submission.input.operation?.programId === programId || submission.input.programName === programName;
+    });
+    return { submissions: localSubmissions, fallback: true, unauthorized: false };
   }
 
   if (!response.ok || !data.submissions) {
@@ -108,7 +114,15 @@ async function loadServerSubmissions() {
   return { submissions: data.submissions, fallback: false, unauthorized: false };
 }
 
-export default function ModuStartupAdminList({ embedded = false }: { embedded?: boolean }) {
+export default function ModuStartupAdminList({
+  embedded = false,
+  programId,
+  programName
+}: {
+  embedded?: boolean;
+  programId?: string;
+  programName?: string;
+}) {
   const [submissions, setSubmissions] = useState<ModuStartupSubmission[]>([]);
   const [password, setPassword] = useState("");
   const [authorized, setAuthorized] = useState(embedded);
@@ -123,12 +137,12 @@ export default function ModuStartupAdminList({ embedded = false }: { embedded?: 
   const [pendingDelete, setPendingDelete] = useState<ModuStartupSubmission | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  async function refreshList(options: { silentUnauthorized?: boolean } = {}) {
+  const refreshList = useCallback(async (options: { silentUnauthorized?: boolean } = {}) => {
     setRefreshing(true);
     setError("");
     setNotice("");
     try {
-      const result = await loadServerSubmissions();
+      const result = await loadServerSubmissions(programId, programName);
       if (result.unauthorized) {
         setAuthorized(false);
         setSubmissions([]);
@@ -148,7 +162,7 @@ export default function ModuStartupAdminList({ embedded = false }: { embedded?: 
     } finally {
       setRefreshing(false);
     }
-  }
+  }, [programId, programName]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -163,7 +177,7 @@ export default function ModuStartupAdminList({ embedded = false }: { embedded?: 
     void refreshList({ silentUnauthorized: true }).finally(() => {
       if (hasAdminError) setError("암호가 올바르지 않습니다.");
     });
-  }, [embedded]);
+  }, [embedded, refreshList]);
 
   useEffect(() => {
     if (!urlReady) return;
@@ -380,6 +394,11 @@ export default function ModuStartupAdminList({ embedded = false }: { embedded?: 
           <p className="text-sm font-semibold text-blue-700">관리자 · 모두의창업</p>
           <h1 className="mt-1 text-3xl font-bold text-gray-950">모두의창업 제출 목록</h1>
           <p className="mt-1 text-sm text-gray-600">신청서 초안, 증거 문장, 정책 키워드, 영상 제출 여부를 빠르게 확인합니다.</p>
+          {programName ? (
+            <p className="mt-3 inline-flex rounded-full bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-800">
+              현재 프로그램 · {programName}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
           <button

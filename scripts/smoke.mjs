@@ -28,6 +28,12 @@ async function run() {
   const submissions = await request("/api/submissions");
   assert(submissions.status === 401, `비인증 제출 목록 응답이 401이 아닙니다: ${submissions.status}`);
 
+  const moduSubmissions = await request("/api/modu-startup-submissions?programId=smoke-program");
+  assert(
+    moduSubmissions.status === 401,
+    `비인증 모두의창업 제출 목록 응답이 401이 아닙니다: ${moduSubmissions.status}`
+  );
+
   const drafts = await request(
     "/api/module-drafts?programId=smoke-program&participantId=smoke-participant&moduleSlug=lean-canvas"
   );

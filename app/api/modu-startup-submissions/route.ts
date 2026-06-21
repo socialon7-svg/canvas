@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { adminUnauthorizedResponse, isAdminRequest } from "@/lib/adminAuth";
 import { toModuStartupSubmission } from "@/lib/moduleSubmissionAdapters";
 import { handleOperationsApiError } from "@/lib/operationsApiUtils";
@@ -14,6 +15,10 @@ interface ModuStartupSubmissionRequest {
   input: ModuStartupInput;
   draft: ModuStartupDraft;
 }
+
+const listQuerySchema = z.object({
+  programId: z.string().trim().max(200).optional()
+});
 
 function validateSubmission(body: ModuStartupSubmissionRequest) {
   if (!body.input?.programName?.trim()) return "교육명이 없습니다.";
@@ -75,7 +80,12 @@ export async function GET(request: Request) {
   if (!isAdminRequest(request)) return adminUnauthorizedResponse();
 
   try {
-    const rows = await listModuleSubmissions({ moduleSlug: "modu-startup-application" });
+    const url = new URL(request.url);
+    const query = listQuerySchema.parse({ programId: url.searchParams.get("programId") || undefined });
+    const rows = await listModuleSubmissions({
+      programId: query.programId,
+      moduleSlug: "modu-startup-application"
+    });
     return NextResponse.json({
       submissions: rows.filter((row) => row.status !== "draft").map(toModuStartupSubmission)
     });
