@@ -332,7 +332,7 @@ supabase/migrations/20260620020000_deduplicate_module_submission_mirrors.sql
 
 `20260620010000_unify_submissions_and_secure_join_tokens.sql`은 운영 context가 있는 기존 제출을 동일한 ID로 `module_submissions`에 이관합니다. 따라서 기존 미리보기 URL은 유지됩니다. 운영 context가 없어 참여자를 특정할 수 없는 과거 제출은 legacy 테이블에 보존되며 수동 매핑 대상입니다.
 
-참여자 개인 링크는 기본 180일 동안 유효합니다. 운영진은 `/internal`에서 링크 만료 상태를 확인하고 새 링크를 발급할 수 있습니다. 재발급하면 기존 토큰은 즉시 무효화됩니다.
+참여자 개인 링크는 기본 180일 동안 유효합니다. 운영진은 `/internal`에서 링크 만료 상태 확인, 새 링크 발급, 링크 회수, 참여자 활성/비활성 전환을 할 수 있습니다. 재발급하면 기존 토큰은 즉시 무효화됩니다. QR PNG는 브라우저에서 로컬 생성하므로 입장 토큰을 외부 QR 서비스로 전송하지 않습니다.
 
 ### 9.4 운영 API 1차
 

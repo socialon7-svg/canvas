@@ -402,8 +402,7 @@ export async function reissueParticipantJoinToken(input: {
     .update({
       join_token: randomBytes(24).toString("hex"),
       join_token_expires_at: input.expiresAt ?? defaultExpiry.toISOString(),
-      join_token_revoked_at: null,
-      is_active: true
+      join_token_revoked_at: null
     })
     .eq("id", input.participantId)
     .select("*")

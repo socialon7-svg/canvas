@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import QRCode from "qrcode";
 import StartupModuleSelector from "@/components/StartupModuleSelector";
 import StatusBadge from "@/components/StatusBadge";
 import InternalAiOperationsGenerator from "@/components/InternalAiOperationsGenerator";
@@ -253,6 +254,10 @@ function downloadCsv(filename: string, rows: Array<Array<unknown>>) {
 
 function getBrowserOrigin() {
   return typeof window === "undefined" ? "" : window.location.origin;
+}
+
+function safeDownloadName(value: string) {
+  return value.replace(/[^0-9A-Za-z가-힣_-]+/g, "-").replace(/^-+|-+$/g, "") || "participant";
 }
 
 function isInternalTab(value: string | null): value is InternalTab {
@@ -1248,6 +1253,79 @@ export default function InternalPortal() {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "입장 링크 재발급에 실패했습니다.");
     }
+  };
+
+  const downloadParticipantJoinQr = async (participant: HighViewParticipant) => {
+    if (!currentProgram) return;
+    const joinUrl = getParticipantJoinUrl(getBrowserOrigin(), participant.joinToken);
+    const expired = participant.joinTokenExpiresAt
+      ? new Date(participant.joinTokenExpiresAt).getTime() <= Date.now()
+      : false;
+    if (!joinUrl || participant.isActive === false || participant.joinTokenRevokedAt || expired) {
+      setError("사용 가능한 입장 링크가 없습니다. 참여자를 활성화하고 새 링크를 발급해 주세요.");
+      return;
+    }
+
+    try {
+      const dataUrl = await QRCode.toDataURL(joinUrl, {
+        width: 640,
+        margin: 3,
+        errorCorrectionLevel: "M",
+        color: { dark: "#191f28", light: "#ffffff" }
+      });
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = `${safeDownloadName(currentProgram.programCode)}-${safeDownloadName(
+        participant.name || participant.code
+      )}-join-qr.png`;
+      link.click();
+      setNotice(`${participant.name || participant.code}님의 입장 QR을 다운로드했습니다.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "입장 QR 생성에 실패했습니다.");
+    }
+  };
+
+  const revokeParticipantJoinLink = (participant: HighViewParticipant) => {
+    setPendingConfirmation({
+      title: "이 참여자의 입장 링크를 회수할까요?",
+      description: `${participant.name || participant.code}님의 현재 개인 링크는 즉시 사용할 수 없게 됩니다. 참여자 코드를 이용한 입장은 계속 가능합니다.`,
+      confirmLabel: "링크 회수",
+      action: async () => {
+        const result = await writeOperationsApi<{ participant: HighViewParticipant }>(
+          `/api/participants/${participant.id}/join-token`,
+          { method: "DELETE" }
+        );
+        if (result.fallback) throw new Error("데모 모드에서는 입장 링크를 회수할 수 없습니다.");
+        await refreshSubmissions({ silentUnauthorized: true });
+        setNotice(`${participant.name || participant.code}님의 입장 링크를 회수했습니다.`);
+      }
+    });
+  };
+
+  const toggleParticipantActive = (participant: HighViewParticipant) => {
+    const nextActive = participant.isActive === false;
+    setPendingConfirmation({
+      title: nextActive ? "이 참여자를 다시 활성화할까요?" : "이 참여자를 비활성화할까요?",
+      description: nextActive
+        ? `${participant.name || participant.code}님이 유효한 개인 링크 또는 코드로 다시 입장할 수 있습니다.`
+        : `${participant.name || participant.code}님은 개인 링크와 참여자 코드 모두로 입장할 수 없게 됩니다. 제출 데이터는 삭제되지 않습니다.`,
+      confirmLabel: nextActive ? "참여자 활성화" : "참여자 비활성화",
+      action: async () => {
+        const result = await writeOperationsApi<{ participant: HighViewParticipant }>(
+          `/api/participants/${participant.id}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ isActive: nextActive })
+          }
+        );
+        if (result.fallback) throw new Error("데모 모드에서는 참여자 상태를 변경할 수 없습니다.");
+        await refreshSubmissions({ silentUnauthorized: true });
+        setNotice(
+          `${participant.name || participant.code}님을 ${nextActive ? "활성화" : "비활성화"}했습니다.`
+        );
+      }
+    });
   };
 
   const copyPdfIssueMessage = async () => {
@@ -2573,6 +2651,31 @@ export default function InternalPortal() {
                   >
                     새 링크 발급
                   </button>
+                  <button
+                    className="rounded-md border border-blue-200 bg-white px-4 py-2 text-sm font-bold text-blue-800"
+                    onClick={() => downloadParticipantJoinQr(selectedParticipantForEdit)}
+                    type="button"
+                  >
+                    QR 다운로드
+                  </button>
+                  <button
+                    className="rounded-md border border-amber-200 bg-white px-4 py-2 text-sm font-bold text-amber-800"
+                    onClick={() => revokeParticipantJoinLink(selectedParticipantForEdit)}
+                    type="button"
+                  >
+                    링크 회수
+                  </button>
+                  <button
+                    className={`rounded-md border bg-white px-4 py-2 text-sm font-bold ${
+                      selectedParticipantForEdit.isActive === false
+                        ? "border-green-200 text-green-700"
+                        : "border-red-200 text-red-700"
+                    }`}
+                    onClick={() => toggleParticipantActive(selectedParticipantForEdit)}
+                    type="button"
+                  >
+                    {selectedParticipantForEdit.isActive === false ? "참여자 활성화" : "참여자 비활성화"}
+                  </button>
                   <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white" type="submit">
                     참여자 저장
                   </button>
@@ -2677,7 +2780,12 @@ export default function InternalPortal() {
                   const moduleRow = moduleProgressRows.find((row) => row.participant.id === participant.id);
                   return (
                     <tr key={participant.id} className="border-t border-gray-200">
-                      <td className="px-4 py-3 font-semibold">{participant.code}</td>
+                      <td className="px-4 py-3 font-semibold">
+                        {participant.code}
+                        {participant.isActive === false ? (
+                          <span className="mt-1 block text-xs font-bold text-red-700">비활성</span>
+                        ) : null}
+                      </td>
                       <td className="px-4 py-3">{participant.name || "미등록"}<br /><span className="text-xs text-gray-500">{participant.email}</span></td>
                       <td className="px-4 py-3">{participant.school || "-"}<br /><span className="text-xs text-gray-500">{participant.major}</span></td>
                       <td className="px-4 py-3">{team?.name || "미배정"}</td>
@@ -2704,6 +2812,13 @@ export default function InternalPortal() {
                           type="button"
                         >
                           링크 복사
+                        </button>
+                        <button
+                          className="ml-1.5 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-bold text-gray-700"
+                          onClick={() => downloadParticipantJoinQr(participant)}
+                          type="button"
+                        >
+                          QR
                         </button>
                       </td>
                       <td className="px-4 py-3">
