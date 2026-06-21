@@ -7,6 +7,7 @@ import QRCode from "qrcode";
 import StartupModuleSelector from "@/components/StartupModuleSelector";
 import StatusBadge from "@/components/StatusBadge";
 import InternalAiOperationsGenerator from "@/components/InternalAiOperationsGenerator";
+import ModuStartupAdminList from "@/components/ModuStartupAdminList";
 import type {
   FeedbackStatus,
   HighViewFeedback,
@@ -47,12 +48,12 @@ import {
   saveOperationsState
 } from "@/lib/operationsStorage";
 
-type InternalTab = "dashboard" | "programs" | "participants" | "teams" | "submissions" | "moduleReviews" | "report";
+type InternalTab = "dashboard" | "programs" | "participants" | "teams" | "submissions" | "moduStartup" | "moduleReviews" | "report";
 type SubmissionFilter = "all" | "notEntered" | "submitted" | "notSubmitted" | "feedbackPending" | "feedbackDone" | "pdfFailed";
 type ModuleReviewFilter = "needsReview" | "inProgress" | "completed" | "all";
 type UiTone = "gray" | "blue" | "green" | "amber" | "red";
 
-const internalTabs: InternalTab[] = ["dashboard", "programs", "participants", "teams", "submissions", "moduleReviews", "report"];
+const internalTabs: InternalTab[] = ["dashboard", "programs", "participants", "teams", "submissions", "moduStartup", "moduleReviews", "report"];
 const submissionFilters: SubmissionFilter[] = ["all", "notEntered", "submitted", "notSubmitted", "feedbackPending", "feedbackDone", "pdfFailed"];
 const moduleReviewFilters: ModuleReviewFilter[] = ["needsReview", "inProgress", "completed", "all"];
 
@@ -2055,6 +2056,7 @@ export default function InternalPortal() {
     { key: "participants", label: "참여자" },
     { key: "teams", label: "팀" },
     { key: "submissions", label: "제출/피드백" },
+    { key: "moduStartup", label: "모두의창업" },
     { key: "moduleReviews", label: "모듈검토" },
     { key: "report", label: "결과보고" }
   ];
@@ -2129,7 +2131,7 @@ export default function InternalPortal() {
                 <button className="app-secondary-button min-h-9 px-3 text-xs" onClick={downloadSubmissionsCsv}>제출 CSV</button>
                 <button className="app-secondary-button min-h-9 px-3 text-xs" onClick={downloadModuleProgressCsv}>모듈 CSV</button>
                 <button className="app-secondary-button min-h-9 px-3 text-xs" onClick={downloadReportCsv}>전체 결과 CSV</button>
-                <Link className="app-secondary-button inline-flex min-h-9 items-center px-3 text-xs text-[#1b64da]" href="/admin/modu-startup">모두의창업 목록</Link>
+                <button className="app-secondary-button min-h-9 px-3 text-xs text-[#1b64da]" onClick={() => setTab("moduStartup")} type="button">모두의창업 목록</button>
                 {operationsFallbackMode ? (
                   <button className="app-secondary-button min-h-9 px-3 text-xs text-red-600" onClick={handleReset}>데모 초기화</button>
                 ) : null}
@@ -3237,6 +3239,8 @@ export default function InternalPortal() {
           </section>
         </main>
       ) : null}
+
+      {tab === "moduStartup" ? <ModuStartupAdminList embedded /> : null}
 
       {tab === "moduleReviews" && currentProgram ? (
         <main className="grid gap-4">

@@ -17,6 +17,14 @@ async function run() {
   assert([307, 308].includes(admin.status), `/admin 리다이렉트 상태가 올바르지 않습니다: ${admin.status}`);
   assert(adminLocation.includes("/internal?tab=submissions"), `/admin 이동 경로가 올바르지 않습니다: ${adminLocation}`);
 
+  const moduAdmin = await request("/admin/modu-startup");
+  const moduAdminLocation = moduAdmin.headers.get("location") || "";
+  assert([307, 308].includes(moduAdmin.status), `/admin/modu-startup 리다이렉트 상태가 올바르지 않습니다: ${moduAdmin.status}`);
+  assert(
+    moduAdminLocation.includes("/internal?tab=moduStartup"),
+    `/admin/modu-startup 이동 경로가 올바르지 않습니다: ${moduAdminLocation}`
+  );
+
   const submissions = await request("/api/submissions");
   assert(submissions.status === 401, `비인증 제출 목록 응답이 401이 아닙니다: ${submissions.status}`);
 

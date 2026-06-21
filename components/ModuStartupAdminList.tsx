@@ -108,10 +108,10 @@ async function loadServerSubmissions() {
   return { submissions: data.submissions, fallback: false, unauthorized: false };
 }
 
-export default function ModuStartupAdminList() {
+export default function ModuStartupAdminList({ embedded = false }: { embedded?: boolean }) {
   const [submissions, setSubmissions] = useState<ModuStartupSubmission[]>([]);
   const [password, setPassword] = useState("");
-  const [authorized, setAuthorized] = useState(false);
+  const [authorized, setAuthorized] = useState(embedded);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [fallbackMode, setFallbackMode] = useState(false);
@@ -120,6 +120,8 @@ export default function ModuStartupAdminList() {
   const [urlReady, setUrlReady] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<ModuStartupSubmission | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   async function refreshList(options: { silentUnauthorized?: boolean } = {}) {
     setRefreshing(true);
@@ -150,8 +152,8 @@ export default function ModuStartupAdminList() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const urlQuery = params.get("q") || "";
-    const urlFilter = params.get("reviewFilter");
+    const urlQuery = params.get(embedded ? "moduQ" : "q") || "";
+    const urlFilter = params.get(embedded ? "moduReviewFilter" : "reviewFilter");
     const hasAdminError = params.get("adminError") === "1";
 
     if (urlQuery) setQuery(urlQuery);
@@ -161,25 +163,27 @@ export default function ModuStartupAdminList() {
     void refreshList({ silentUnauthorized: true }).finally(() => {
       if (hasAdminError) setError("암호가 올바르지 않습니다.");
     });
-  }, []);
+  }, [embedded]);
 
   useEffect(() => {
     if (!urlReady) return;
 
     const params = new URLSearchParams(window.location.search);
     const trimmedQuery = query.trim();
+    const queryKey = embedded ? "moduQ" : "q";
+    const filterKey = embedded ? "moduReviewFilter" : "reviewFilter";
     params.delete("adminError");
 
     if (trimmedQuery) {
-      params.set("q", trimmedQuery);
+      params.set(queryKey, trimmedQuery);
     } else {
-      params.delete("q");
+      params.delete(queryKey);
     }
 
     if (reviewFilter !== "all") {
-      params.set("reviewFilter", reviewFilter);
+      params.set(filterKey, reviewFilter);
     } else {
-      params.delete("reviewFilter");
+      params.delete(filterKey);
     }
 
     const nextSearch = params.toString();
@@ -189,7 +193,7 @@ export default function ModuStartupAdminList() {
     if (nextUrl !== currentUrl) {
       window.history.replaceState(null, "", nextUrl);
     }
-  }, [query, reviewFilter, urlReady]);
+  }, [embedded, query, reviewFilter, urlReady]);
 
   const login = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -228,26 +232,39 @@ export default function ModuStartupAdminList() {
   };
 
   const removeSubmission = async (submission: ModuStartupSubmission) => {
-    const label = submission.input.teamName || submission.input.ideaTitle || "선택한 제출물";
-    if (!window.confirm(`${label} 모두의창업 제출물을 삭제할까요?\n삭제 후에는 목록에서 바로 사라집니다.`)) return;
+    setPendingDelete(submission);
+  };
 
-    if (fallbackMode) {
-      setSubmissions(deleteModuStartupSubmission(submission.id));
-      return;
+  const confirmRemoveSubmission = async () => {
+    if (!pendingDelete || deleting) return;
+    const submission = pendingDelete;
+    setDeleting(true);
+    setError("");
+
+    try {
+      if (fallbackMode) {
+        setSubmissions(deleteModuStartupSubmission(submission.id));
+        setPendingDelete(null);
+        setNotice("데모 모드 제출물을 이 브라우저에서 삭제했습니다.");
+        return;
+      }
+
+      const response = await fetch(`/api/modu-startup-submissions/${submission.id}/delete`, {
+        method: "POST",
+        credentials: "same-origin"
+      });
+      const data = (await response.json()) as { ok?: boolean; error?: string };
+
+      if (!response.ok || !data.ok) throw new Error(data.error || "삭제에 실패했습니다.");
+
+      setSubmissions((current) => current.filter((item) => item.id !== submission.id));
+      setPendingDelete(null);
+      setNotice("모두의창업 제출물을 삭제했습니다.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "삭제에 실패했습니다.");
+    } finally {
+      setDeleting(false);
     }
-
-    const response = await fetch(`/api/modu-startup-submissions/${submission.id}/delete`, {
-      method: "POST",
-      credentials: "same-origin"
-    });
-    const data = (await response.json()) as { ok?: boolean; error?: string };
-
-    if (!response.ok || !data.ok) {
-      alert(data.error || "삭제에 실패했습니다.");
-      return;
-    }
-
-    setSubmissions((current) => current.filter((item) => item.id !== submission.id));
   };
 
   const normalizedQuery = query.trim().toLowerCase();
@@ -327,7 +344,7 @@ export default function ModuStartupAdminList() {
           <p className="text-sm font-semibold text-blue-700">관리자</p>
           <h1 className="mt-1 text-2xl font-bold text-gray-950">모두의창업 제출 목록 로그인</h1>
           <form action="/api/admin-login" className="mt-6 space-y-4" method="post" onSubmit={login}>
-            <input name="nextPath" type="hidden" value="/admin/modu-startup" />
+            <input name="nextPath" type="hidden" value="/internal?tab=moduStartup" />
             <label>
               <span className="mb-1 block text-sm font-semibold text-gray-800">암호</span>
               <input
@@ -357,7 +374,7 @@ export default function ModuStartupAdminList() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-5 py-8">
+    <div className={embedded ? "grid gap-4" : "mx-auto max-w-6xl px-5 py-8"}>
       <header className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="text-sm font-semibold text-blue-700">관리자 · 모두의창업</p>
@@ -373,15 +390,17 @@ export default function ModuStartupAdminList() {
           >
             {refreshing ? "새로고침 중..." : "목록 새로고침"}
           </button>
-          <Link className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" href="/admin">
+          <Link className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" href="/internal?tab=submissions">
             린캔버스 목록
           </Link>
-          <form action="/api/admin-logout" method="post" onSubmit={logout}>
-            <input name="nextPath" type="hidden" value="/admin/modu-startup" />
-            <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" type="submit">
-              로그아웃
-            </button>
-          </form>
+          {!embedded ? (
+            <form action="/api/admin-logout" method="post" onSubmit={logout}>
+              <input name="nextPath" type="hidden" value="/internal?tab=moduStartup" />
+              <button className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" type="submit">
+                로그아웃
+              </button>
+            </form>
+          ) : null}
         </div>
       </header>
 
@@ -533,6 +552,43 @@ export default function ModuStartupAdminList() {
           </div>
         )}
       </main>
+      {pendingDelete ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-4 sm:items-center" role="presentation">
+          <section
+            aria-labelledby="modu-delete-title"
+            aria-modal="true"
+            className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl"
+            role="dialog"
+          >
+            <p className="text-sm font-bold text-red-700">삭제 후 복구할 수 없습니다</p>
+            <h2 className="mt-1 text-xl font-bold text-gray-950" id="modu-delete-title">
+              모두의창업 제출물을 삭제할까요?
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-gray-600">
+              {pendingDelete.input.teamName || pendingDelete.input.participantName || pendingDelete.input.ideaTitle || "선택한 제출물"}의
+              신청서 초안과 PDF 상태가 운영 목록에서 삭제됩니다.
+            </p>
+            <div className="mt-5 grid grid-cols-2 gap-2">
+              <button
+                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-bold text-gray-700"
+                disabled={deleting}
+                onClick={() => setPendingDelete(null)}
+                type="button"
+              >
+                취소
+              </button>
+              <button
+                className="rounded-md bg-red-700 px-4 py-2 text-sm font-bold text-white disabled:bg-gray-400"
+                disabled={deleting}
+                onClick={confirmRemoveSubmission}
+                type="button"
+              >
+                {deleting ? "삭제 중..." : "제출물 삭제"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

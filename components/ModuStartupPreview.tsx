@@ -197,7 +197,7 @@ export default function ModuStartupPreview({ id }: { id: string }) {
         <section className="rounded-lg border border-red-200 bg-red-50 p-6 text-red-800">
           <h1 className="text-xl font-bold">제출물을 열 수 없습니다.</h1>
           <p className="mt-2 text-sm">{error || "제출물이 없습니다."}</p>
-          <Link className="mt-4 inline-flex rounded-md bg-white px-4 py-2 text-sm font-bold text-red-700" href="/admin/modu-startup">
+          <Link className="mt-4 inline-flex rounded-md bg-white px-4 py-2 text-sm font-bold text-red-700" href="/internal?tab=moduStartup">
             목록으로
           </Link>
         </section>
@@ -234,7 +234,7 @@ export default function ModuStartupPreview({ id }: { id: string }) {
           <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white" onClick={() => window.print()} type="button">
             바로 인쇄
           </button>
-          <Link className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" href="/admin/modu-startup">
+          <Link className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold" href="/internal?tab=moduStartup">
             관리자 목록
           </Link>
         </div>
