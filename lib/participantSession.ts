@@ -65,12 +65,16 @@ export function clearParticipantSession() {
   }
 }
 
-export async function fetchParticipantWorkspace() {
+export async function fetchParticipantWorkspace(signal?: AbortSignal) {
   const response = await fetch("/api/participants/session", {
     credentials: "same-origin",
-    cache: "no-store"
+    cache: "no-store",
+    signal
   });
   const data = (await response.json().catch(() => ({}))) as ParticipantWorkspaceResponse;
+  if (response.status === 401 || response.status === 404) {
+    clearParticipantSession();
+  }
   return { response, data };
 }
 

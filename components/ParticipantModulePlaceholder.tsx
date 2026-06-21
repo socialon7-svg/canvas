@@ -825,6 +825,7 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     const loaded = loadOperationsState();
     const session = readParticipantSession();
     const storedProgramId = session.programId;
@@ -860,7 +861,7 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
     };
 
     if (storedProgramId && storedParticipantId) {
-      fetchParticipantWorkspace()
+      fetchParticipantWorkspace(controller.signal)
         .then(async ({ response, data }) => {
           if (cancelled) return;
           if (response.ok && data.program && data.participant) {
@@ -891,7 +892,8 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
           }
           await restoreDraft(storedProgramId, storedParticipantId, progress?.updatedAt);
         })
-        .catch(async () => {
+        .catch(async (caught) => {
+          if (caught instanceof Error && caught.name === "AbortError") return;
           if (cancelled) return;
           await restoreDraft(storedProgramId, storedParticipantId, progress?.updatedAt);
           if (!cancelled) setNotice("네트워크 연결이 불안정해 이 브라우저의 임시 저장 내용을 표시합니다.");
@@ -899,6 +901,7 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
     }
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [slug]);
 

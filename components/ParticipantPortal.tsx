@@ -104,6 +104,7 @@ export default function ParticipantPortal() {
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     const loaded = loadOperationsState();
     const session = readParticipantSession();
     setState(loaded);
@@ -113,7 +114,7 @@ export default function ParticipantPortal() {
 
     if (session.programId && session.participantId) {
       setSessionSyncing(true);
-      fetchParticipantWorkspace()
+      fetchParticipantWorkspace(controller.signal)
         .then(({ response, data }) => {
           if (cancelled) return;
           if (response.ok && data.program && data.participant) {
@@ -140,7 +141,8 @@ export default function ParticipantPortal() {
             (data.code === "SUPABASE_NOT_CONFIGURED" || data.code === "SUPABASE_TABLE_NOT_READY");
           if (!isDemoFallback) setNotice("최신 운영 정보를 불러오지 못했습니다. 잠시 후 새로고침해주세요.");
         })
-        .catch(() => {
+        .catch((caught) => {
+          if (caught instanceof Error && caught.name === "AbortError") return;
           if (!cancelled) setNotice("네트워크 연결을 확인하는 동안 이 브라우저의 저장 정보를 표시합니다.");
         })
         .finally(() => {
@@ -149,6 +151,7 @@ export default function ParticipantPortal() {
     }
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, []);
 

@@ -124,9 +124,10 @@ const feedbackQuickTemplates: FeedbackQuickTemplate[] = [
   }
 ];
 
-async function loadServerSubmissions() {
+async function loadServerSubmissions(signal?: AbortSignal) {
   const response = await fetch("/api/submissions", {
-    credentials: "same-origin"
+    credentials: "same-origin",
+    signal
   });
   const data = (await response.json()) as {
     submissions?: LeanCanvasSubmission[];
@@ -170,8 +171,8 @@ function isDemoFallbackResponse(status: number, code?: string) {
   return status === 503 && (code === "SUPABASE_NOT_CONFIGURED" || code === "SUPABASE_TABLE_NOT_READY");
 }
 
-async function loadServerOperations() {
-  const response = await fetch("/api/programs?include=operations", { credentials: "same-origin" });
+async function loadServerOperations(signal?: AbortSignal) {
+  const response = await fetch("/api/programs?include=operations", { credentials: "same-origin", signal });
   const data = (await response.json()) as OperationsServerPayload;
   if (response.status === 401) return { state: null, fallback: false, unauthorized: true };
   if (isDemoFallbackResponse(response.status, data.code)) {
@@ -201,12 +202,46 @@ async function writeOperationsApi<T>(url: string, init: RequestInit) {
   return { data, fallback: false };
 }
 
-async function loadSystemReadiness() {
-  const response = await fetch("/api/system-readiness", { credentials: "same-origin" });
+async function loadSystemReadiness(signal?: AbortSignal) {
+  const response = await fetch("/api/system-readiness", { credentials: "same-origin", signal });
   if (response.status === 401) return null;
   const data = (await response.json()) as SystemReadinessPayload & { error?: string };
   if (!response.ok) throw new Error(data.error || "운영 환경 상태를 확인하지 못했습니다.");
   return data;
+}
+
+type InternalSnapshot = {
+  submissions: Awaited<ReturnType<typeof loadServerSubmissions>> | null;
+  operations: Awaited<ReturnType<typeof loadServerOperations>> | null;
+  readiness: Awaited<ReturnType<typeof loadSystemReadiness>> | null;
+  warning: string;
+};
+
+function isAbortError(error: unknown) {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+async function loadInternalSnapshot(signal?: AbortSignal): Promise<InternalSnapshot> {
+  const results = await Promise.allSettled([
+    loadServerSubmissions(signal),
+    loadServerOperations(signal),
+    loadSystemReadiness(signal)
+  ] as const);
+
+  const aborted = results.some((result) => result.status === "rejected" && isAbortError(result.reason));
+  if (aborted) throw new DOMException("운영 데이터 조회가 취소되었습니다.", "AbortError");
+
+  const labels = ["제출 목록", "프로그램·참여자", "운영 환경 상태"];
+  const failedLabels = results.flatMap((result, index) => result.status === "rejected" ? [labels[index]] : []);
+
+  return {
+    submissions: results[0].status === "fulfilled" ? results[0].value : null,
+    operations: results[1].status === "fulfilled" ? results[1].value : null,
+    readiness: results[2].status === "fulfilled" ? results[2].value : null,
+    warning: failedLabels.length
+      ? `일부 데이터를 불러오지 못했습니다: ${failedLabels.join(", ")}. 새로고침으로 다시 확인해주세요.`
+      : ""
+  };
 }
 
 function MetricCard({
@@ -329,6 +364,7 @@ export default function InternalPortal() {
   });
   const applyingUrlStateRef = useRef(false);
   const syncInFlightRef = useRef(false);
+  const refreshAbortRef = useRef<AbortController | null>(null);
   const [state, setState] = useState<HighViewOperationsState>(() => defaultOperationsState());
   const [currentProgramId, setCurrentProgramId] = useState(() => searchParams.get("programId") || "");
   const [tab, setTab] = useState<InternalTab>(() => {
@@ -346,6 +382,7 @@ export default function InternalPortal() {
   const [backgroundSyncing, setBackgroundSyncing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const [autoRefreshError, setAutoRefreshError] = useState("");
+  const [loadWarning, setLoadWarning] = useState("");
   const [submissionFilter, setSubmissionFilter] = useState<SubmissionFilter>(() => {
     const value = searchParams.get("submissionFilter");
     return isSubmissionFilter(value) ? value : "all";
@@ -388,6 +425,7 @@ export default function InternalPortal() {
   };
 
   useEffect(() => {
+    const controller = new AbortController();
     const loaded = loadOperationsState();
     const initialProgramId = initialUrlStateRef.current.programId;
     const nextProgramId = loaded.programs.some((program) => program.id === initialProgramId)
@@ -398,21 +436,28 @@ export default function InternalPortal() {
     setSelectedParticipantId(initialUrlStateRef.current.selectedParticipantId);
 
     setRefreshing(true);
-    Promise.all([loadServerSubmissions(), loadServerOperations(), loadSystemReadiness()])
-      .then(([submissionResult, operationsResult, readiness]) => {
-        if (submissionResult.unauthorized || operationsResult.unauthorized) {
+    loadInternalSnapshot(controller.signal)
+      .then(({ submissions: submissionResult, operations: operationsResult, readiness, warning }) => {
+        if (controller.signal.aborted) return;
+        if (!submissionResult && !operationsResult) {
+          throw new Error(warning || "운영 데이터를 불러오지 못했습니다.");
+        }
+        if (submissionResult?.unauthorized || operationsResult?.unauthorized) {
           setAuthorized(false);
           setSubmissions([]);
           return;
         }
         setAuthorized(true);
-        setSubmissions(submissionResult.submissions);
-        setFallbackMode(submissionResult.fallback);
-        setOperationsFallbackMode(operationsResult.fallback);
-        setSystemReadiness(readiness);
+        if (submissionResult) {
+          setSubmissions(submissionResult.submissions);
+          setFallbackMode(submissionResult.fallback);
+        }
+        if (operationsResult) setOperationsFallbackMode(operationsResult.fallback);
+        if (readiness) setSystemReadiness(readiness);
         setLastSyncedAt(new Date());
-        setAutoRefreshError("");
-        if (operationsResult.state) {
+        setAutoRefreshError(warning);
+        setLoadWarning(warning);
+        if (operationsResult?.state) {
           setState(operationsResult.state);
           const requestedId = initialUrlStateRef.current.programId;
           setCurrentProgramId(
@@ -421,12 +466,18 @@ export default function InternalPortal() {
               : operationsResult.state.programs[0]?.id || ""
           );
         }
-        if (submissionResult.fallback || operationsResult.fallback) {
+        if (submissionResult?.fallback || operationsResult?.fallback) {
           setNotice("데모 모드: 이 브라우저 임시 데이터입니다. 다른 기기와 공유되지 않습니다.");
         }
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "운영 데이터를 불러오지 못했습니다."))
-      .finally(() => setRefreshing(false));
+      .catch((err) => {
+        if (!isAbortError(err)) setError(err instanceof Error ? err.message : "운영 데이터를 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setRefreshing(false);
+      });
+
+    return () => controller.abort();
   }, []);
 
   const currentProgram = state.programs.find((program) => program.id === currentProgramId) || state.programs[0];
@@ -887,6 +938,8 @@ export default function InternalPortal() {
 
   const refreshSubmissions = useCallback(async (options: { silentUnauthorized?: boolean; background?: boolean } = {}) => {
     if (syncInFlightRef.current) return;
+    const controller = new AbortController();
+    refreshAbortRef.current = controller;
     syncInFlightRef.current = true;
     if (options.background) setBackgroundSyncing(true);
     else {
@@ -895,12 +948,11 @@ export default function InternalPortal() {
       setNotice("");
     }
     try {
-      const [result, operationsResult, readiness] = await Promise.all([
-        loadServerSubmissions(),
-        loadServerOperations(),
-        loadSystemReadiness()
-      ]);
-      if (result.unauthorized || operationsResult.unauthorized) {
+      const { submissions: result, operations: operationsResult, readiness, warning } = await loadInternalSnapshot(controller.signal);
+      if (!result && !operationsResult) {
+        throw new Error(warning || "운영 데이터를 불러오지 못했습니다.");
+      }
+      if (result?.unauthorized || operationsResult?.unauthorized) {
         setAuthorized(false);
         setSubmissions([]);
         if (!options.silentUnauthorized) {
@@ -909,13 +961,16 @@ export default function InternalPortal() {
         return;
       }
       setAuthorized(true);
-      setSubmissions(result.submissions);
-      setFallbackMode(result.fallback);
-      setOperationsFallbackMode(operationsResult.fallback);
-      setSystemReadiness(readiness);
+      if (result) {
+        setSubmissions(result.submissions);
+        setFallbackMode(result.fallback);
+      }
+      if (operationsResult) setOperationsFallbackMode(operationsResult.fallback);
+      if (readiness) setSystemReadiness(readiness);
       setLastSyncedAt(new Date());
-      setAutoRefreshError("");
-      if (operationsResult.state) {
+      setAutoRefreshError(warning);
+      setLoadWarning(warning);
+      if (operationsResult?.state) {
         setState(operationsResult.state);
         setCurrentProgramId((current) =>
           operationsResult.state?.programs.some((program) => program.id === current)
@@ -923,10 +978,11 @@ export default function InternalPortal() {
             : operationsResult.state?.programs[0]?.id || ""
         );
       }
-      if (result.fallback || operationsResult.fallback) {
+      if (result?.fallback || operationsResult?.fallback) {
         setNotice("데모 모드: 이 브라우저 임시 데이터입니다. 다른 기기와 공유되지 않습니다.");
       }
     } catch (err) {
+      if (isAbortError(err)) return;
       if (options.background) {
         setAutoRefreshError("자동 갱신이 지연되고 있습니다. 운영 데이터 새로고침을 눌러주세요.");
       } else {
@@ -934,10 +990,13 @@ export default function InternalPortal() {
       }
     } finally {
       syncInFlightRef.current = false;
+      if (refreshAbortRef.current === controller) refreshAbortRef.current = null;
       if (options.background) setBackgroundSyncing(false);
       else setRefreshing(false);
     }
   }, []);
+
+  useEffect(() => () => refreshAbortRef.current?.abort(), []);
 
   useEffect(() => {
     if (!authorized || operationsFallbackMode || fallbackMode) return;
@@ -2175,6 +2234,11 @@ export default function InternalPortal() {
       )}
 
       {error ? <p className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
+      {loadWarning ? (
+        <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+          {loadWarning}
+        </p>
+      ) : null}
       {notice ? <p className="mb-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">{notice}</p> : null}
 
       {tab === "dashboard" && currentProgram && stats ? (
