@@ -31,8 +31,11 @@ export function useDebouncedServerDraft<TDraftData extends Record<string, unknow
   const [lastSavedAt, setLastSavedAt] = useState("");
   const [error, setError] = useState("");
   const [fallbackMode, setFallbackMode] = useState(false);
+  const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine);
   const payloadRef = useRef({ programId, participantId, moduleSlug, draftData, currentStep });
   const lastSignatureRef = useRef("");
+  const statusRef = useRef<ModuleDraftSaveStatus>("idle");
+  const fallbackModeRef = useRef(false);
   const draftSignature = useMemo(() => JSON.stringify(draftData), [draftData]);
   const canSave = Boolean(enabled && shouldSave && programId && participantId && moduleSlug);
 
@@ -40,7 +43,7 @@ export function useDebouncedServerDraft<TDraftData extends Record<string, unknow
     payloadRef.current = { programId, participantId, moduleSlug, draftData, currentStep };
   }, [currentStep, draftData, moduleSlug, participantId, programId]);
 
-  const saveNow = useCallback(async () => {
+  const persistDraft = useCallback(async (force = false) => {
     const payload = payloadRef.current;
     if (!payload.programId || !payload.participantId || !payload.moduleSlug || !enabled || !shouldSave) {
       return;
@@ -50,8 +53,9 @@ export function useDebouncedServerDraft<TDraftData extends Record<string, unknow
       draftData: payload.draftData,
       currentStep: payload.currentStep
     });
-    if (signature === lastSignatureRef.current && status === "saved") return;
+    if (!force && signature === lastSignatureRef.current && statusRef.current === "saved") return;
 
+    statusRef.current = "saving";
     setStatus("saving");
     setError("");
     try {
@@ -64,29 +68,50 @@ export function useDebouncedServerDraft<TDraftData extends Record<string, unknow
       });
       lastSignatureRef.current = signature;
       setLastSavedAt(result.savedAt);
-      setFallbackMode(Boolean(result.fallback));
+      fallbackModeRef.current = Boolean(result.fallback);
+      setFallbackMode(fallbackModeRef.current);
+      statusRef.current = "saved";
       setStatus("saved");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "자동저장에 실패했습니다.");
+      statusRef.current = "error";
       setStatus("error");
     }
-  }, [enabled, shouldSave, status]);
+  }, [enabled, shouldSave]);
+
+  const saveNow = useCallback(() => persistDraft(true), [persistDraft]);
 
   useEffect(() => {
     if (!canSave) return;
 
     const timer = window.setTimeout(() => {
-      void saveNow();
+      void persistDraft(false);
     }, debounceMs);
 
     return () => window.clearTimeout(timer);
-  }, [canSave, currentStep, debounceMs, draftSignature, saveNow]);
+  }, [canSave, currentStep, debounceMs, draftSignature, persistDraft]);
+
+  useEffect(() => {
+    const handleOffline = () => setIsOnline(false);
+    const handleOnline = () => {
+      setIsOnline(true);
+      if (fallbackModeRef.current) void persistDraft(true);
+    };
+
+    window.addEventListener("offline", handleOffline);
+    window.addEventListener("online", handleOnline);
+    return () => {
+      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("online", handleOnline);
+    };
+  }, [persistDraft]);
 
   return {
     status,
     lastSavedAt,
     error,
     fallbackMode,
+    isOnline,
     saveNow
   };
 }

@@ -911,7 +911,9 @@ export default function ModuStartupGenerator() {
 
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs text-[#8b95a1]" aria-live="polite">
-                {draftSave.status === "saving"
+                {!draftSave.isOnline
+                  ? "오프라인 · 이 브라우저에 안전하게 저장합니다"
+                  : draftSave.status === "saving"
                   ? "자동저장 중..."
                   : draftSave.status === "saved" && draftSave.lastSavedAt
                     ? `${draftSave.fallbackMode ? "이 브라우저에" : "서버에"} 자동저장됨 · ${new Date(draftSave.lastSavedAt).toLocaleTimeString("ko-KR")}`

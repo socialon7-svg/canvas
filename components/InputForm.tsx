@@ -347,7 +347,9 @@ export default function InputForm({ requireParticipantSession = false }: { requi
           <span className="font-bold">{input.operation.participantCode}</span>, 프로그램 코드{" "}
           <span className="font-bold">{input.operation.programCode}</span>
           <span className="mt-1 block text-xs">
-            {draftSave.status === "saving"
+            {!draftSave.isOnline
+              ? "오프라인 · 이 브라우저에 안전하게 저장합니다."
+              : draftSave.status === "saving"
               ? "작성 내용을 자동저장 중입니다."
               : draftSave.status === "saved" && draftSave.lastSavedAt
                 ? `${draftSave.fallbackMode ? "이 브라우저에" : "서버에"} 자동저장됨 · ${new Date(draftSave.lastSavedAt).toLocaleTimeString("ko-KR")}`

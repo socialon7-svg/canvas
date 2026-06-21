@@ -191,7 +191,9 @@ export default function CanvasEditor() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="font-bold">각 항목은 한 줄에 하나씩, 최대 3개까지 입력할 수 있어요.</p>
           <span className="text-xs font-semibold">
-            {draftSave.status === "saving"
+            {!draftSave.isOnline
+              ? "오프라인 · 이 브라우저에 안전하게 저장합니다"
+              : draftSave.status === "saving"
               ? "자동저장 중"
               : draftSave.status === "saved" && draftSave.lastSavedAt
                 ? `${draftSave.fallbackMode ? "이 브라우저" : "서버"}에 저장됨 · ${new Date(draftSave.lastSavedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}`

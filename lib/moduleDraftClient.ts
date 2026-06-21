@@ -37,7 +37,7 @@ function canUseIdentity(identity: Partial<ModuleDraftIdentity>): identity is Mod
 
 function saveLocalModuleDraft<TDraftData extends Record<string, unknown>>(payload: ModuleDraftPayload<TDraftData>) {
   const savedAt = new Date().toISOString();
-  if (!isBrowser()) return savedAt;
+  if (!isBrowser()) return null;
 
   try {
     window.localStorage.setItem(
@@ -49,11 +49,19 @@ function saveLocalModuleDraft<TDraftData extends Record<string, unknown>>(payloa
         fallback: true
       })
     );
+    return savedAt;
+  } catch {
+    return null;
+  }
+}
+
+function clearLocalModuleDraft(identity: ModuleDraftIdentity) {
+  if (!isBrowser()) return;
+  try {
+    window.localStorage.removeItem(getLocalDraftKey(identity));
   } catch {
     // Browser storage may be blocked in private or embedded contexts.
   }
-
-  return savedAt;
 }
 
 function loadLocalModuleDraft<TDraftData extends Record<string, unknown>>(
@@ -76,6 +84,7 @@ export async function loadModuleDraft<TDraftData extends Record<string, unknown>
   identity: Partial<ModuleDraftIdentity>
 ): Promise<ModuleDraftRecord<TDraftData> | null> {
   if (!canUseIdentity(identity)) return null;
+  const localDraft = loadLocalModuleDraft<TDraftData>(identity);
 
   const params = new URLSearchParams({
     programId: identity.programId,
@@ -91,13 +100,20 @@ export async function loadModuleDraft<TDraftData extends Record<string, unknown>
     };
 
     if (response.status === 503 && (data.code === "SUPABASE_NOT_CONFIGURED" || data.code === "SUPABASE_TABLE_NOT_READY")) {
-      return loadLocalModuleDraft<TDraftData>(identity);
+      return localDraft;
     }
 
-    if (!response.ok) return loadLocalModuleDraft<TDraftData>(identity);
-    return data.draft ?? loadLocalModuleDraft<TDraftData>(identity);
+    if (!response.ok) return localDraft;
+    if (!data.draft) return localDraft;
+    if (!localDraft) return data.draft;
+
+    const serverSavedAt = Date.parse(data.draft.savedAt || "");
+    const localSavedAt = Date.parse(localDraft.savedAt || "");
+    return Number.isFinite(localSavedAt) && (!Number.isFinite(serverSavedAt) || localSavedAt > serverSavedAt)
+      ? localDraft
+      : data.draft;
   } catch {
-    return loadLocalModuleDraft<TDraftData>(identity);
+    return localDraft;
   }
 }
 
@@ -122,6 +138,7 @@ export async function saveModuleDraft<TDraftData extends Record<string, unknown>
 
     if (response.status === 503 && (data.code === "SUPABASE_NOT_CONFIGURED" || data.code === "SUPABASE_TABLE_NOT_READY")) {
       const savedAt = saveLocalModuleDraft(payload);
+      if (!savedAt) throw new Error("브라우저 임시 저장소를 사용할 수 없습니다.");
       return { ...payload, currentStep: payload.currentStep ?? 0, savedAt, fallback: true };
     }
 
@@ -129,6 +146,7 @@ export async function saveModuleDraft<TDraftData extends Record<string, unknown>
       throw new Error(data.error || "draft 저장 실패");
     }
 
+    clearLocalModuleDraft(payload);
     return data.draft;
   } catch (error) {
     const savedAt = saveLocalModuleDraft(payload);

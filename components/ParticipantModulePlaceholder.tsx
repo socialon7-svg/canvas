@@ -1407,7 +1407,9 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
       ? new Date(progress.updatedAt)
       : null;
   const draftStatusText =
-    draftSave.status === "saving"
+    !draftSave.isOnline
+      ? "오프라인 · 이 브라우저에 안전하게 저장합니다"
+      : draftSave.status === "saving"
       ? "자동 저장 중..."
       : draftSave.status === "error"
         ? "자동 저장 실패"
