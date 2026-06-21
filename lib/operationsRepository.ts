@@ -1,4 +1,8 @@
 import { randomBytes } from "node:crypto";
+import {
+  INTERRUPTED_PDF_ERROR_MESSAGE,
+  PDF_GENERATION_TIMEOUT_MS
+} from "@/lib/pdfStatus";
 import { createSupabaseServerClient, hasSupabaseServerConfig } from "@/lib/supabaseServer";
 
 export type JsonObject = Record<string, unknown>;
@@ -130,6 +134,46 @@ function throwIfError(error: unknown) {
   if (error) {
     throw error;
   }
+}
+
+async function recoverInterruptedPdfGenerations(
+  supabase: ReturnType<typeof getClient>,
+  rows: ModuleSubmissionRow[]
+) {
+  const cutoff = new Date(Date.now() - PDF_GENERATION_TIMEOUT_MS).toISOString();
+  const staleIds = rows
+    .filter((row) => row.pdf_status === "generating" && row.updated_at < cutoff)
+    .map((row) => row.id);
+
+  if (staleIds.length === 0) return rows;
+
+  const recoveredAt = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("module_submissions")
+    .update({
+      pdf_status: "failed",
+      pdf_error_message: INTERRUPTED_PDF_ERROR_MESSAGE,
+      pdf_generated_at: null,
+      updated_at: recoveredAt
+    })
+    .in("id", staleIds)
+    .eq("pdf_status", "generating")
+    .lt("updated_at", cutoff)
+    .select("id");
+
+  throwIfError(error);
+  const recoveredIds = new Set((data ?? []).map((row) => String(row.id)));
+  return rows.map((row) =>
+    recoveredIds.has(row.id)
+      ? {
+          ...row,
+          pdf_status: "failed",
+          pdf_error_message: INTERRUPTED_PDF_ERROR_MESSAGE,
+          pdf_generated_at: null,
+          updated_at: recoveredAt
+        }
+      : row
+  );
 }
 
 function requireData<T>(data: T | null, message: string) {
@@ -747,7 +791,7 @@ export async function listModuleSubmissions(filters: { programId?: string; modul
 
   const { data, error } = await query.returns<ModuleSubmissionRow[]>();
   throwIfError(error);
-  return data ?? [];
+  return recoverInterruptedPdfGenerations(supabase, data ?? []);
 }
 
 export async function getModuleSubmission(submissionId: string) {
@@ -759,7 +803,9 @@ export async function getModuleSubmission(submissionId: string) {
     .maybeSingle<ModuleSubmissionRow>();
 
   throwIfError(error);
-  return data ?? null;
+  if (!data) return null;
+  const [recovered] = await recoverInterruptedPdfGenerations(supabase, [data]);
+  return recovered;
 }
 
 export async function deleteModuleSubmission(submissionId: string) {

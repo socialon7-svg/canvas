@@ -8,6 +8,7 @@ import StatusBadge from "@/components/StatusBadge";
 import type { LeanCanvasSubmission, PdfStatus } from "@/lib/types";
 import { getSubmission, updateSubmissionPdfStatus } from "@/lib/storage";
 import { getFeedbackProgressStatus, getSubmissionStatus } from "@/lib/status";
+import { INTERRUPTED_PDF_ERROR_MESSAGE, isStalePdfGeneration } from "@/lib/pdfStatus";
 
 export default function PreviewClient({ id }: { id: string }) {
   const router = useRouter();
@@ -28,6 +29,15 @@ export default function PreviewClient({ id }: { id: string }) {
       setError("");
       setFallbackNotice("");
 
+      const applyLocalSubmission = (localSubmission: LeanCanvasSubmission) => {
+        const recovered = isStalePdfGeneration(localSubmission.pdfStatus, localSubmission.pdfStatusUpdatedAt)
+          ? updateSubmissionPdfStatus(id, "failed", INTERRUPTED_PDF_ERROR_MESSAGE) || localSubmission
+          : localSubmission;
+        setSubmission(recovered);
+        setPdfStatus(recovered.pdfStatus || "idle");
+        setPdfErrorMessage(recovered.pdfErrorMessage || "");
+      };
+
       try {
         const response = await fetch(`/api/submissions/${id}`);
         const data = (await response.json()) as {
@@ -45,9 +55,7 @@ export default function PreviewClient({ id }: { id: string }) {
 
         const localSubmission = getSubmission(id);
         if (localSubmission) {
-          setSubmission(localSubmission);
-          setPdfStatus(localSubmission.pdfStatus || "idle");
-          setPdfErrorMessage(localSubmission.pdfErrorMessage || "");
+          applyLocalSubmission(localSubmission);
           if (response.status === 503 && (data.code === "SUPABASE_NOT_CONFIGURED" || data.code === "SUPABASE_TABLE_NOT_READY")) {
             setFallbackNotice("중앙 저장소가 아직 설정되지 않아 이 브라우저의 임시 제출물을 표시합니다.");
           }
@@ -58,9 +66,7 @@ export default function PreviewClient({ id }: { id: string }) {
       } catch (err) {
         const localSubmission = getSubmission(id);
         if (localSubmission) {
-          setSubmission(localSubmission);
-          setPdfStatus(localSubmission.pdfStatus || "idle");
-          setPdfErrorMessage(localSubmission.pdfErrorMessage || "");
+          applyLocalSubmission(localSubmission);
           setFallbackNotice("서버 제출물 조회에 실패해 이 브라우저의 임시 제출물을 표시합니다.");
         } else {
           setError(err instanceof Error ? err.message : "제출물을 불러오지 못했습니다.");
@@ -95,15 +101,18 @@ export default function PreviewClient({ id }: { id: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pdfStatus: nextStatus, pdfErrorMessage: message })
       });
-      const data = (await response.json()) as { submission?: LeanCanvasSubmission };
+      const data = (await response.json()) as { submission?: LeanCanvasSubmission; error?: string };
       if (response.ok && data.submission) {
         setSubmission(data.submission);
         setPdfStatus(data.submission.pdfStatus || nextStatus);
         setPdfErrorMessage(data.submission.pdfErrorMessage || "");
+        return true;
       }
+      if (response.status !== 503) throw new Error(data.error || "PDF 상태를 서버에 저장하지 못했습니다.");
     } catch {
-      // localStorage fallback already reflects the latest PDF status.
+      setFallbackNotice("PDF 파일은 이 브라우저에서 만들 수 있지만 운영 상태 동기화에 실패했습니다. 네트워크 확인 후 다시 시도해주세요.");
     }
+    return false;
   };
 
   const downloadPdf = async () => {
@@ -137,7 +146,10 @@ export default function PreviewClient({ id }: { id: string }) {
         })
         .from(captureTarget)
         .save();
-      await persistPdfStatus("success");
+      const synced = await persistPdfStatus("success");
+      if (!synced) {
+        setFallbackNotice("PDF 다운로드는 완료됐지만 운영 상태는 동기화하지 못했습니다. 네트워크 연결 후 이 화면에서 다시 다운로드해주세요.");
+      }
     } catch (err) {
       await persistPdfStatus("failed", err instanceof Error ? err.message : "브라우저 PDF 생성에 실패했습니다.");
     } finally {

@@ -5,6 +5,7 @@ import Link from "next/link";
 import StatusBadge from "@/components/StatusBadge";
 import type { ModuStartupSubmission, PdfStatus } from "@/lib/types";
 import { getModuStartupSubmission, updateModuStartupSubmissionPdfStatus } from "@/lib/storage";
+import { INTERRUPTED_PDF_ERROR_MESSAGE, isStalePdfGeneration } from "@/lib/pdfStatus";
 
 const sections = [
   ["첫 문장 훅", "openingHook"],
@@ -50,6 +51,7 @@ export default function ModuStartupPreview({ id }: { id: string }) {
   const [error, setError] = useState("");
   const [actionNotice, setActionNotice] = useState("");
   const [actionError, setActionError] = useState("");
+  const [fallbackNotice, setFallbackNotice] = useState("");
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfStatus, setPdfStatus] = useState<PdfStatus>("idle");
   const [pdfErrorMessage, setPdfErrorMessage] = useState("");
@@ -59,14 +61,23 @@ export default function ModuStartupPreview({ id }: { id: string }) {
     let cancelled = false;
 
     async function loadSubmission() {
-      const local = getModuStartupSubmission(id);
-      if (local) {
-        setSubmission(local);
-        setPdfStatus(local.pdfStatus || "idle");
-        setPdfErrorMessage(local.pdfErrorMessage || "");
-        setLoading(false);
-        return;
-      }
+      const applySubmission = (nextSubmission: ModuStartupSubmission) => {
+        if (cancelled) return;
+        setSubmission(nextSubmission);
+        setPdfStatus(nextSubmission.pdfStatus || "idle");
+        setPdfErrorMessage(nextSubmission.pdfErrorMessage || "");
+      };
+
+      const applyLocalFallback = (notice: string) => {
+        const local = getModuStartupSubmission(id);
+        if (!local) return false;
+        const recovered = isStalePdfGeneration(local.pdfStatus, local.pdfStatusUpdatedAt)
+          ? updateModuStartupSubmissionPdfStatus(id, "failed", INTERRUPTED_PDF_ERROR_MESSAGE) || local
+          : local;
+        applySubmission(recovered);
+        if (!cancelled) setFallbackNotice(notice);
+        return true;
+      };
 
       try {
         const response = await fetch(`/api/modu-startup-submissions/${id}`);
@@ -75,16 +86,19 @@ export default function ModuStartupPreview({ id }: { id: string }) {
           error?: string;
         };
 
+        if (response.status === 503 && applyLocalFallback("데모 모드: 이 브라우저의 임시 제출물을 표시합니다.")) {
+          return;
+        }
+
         if (!response.ok || !data.submission) {
           throw new Error(data.error || "모두의창업 제출물을 찾을 수 없습니다.");
         }
 
-        if (!cancelled) {
-          setSubmission(data.submission);
-          setPdfStatus(data.submission.pdfStatus || "idle");
-          setPdfErrorMessage(data.submission.pdfErrorMessage || "");
-        }
+        applySubmission(data.submission);
       } catch (caught) {
+        if (caught instanceof TypeError && applyLocalFallback("네트워크 연결이 없어 이 브라우저의 임시 제출물을 표시합니다.")) {
+          return;
+        }
         if (!cancelled) setError(caught instanceof Error ? caught.message : "제출물 조회 중 오류가 발생했습니다.");
       } finally {
         if (!cancelled) setLoading(false);
@@ -127,15 +141,18 @@ export default function ModuStartupPreview({ id }: { id: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pdfStatus: nextStatus, pdfErrorMessage: message })
       });
-      const data = (await response.json()) as { submission?: ModuStartupSubmission };
+      const data = (await response.json()) as { submission?: ModuStartupSubmission; error?: string };
       if (response.ok && data.submission) {
         setSubmission(data.submission);
         setPdfStatus(data.submission.pdfStatus || nextStatus);
         setPdfErrorMessage(data.submission.pdfErrorMessage || "");
+        return true;
       }
+      if (response.status !== 503) throw new Error(data.error || "PDF 상태를 서버에 저장하지 못했습니다.");
     } catch {
-      // localStorage fallback already reflects the latest PDF status.
+      setActionError("PDF 파일은 이 브라우저에서 만들 수 있지만 운영 상태 동기화에 실패했습니다. 네트워크 확인 후 다시 시도해주세요.");
     }
+    return false;
   };
 
   const downloadPdf = async () => {
@@ -175,8 +192,12 @@ export default function ModuStartupPreview({ id }: { id: string }) {
         .from(captureTarget)
         .save();
 
-      await persistPdfStatus("success");
-      setActionNotice("PDF 다운로드를 완료했습니다.");
+      const synced = await persistPdfStatus("success");
+      setActionNotice(
+        synced
+          ? "PDF 다운로드를 완료했습니다. 운영 상태에도 반영됐습니다."
+          : "PDF 다운로드는 완료됐지만 운영 상태는 동기화하지 못했습니다."
+      );
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "PDF 다운로드에 실패했습니다. 바로 인쇄를 이용해주세요.";
       await persistPdfStatus("failed", message);
@@ -239,6 +260,11 @@ export default function ModuStartupPreview({ id }: { id: string }) {
           </Link>
         </div>
       </section>
+      {fallbackNotice ? (
+        <p className="no-print mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+          {fallbackNotice}
+        </p>
+      ) : null}
       {actionNotice ? (
         <p className="no-print mb-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-900">
           {actionNotice}

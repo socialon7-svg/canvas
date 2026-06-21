@@ -24,7 +24,8 @@ export function toLeanCanvasSubmission(row: ModuleSubmissionRow): LeanCanvasSubm
     submissionStatus: "submitted",
     pdfStatus: normalizePdfStatus(row.pdf_status),
     pdfErrorMessage: row.pdf_error_message ?? "",
-    pdfGeneratedAt: row.pdf_generated_at ?? undefined
+    pdfGeneratedAt: row.pdf_generated_at ?? undefined,
+    pdfStatusUpdatedAt: row.updated_at
   };
 }
 
@@ -37,6 +38,7 @@ export function toModuStartupSubmission(row: ModuleSubmissionRow): ModuStartupSu
     submissionStatus: "submitted",
     pdfStatus: normalizePdfStatus(row.pdf_status),
     pdfErrorMessage: row.pdf_error_message ?? "",
-    pdfGeneratedAt: row.pdf_generated_at ?? undefined
+    pdfGeneratedAt: row.pdf_generated_at ?? undefined,
+    pdfStatusUpdatedAt: row.updated_at
   };
 }

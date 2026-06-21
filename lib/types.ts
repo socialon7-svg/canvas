@@ -433,6 +433,7 @@ export interface LeanCanvasSubmission {
   pdfStatus?: PdfStatus;
   pdfErrorMessage?: string;
   pdfGeneratedAt?: string;
+  pdfStatusUpdatedAt?: string;
   adminCheckedAt?: string;
 }
 
@@ -631,5 +632,6 @@ export interface ModuStartupSubmission {
   pdfStatus?: PdfStatus;
   pdfErrorMessage?: string;
   pdfGeneratedAt?: string;
+  pdfStatusUpdatedAt?: string;
   adminCheckedAt?: string;
 }

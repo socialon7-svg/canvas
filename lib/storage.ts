@@ -167,13 +167,15 @@ export function loadSubmissions(): LeanCanvasSubmission[] {
 }
 
 export function saveSubmission(participant: ParticipantInput, canvas: LeanCanvasDraft) {
+  const createdAt = new Date().toISOString();
   const submission: LeanCanvasSubmission = {
     id: crypto.randomUUID(),
-    createdAt: new Date().toISOString(),
+    createdAt,
     participant,
     canvas,
     submissionStatus: "submitted",
-    pdfStatus: "idle"
+    pdfStatus: "idle",
+    pdfStatusUpdatedAt: createdAt
   };
   const submissions = [submission, ...loadSubmissions()];
   writeLocalStorage(SUBMISSIONS_KEY, JSON.stringify(submissions));
@@ -194,14 +196,16 @@ export function deleteSubmission(id: string) {
 
 export function updateSubmissionPdfStatus(id: string, status: PdfStatus, errorMessage = "") {
   const submissions = loadSubmissions();
-  const generatedAt = status === "success" ? new Date().toISOString() : undefined;
+  const statusUpdatedAt = new Date().toISOString();
+  const generatedAt = status === "success" ? statusUpdatedAt : undefined;
   const updated = submissions.map((submission) =>
     submission.id === id
       ? {
           ...submission,
           pdfStatus: status,
           pdfErrorMessage: status === "failed" ? errorMessage : "",
-          pdfGeneratedAt: generatedAt ?? submission.pdfGeneratedAt
+          pdfGeneratedAt: generatedAt,
+          pdfStatusUpdatedAt: statusUpdatedAt
         }
       : submission
   );
@@ -222,13 +226,15 @@ export function loadModuStartupSubmissions(): ModuStartupSubmission[] {
 }
 
 export function saveModuStartupSubmission(input: ModuStartupInput, draft: ModuStartupDraft) {
+  const createdAt = new Date().toISOString();
   const submission: ModuStartupSubmission = {
     id: crypto.randomUUID(),
-    createdAt: new Date().toISOString(),
+    createdAt,
     input,
     draft,
     submissionStatus: "submitted",
-    pdfStatus: "idle"
+    pdfStatus: "idle",
+    pdfStatusUpdatedAt: createdAt
   };
   const submissions = [submission, ...loadModuStartupSubmissions()];
   writeLocalStorage(MODU_STARTUP_SUBMISSIONS_KEY, JSON.stringify(submissions));
@@ -248,14 +254,16 @@ export function deleteModuStartupSubmission(id: string) {
 
 export function updateModuStartupSubmissionPdfStatus(id: string, status: PdfStatus, errorMessage = "") {
   const submissions = loadModuStartupSubmissions();
-  const generatedAt = status === "success" ? new Date().toISOString() : undefined;
+  const statusUpdatedAt = new Date().toISOString();
+  const generatedAt = status === "success" ? statusUpdatedAt : undefined;
   const updated = submissions.map((submission) =>
     submission.id === id
       ? {
           ...submission,
           pdfStatus: status,
           pdfErrorMessage: status === "failed" ? errorMessage : "",
-          pdfGeneratedAt: generatedAt ?? submission.pdfGeneratedAt
+          pdfGeneratedAt: generatedAt,
+          pdfStatusUpdatedAt: statusUpdatedAt
         }
       : submission
   );
