@@ -26,6 +26,7 @@ import type {
   MarketResearchInput,
   OneLineIdeaDraft,
   OneLineIdeaInput,
+  ParticipantOperationContext,
   ParticipantModuleProgress,
   ParticipantModuleProgressStatus,
   PricingPolicyDraft,
@@ -501,6 +502,316 @@ function formatPricingPolicyDraft(draft: PricingPolicyDraft) {
   ].join("\n");
 }
 
+interface SpecializedModuleRunnerContext {
+  programName: string;
+  teamName: string;
+  participantName: string;
+  ideaMemo: string;
+  operation: ParticipantOperationContext;
+  previousOutputs: Record<string, string>;
+}
+
+interface SpecializedModuleRunnerDefinition {
+  endpoint: string;
+  buttonLabel: string;
+  emptyInputMessage: string;
+  generatingMessage: string;
+  failureMessage: string;
+  completionMessage: string;
+  buildRequest: (context: SpecializedModuleRunnerContext) => unknown;
+  formatDraft: (draft: unknown) => string;
+}
+
+function defineSpecializedRunner<TDraft>(definition: Omit<SpecializedModuleRunnerDefinition, "formatDraft"> & {
+  formatDraft: (draft: TDraft) => string;
+}): SpecializedModuleRunnerDefinition {
+  return {
+    ...definition,
+    formatDraft: (draft) => definition.formatDraft(draft as TDraft)
+  };
+}
+
+const specializedModuleRunners: Record<string, SpecializedModuleRunnerDefinition> = {
+  [ONE_LINE_IDEA_SLUG]: defineSpecializedRunner<OneLineIdeaDraft>({
+    endpoint: "/api/generate-one-line-idea",
+    buttonLabel: "AI 한 줄 아이디어 생성",
+    emptyInputMessage: "아이디어 메모를 먼저 입력해주세요.",
+    generatingMessage: "AI가 한 줄 아이디어 초안을 생성하고 있습니다.",
+    failureMessage: "AI 초안을 생성하지 못했습니다.",
+    completionMessage: "AI 초안이 생성되었습니다. 마음에 드는 문장으로 수정한 뒤 완료로 표시하세요.",
+    buildRequest: ({ programName, teamName, participantName, ideaMemo, operation }) =>
+      ({ programName, teamName, participantName, rawIdea: ideaMemo, operation }) satisfies OneLineIdeaInput,
+    formatDraft: formatOneLineIdeaDraft
+  }),
+  [IDEA_DIAGNOSIS_SLUG]: defineSpecializedRunner<IdeaDiagnosisDraft>({
+    endpoint: "/api/generate-idea-diagnosis",
+    buttonLabel: "AI 사전진단 리포트 생성",
+    emptyInputMessage: "진단할 아이디어 내용을 먼저 입력해주세요.",
+    generatingMessage: "AI가 아이디어 사전진단 리포트를 생성하고 있습니다.",
+    failureMessage: "사전진단 리포트를 생성하지 못했습니다.",
+    completionMessage: "사전진단 리포트가 생성되었습니다. 점수와 보완 액션을 확인한 뒤 완료로 표시하세요.",
+    buildRequest: ({ programName, teamName, participantName, ideaMemo, operation, previousOutputs }) =>
+      ({
+        programName,
+        teamName,
+        participantName,
+        ideaMemo,
+        oneLineIdea: previousOutputs[ONE_LINE_IDEA_SLUG] || "",
+        operation
+      }) satisfies IdeaDiagnosisInput,
+    formatDraft: formatIdeaDiagnosisDraft
+  }),
+  [CUSTOMER_PERSONA_SLUG]: defineSpecializedRunner<CustomerPersonaDraft>({
+    endpoint: "/api/generate-customer-persona",
+    buttonLabel: "AI 고객 페르소나 생성",
+    emptyInputMessage: "페르소나를 만들 아이디어 내용을 먼저 입력해주세요.",
+    generatingMessage: "AI가 핵심 고객 페르소나를 생성하고 있습니다.",
+    failureMessage: "고객 페르소나를 생성하지 못했습니다.",
+    completionMessage: "고객 페르소나가 생성되었습니다. 실제 인터뷰 가능한 고객인지 확인한 뒤 완료로 표시하세요.",
+    buildRequest: ({ programName, teamName, participantName, ideaMemo, operation, previousOutputs }) =>
+      ({
+        programName,
+        teamName,
+        participantName,
+        ideaMemo,
+        oneLineIdea: previousOutputs[ONE_LINE_IDEA_SLUG] || "",
+        diagnosisReport: previousOutputs[IDEA_DIAGNOSIS_SLUG] || "",
+        operation
+      }) satisfies CustomerPersonaInput,
+    formatDraft: formatCustomerPersonaDraft
+  }),
+  [CUSTOMER_JOURNEY_SLUG]: defineSpecializedRunner<CustomerJourneyDraft>({
+    endpoint: "/api/generate-customer-journey",
+    buttonLabel: "AI 고객 여정지도 생성",
+    emptyInputMessage: "여정지도를 만들 고객 상황을 먼저 입력해주세요.",
+    generatingMessage: "AI가 고객 여정지도를 생성하고 있습니다.",
+    failureMessage: "고객 여정지도를 생성하지 못했습니다.",
+    completionMessage: "고객 여정지도가 생성되었습니다. 가장 고통이 큰 순간과 서비스 기회를 확인한 뒤 완료로 표시하세요.",
+    buildRequest: ({ programName, teamName, participantName, ideaMemo, operation, previousOutputs }) =>
+      ({
+        programName,
+        teamName,
+        participantName,
+        ideaMemo,
+        oneLineIdea: previousOutputs[ONE_LINE_IDEA_SLUG] || "",
+        diagnosisReport: previousOutputs[IDEA_DIAGNOSIS_SLUG] || "",
+        personaReport: previousOutputs[CUSTOMER_PERSONA_SLUG] || "",
+        operation
+      }) satisfies CustomerJourneyInput,
+    formatDraft: formatCustomerJourneyDraft
+  }),
+  [PROBLEM_STATEMENT_SLUG]: defineSpecializedRunner<ProblemStatementDraft>({
+    endpoint: "/api/generate-problem-statement",
+    buttonLabel: "AI 문제정의문 생성",
+    emptyInputMessage: "문제정의문을 만들 고객 문제 메모를 먼저 입력해주세요.",
+    generatingMessage: "AI가 발표용 문제정의문을 생성하고 있습니다.",
+    failureMessage: "문제정의문을 생성하지 못했습니다.",
+    completionMessage: "문제정의문이 생성되었습니다. 실제 고객에게 검증 가능한 문장인지 확인한 뒤 완료로 표시해주세요.",
+    buildRequest: ({ programName, teamName, participantName, ideaMemo, operation, previousOutputs }) =>
+      ({
+        programName,
+        teamName,
+        participantName,
+        ideaMemo,
+        oneLineIdea: previousOutputs[ONE_LINE_IDEA_SLUG] || "",
+        diagnosisReport: previousOutputs[IDEA_DIAGNOSIS_SLUG] || "",
+        personaReport: previousOutputs[CUSTOMER_PERSONA_SLUG] || "",
+        journeyReport: previousOutputs[CUSTOMER_JOURNEY_SLUG] || "",
+        operation
+      }) satisfies ProblemStatementInput,
+    formatDraft: formatProblemStatementDraft
+  }),
+  [CUSTOMER_INTERVIEW_SLUG]: defineSpecializedRunner<CustomerInterviewDraft>({
+    endpoint: "/api/generate-customer-interview",
+    buttonLabel: "AI 고객 인터뷰 질문지 생성",
+    emptyInputMessage: "고객 인터뷰 질문지를 만들 문제 메모를 먼저 입력해주세요.",
+    generatingMessage: "AI가 고객 인터뷰 질문지를 생성하고 있습니다.",
+    failureMessage: "고객 인터뷰 질문지를 생성하지 못했습니다.",
+    completionMessage: "고객 인터뷰 질문지가 생성되었습니다. 유도질문을 줄이고 최근 실제 경험을 묻는지 확인한 뒤 완료로 표시해주세요.",
+    buildRequest: ({ programName, teamName, participantName, ideaMemo, operation, previousOutputs }) =>
+      ({
+        programName,
+        teamName,
+        participantName,
+        ideaMemo,
+        oneLineIdea: previousOutputs[ONE_LINE_IDEA_SLUG] || "",
+        diagnosisReport: previousOutputs[IDEA_DIAGNOSIS_SLUG] || "",
+        personaReport: previousOutputs[CUSTOMER_PERSONA_SLUG] || "",
+        journeyReport: previousOutputs[CUSTOMER_JOURNEY_SLUG] || "",
+        problemStatementReport: previousOutputs[PROBLEM_STATEMENT_SLUG] || "",
+        operation
+      }) satisfies CustomerInterviewInput,
+    formatDraft: formatCustomerInterviewDraft
+  }),
+  [CUSTOMER_SURVEY_SLUG]: defineSpecializedRunner<CustomerSurveyDraft>({
+    endpoint: "/api/generate-survey",
+    buttonLabel: "AI 고객 검증 설문지 생성",
+    emptyInputMessage: "고객 검증 설문지를 만들 문제 메모를 먼저 입력해주세요.",
+    generatingMessage: "AI가 고객 검증 설문지를 생성하고 있습니다.",
+    failureMessage: "고객 검증 설문지를 생성하지 못했습니다.",
+    completionMessage: "고객 검증 설문지가 생성되었습니다. 선택지가 편향되지 않았는지 확인한 뒤 완료로 표시해주세요.",
+    buildRequest: ({ programName, teamName, participantName, ideaMemo, operation, previousOutputs }) =>
+      ({
+        programName,
+        teamName,
+        participantName,
+        ideaMemo,
+        oneLineIdea: previousOutputs[ONE_LINE_IDEA_SLUG] || "",
+        diagnosisReport: previousOutputs[IDEA_DIAGNOSIS_SLUG] || "",
+        personaReport: previousOutputs[CUSTOMER_PERSONA_SLUG] || "",
+        journeyReport: previousOutputs[CUSTOMER_JOURNEY_SLUG] || "",
+        problemStatementReport: previousOutputs[PROBLEM_STATEMENT_SLUG] || "",
+        interviewReport: previousOutputs[CUSTOMER_INTERVIEW_SLUG] || "",
+        operation
+      }) satisfies CustomerSurveyInput,
+    formatDraft: formatCustomerSurveyDraft
+  }),
+  [VALIDATION_EXPERIMENT_SLUG]: defineSpecializedRunner<ValidationExperimentDraft>({
+    endpoint: "/api/generate-validation-experiment",
+    buttonLabel: "AI 검증 실험 설계안 생성",
+    emptyInputMessage: "검증 실험을 만들 고객 문제 메모를 먼저 입력해주세요.",
+    generatingMessage: "AI가 검증 실험 설계안을 생성하고 있습니다.",
+    failureMessage: "검증 실험 설계안을 생성하지 못했습니다.",
+    completionMessage: "검증 실험 설계안이 생성되었습니다. 성공 기준이 숫자로 측정 가능한지 확인한 뒤 완료로 표시해주세요.",
+    buildRequest: ({ programName, teamName, participantName, ideaMemo, operation, previousOutputs }) =>
+      ({
+        programName,
+        teamName,
+        participantName,
+        ideaMemo,
+        oneLineIdea: previousOutputs[ONE_LINE_IDEA_SLUG] || "",
+        diagnosisReport: previousOutputs[IDEA_DIAGNOSIS_SLUG] || "",
+        personaReport: previousOutputs[CUSTOMER_PERSONA_SLUG] || "",
+        journeyReport: previousOutputs[CUSTOMER_JOURNEY_SLUG] || "",
+        problemStatementReport: previousOutputs[PROBLEM_STATEMENT_SLUG] || "",
+        interviewReport: previousOutputs[CUSTOMER_INTERVIEW_SLUG] || "",
+        surveyReport: previousOutputs[CUSTOMER_SURVEY_SLUG] || "",
+        operation
+      }) satisfies ValidationExperimentInput,
+    formatDraft: formatValidationExperimentDraft
+  }),
+  [MARKET_RESEARCH_SLUG]: defineSpecializedRunner<MarketResearchDraft>({
+    endpoint: "/api/generate-market-research",
+    buttonLabel: "AI 시장조사 리포트 생성",
+    emptyInputMessage: "시장조사 메모를 먼저 입력해주세요.",
+    generatingMessage: "AI가 시장조사 리포트 초안을 생성하고 있습니다.",
+    failureMessage: "시장조사 리포트를 생성하지 못했습니다.",
+    completionMessage: "시장조사 초안이 생성되었습니다. '확인 필요' 숫자는 제시된 출처에서 직접 확인해주세요.",
+    buildRequest: ({ programName, teamName, participantName, ideaMemo, operation, previousOutputs }) =>
+      ({
+        programName,
+        teamName,
+        participantName,
+        ideaMemo,
+        oneLineIdea: previousOutputs[ONE_LINE_IDEA_SLUG] || "",
+        diagnosisReport: previousOutputs[IDEA_DIAGNOSIS_SLUG] || "",
+        personaReport: previousOutputs[CUSTOMER_PERSONA_SLUG] || "",
+        problemStatementReport: previousOutputs[PROBLEM_STATEMENT_SLUG] || "",
+        validationExperimentReport: previousOutputs[VALIDATION_EXPERIMENT_SLUG] || "",
+        operation
+      }) satisfies MarketResearchInput,
+    formatDraft: formatMarketResearchDraft
+  }),
+  [COMPETITOR_ANALYSIS_SLUG]: defineSpecializedRunner<CompetitorAnalysisDraft>({
+    endpoint: "/api/generate-competitor-analysis",
+    buttonLabel: "AI 경쟁사 분석표 생성",
+    emptyInputMessage: "경쟁사 분석 메모를 먼저 입력해주세요.",
+    generatingMessage: "AI가 경쟁사와 현재 대안을 비교하고 있습니다.",
+    failureMessage: "경쟁사 분석표를 생성하지 못했습니다.",
+    completionMessage: "경쟁사 분석표가 생성되었습니다. 가격과 기능은 근거 상태를 확인한 뒤 수정해주세요.",
+    buildRequest: ({ programName, teamName, participantName, ideaMemo, operation, previousOutputs }) =>
+      ({
+        programName,
+        teamName,
+        participantName,
+        ideaMemo,
+        oneLineIdea: previousOutputs[ONE_LINE_IDEA_SLUG] || "",
+        diagnosisReport: previousOutputs[IDEA_DIAGNOSIS_SLUG] || "",
+        personaReport: previousOutputs[CUSTOMER_PERSONA_SLUG] || "",
+        problemStatementReport: previousOutputs[PROBLEM_STATEMENT_SLUG] || "",
+        validationExperimentReport: previousOutputs[VALIDATION_EXPERIMENT_SLUG] || "",
+        marketResearchReport: previousOutputs[MARKET_RESEARCH_SLUG] || "",
+        operation
+      }) satisfies CompetitorAnalysisInput,
+    formatDraft: formatCompetitorAnalysisDraft
+  }),
+  [DIFFERENTIATION_STRATEGY_SLUG]: defineSpecializedRunner<DifferentiationStrategyDraft>({
+    endpoint: "/api/generate-differentiation-strategy",
+    buttonLabel: "AI 차별화 전략 생성",
+    emptyInputMessage: "차별화 전략 메모를 먼저 입력해주세요.",
+    generatingMessage: "AI가 가장 강한 차별점 한 가지를 정리하고 있습니다.",
+    failureMessage: "차별화 전략을 생성하지 못했습니다.",
+    completionMessage: "차별화 전략이 생성되었습니다. 차별점이 고객 선택 행동으로 이어지는지 다음 액션으로 검증해주세요.",
+    buildRequest: ({ programName, teamName, participantName, ideaMemo, operation, previousOutputs }) =>
+      ({
+        programName,
+        teamName,
+        participantName,
+        ideaMemo,
+        oneLineIdea: previousOutputs[ONE_LINE_IDEA_SLUG] || "",
+        diagnosisReport: previousOutputs[IDEA_DIAGNOSIS_SLUG] || "",
+        personaReport: previousOutputs[CUSTOMER_PERSONA_SLUG] || "",
+        problemStatementReport: previousOutputs[PROBLEM_STATEMENT_SLUG] || "",
+        validationExperimentReport: previousOutputs[VALIDATION_EXPERIMENT_SLUG] || "",
+        marketResearchReport: previousOutputs[MARKET_RESEARCH_SLUG] || "",
+        competitorAnalysisReport: previousOutputs[COMPETITOR_ANALYSIS_SLUG] || "",
+        operation
+      }) satisfies DifferentiationStrategyInput,
+    formatDraft: formatDifferentiationStrategyDraft
+  }),
+  [BUSINESS_MODEL_SLUG]: defineSpecializedRunner<BusinessModelDraft>({
+    endpoint: "/api/generate-business-model",
+    buttonLabel: "AI 사업모델 설계안 생성",
+    emptyInputMessage: "사업모델 메모를 먼저 입력해주세요.",
+    generatingMessage: "AI가 고객, 지불자, 수익원과 비용 가정을 정리하고 있습니다.",
+    failureMessage: "사업모델 초안을 생성하지 못했습니다.",
+    completionMessage: "사업모델 초안이 생성되었습니다. 수익원 하나를 골라 실제 결제 행동으로 먼저 검증해주세요.",
+    buildRequest: ({ programName, teamName, participantName, ideaMemo, operation, previousOutputs }) =>
+      ({
+        programName,
+        teamName,
+        participantName,
+        ideaMemo,
+        oneLineIdea: previousOutputs[ONE_LINE_IDEA_SLUG] || "",
+        diagnosisReport: previousOutputs[IDEA_DIAGNOSIS_SLUG] || "",
+        personaReport: previousOutputs[CUSTOMER_PERSONA_SLUG] || "",
+        problemStatementReport: previousOutputs[PROBLEM_STATEMENT_SLUG] || "",
+        validationExperimentReport: previousOutputs[VALIDATION_EXPERIMENT_SLUG] || "",
+        marketResearchReport: previousOutputs[MARKET_RESEARCH_SLUG] || "",
+        competitorAnalysisReport: previousOutputs[COMPETITOR_ANALYSIS_SLUG] || "",
+        differentiationStrategyReport: previousOutputs[DIFFERENTIATION_STRATEGY_SLUG] || "",
+        operation
+      }) satisfies BusinessModelInput,
+    formatDraft: formatBusinessModelDraft
+  }),
+  [PRICING_POLICY_SLUG]: defineSpecializedRunner<PricingPolicyDraft>({
+    endpoint: "/api/generate-pricing-policy",
+    buttonLabel: "AI 가격정책 설계안 생성",
+    emptyInputMessage: "가격정책 메모를 먼저 입력해주세요.",
+    generatingMessage: "AI가 세 가지 가격 패키지와 현장 운영 규칙을 설계하고 있습니다.",
+    failureMessage: "가격정책 초안을 생성하지 못했습니다.",
+    completionMessage: "가격정책 초안이 생성되었습니다. 표시된 금액은 가설이므로 실제 선택·결제 데이터로 조정해주세요.",
+    buildRequest: ({ programName, teamName, participantName, ideaMemo, operation, previousOutputs }) =>
+      ({
+        programName,
+        teamName,
+        participantName,
+        ideaMemo,
+        oneLineIdea: previousOutputs[ONE_LINE_IDEA_SLUG] || "",
+        diagnosisReport: previousOutputs[IDEA_DIAGNOSIS_SLUG] || "",
+        personaReport: previousOutputs[CUSTOMER_PERSONA_SLUG] || "",
+        problemStatementReport: previousOutputs[PROBLEM_STATEMENT_SLUG] || "",
+        validationExperimentReport: previousOutputs[VALIDATION_EXPERIMENT_SLUG] || "",
+        marketResearchReport: previousOutputs[MARKET_RESEARCH_SLUG] || "",
+        competitorAnalysisReport: previousOutputs[COMPETITOR_ANALYSIS_SLUG] || "",
+        differentiationStrategyReport: previousOutputs[DIFFERENTIATION_STRATEGY_SLUG] || "",
+        businessModelReport: previousOutputs[BUSINESS_MODEL_SLUG] || "",
+        operation
+      }) satisfies PricingPolicyInput,
+    formatDraft: formatPricingPolicyDraft
+  })
+};
+
 export default function ParticipantModulePlaceholder({ slug }: { slug: string }) {
   const [state, setState] = useState<HighViewOperationsState>(() => defaultOperationsState());
   const [programId, setProgramId] = useState("");
@@ -623,19 +934,26 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
   const isDifferentiationStrategyModule = startupModule?.slug === DIFFERENTIATION_STRATEGY_SLUG;
   const isBusinessModelModule = startupModule?.slug === BUSINESS_MODEL_SLUG;
   const isPricingPolicyModule = startupModule?.slug === PRICING_POLICY_SLUG;
+  const specializedModuleRunner = startupModule ? specializedModuleRunners[startupModule.slug] : undefined;
   const automatedModuleConfig = startupModule ? getStartupModuleAutomationConfig(startupModule.slug) : undefined;
-  const oneLineIdeaOutput = participant?.moduleProgress?.[ONE_LINE_IDEA_SLUG]?.outputData || "";
-  const ideaDiagnosisOutput = participant?.moduleProgress?.[IDEA_DIAGNOSIS_SLUG]?.outputData || "";
-  const customerPersonaOutput = participant?.moduleProgress?.[CUSTOMER_PERSONA_SLUG]?.outputData || "";
-  const customerJourneyOutput = participant?.moduleProgress?.[CUSTOMER_JOURNEY_SLUG]?.outputData || "";
-  const problemStatementOutput = participant?.moduleProgress?.[PROBLEM_STATEMENT_SLUG]?.outputData || "";
-  const customerInterviewOutput = participant?.moduleProgress?.[CUSTOMER_INTERVIEW_SLUG]?.outputData || "";
-  const customerSurveyOutput = participant?.moduleProgress?.[CUSTOMER_SURVEY_SLUG]?.outputData || "";
-  const validationExperimentOutput = participant?.moduleProgress?.[VALIDATION_EXPERIMENT_SLUG]?.outputData || "";
-  const marketResearchOutput = participant?.moduleProgress?.[MARKET_RESEARCH_SLUG]?.outputData || "";
-  const competitorAnalysisOutput = participant?.moduleProgress?.[COMPETITOR_ANALYSIS_SLUG]?.outputData || "";
-  const differentiationStrategyOutput = participant?.moduleProgress?.[DIFFERENTIATION_STRATEGY_SLUG]?.outputData || "";
-  const businessModelOutput = participant?.moduleProgress?.[BUSINESS_MODEL_SLUG]?.outputData || "";
+  const previousOutputs = Object.fromEntries(
+    Object.entries(participant?.moduleProgress || {}).map(([moduleSlug, moduleProgress]) => [
+      moduleSlug,
+      moduleProgress.outputData || ""
+    ])
+  );
+  const operationContext: ParticipantOperationContext | undefined = program && participant
+    ? {
+        programId: program.id,
+        programCode: program.programCode,
+        programName: program.name,
+        participantId: participant.id,
+        participantCode: participant.code,
+        teamId: team?.id || "",
+        teamName: team?.name || "",
+        role: participant.role
+      }
+    : undefined;
 
   useEffect(() => {
     const saveWithShortcut = (event: KeyboardEvent) => {
@@ -741,668 +1059,43 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
     }
   };
 
-  const generateOneLineIdea = async () => {
-    if (!program || !participant || !startupModule || startupModule.slug !== ONE_LINE_IDEA_SLUG) return;
-
-    const rawIdea = inputData.trim();
-    if (!rawIdea) {
-      setAiError("아이디어 메모를 먼저 입력해주세요.");
-      return;
-    }
-
-    const requestBody: OneLineIdeaInput = {
-      programName: program.name,
-      teamName: team?.name || "",
-      participantName: participant.name || participant.code,
-      rawIdea,
-      operation: {
-        programId: program.id,
-        programCode: program.programCode,
-        programName: program.name,
-        participantId: participant.id,
-        participantCode: participant.code,
-        teamId: team?.id || "",
-        teamName: team?.name || "",
-        role: participant.role
-      }
-    };
-
-    setGenerating(true);
-    setAiError("");
-    setNotice("AI가 한 줄 아이디어 초안을 생성하고 있습니다.");
-
-    try {
-      const response = await fetch("/api/generate-one-line-idea", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody)
-      });
-      const data = (await response.json()) as { draft?: OneLineIdeaDraft; error?: string };
-
-      if (!response.ok || !data.draft) {
-        throw new Error(data.error || "AI 초안을 생성하지 못했습니다.");
-      }
-
-      const formattedOutput = formatOneLineIdeaDraft(data.draft);
-      setOutputData(formattedOutput);
-      await saveProgress("in_progress", { inputData: rawIdea, outputData: formattedOutput });
-      setNotice("AI 초안이 생성되었습니다. 마음에 드는 문장으로 수정한 뒤 완료로 표시하세요.");
-    } catch (error) {
-      setAiError(error instanceof Error ? error.message : "AI 초안 생성 중 오류가 발생했습니다.");
-      setNotice("");
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const generateIdeaDiagnosis = async () => {
-    if (!program || !participant || !startupModule || startupModule.slug !== IDEA_DIAGNOSIS_SLUG) return;
-
+  const generateSpecializedModule = async () => {
+    if (!program || !participant || !startupModule || !specializedModuleRunner || !operationContext) return;
     const ideaMemo = inputData.trim();
     if (!ideaMemo) {
-      setAiError("진단할 아이디어 내용을 먼저 입력해주세요.");
+      setAiError(specializedModuleRunner.emptyInputMessage);
       return;
     }
 
-    const requestBody: IdeaDiagnosisInput = {
-      programName: program.name,
-      teamName: team?.name || "",
-      participantName: participant.name || participant.code,
-      ideaMemo,
-      oneLineIdea: oneLineIdeaOutput,
-      operation: {
-        programId: program.id,
-        programCode: program.programCode,
-        programName: program.name,
-        participantId: participant.id,
-        participantCode: participant.code,
-        teamId: team?.id || "",
-        teamName: team?.name || "",
-        role: participant.role
-      }
-    };
-
     setGenerating(true);
     setAiError("");
-    setNotice("AI가 아이디어 사전진단 리포트를 생성하고 있습니다.");
-
+    setNotice(specializedModuleRunner.generatingMessage);
     try {
-      const response = await fetch("/api/generate-idea-diagnosis", {
+      const response = await fetch(specializedModuleRunner.endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(
+          specializedModuleRunner.buildRequest({
+            programName: program.name,
+            teamName: team?.name || "",
+            participantName: participant.name || participant.code,
+            ideaMemo,
+            operation: operationContext,
+            previousOutputs
+          })
+        )
       });
-      const data = (await response.json()) as { draft?: IdeaDiagnosisDraft; error?: string };
-
+      const data = (await response.json().catch(() => ({}))) as { draft?: unknown; error?: string };
       if (!response.ok || !data.draft) {
-        throw new Error(data.error || "사전진단 리포트를 생성하지 못했습니다.");
+        throw new Error(data.error || specializedModuleRunner.failureMessage);
       }
 
-      const formattedOutput = formatIdeaDiagnosisDraft(data.draft);
+      const formattedOutput = specializedModuleRunner.formatDraft(data.draft);
       setOutputData(formattedOutput);
       await saveProgress("in_progress", { inputData: ideaMemo, outputData: formattedOutput });
-      setNotice("사전진단 리포트가 생성되었습니다. 점수와 보완 액션을 확인한 뒤 완료로 표시하세요.");
+      setNotice(specializedModuleRunner.completionMessage);
     } catch (error) {
-      setAiError(error instanceof Error ? error.message : "사전진단 리포트 생성 중 오류가 발생했습니다.");
-      setNotice("");
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const generateCustomerPersona = async () => {
-    if (!program || !participant || !startupModule || startupModule.slug !== CUSTOMER_PERSONA_SLUG) return;
-
-    const ideaMemo = inputData.trim();
-    if (!ideaMemo) {
-      setAiError("페르소나를 만들 아이디어 내용을 먼저 입력해주세요.");
-      return;
-    }
-
-    const requestBody: CustomerPersonaInput = {
-      programName: program.name,
-      teamName: team?.name || "",
-      participantName: participant.name || participant.code,
-      ideaMemo,
-      oneLineIdea: oneLineIdeaOutput,
-      diagnosisReport: ideaDiagnosisOutput,
-      operation: {
-        programId: program.id,
-        programCode: program.programCode,
-        programName: program.name,
-        participantId: participant.id,
-        participantCode: participant.code,
-        teamId: team?.id || "",
-        teamName: team?.name || "",
-        role: participant.role
-      }
-    };
-
-    setGenerating(true);
-    setAiError("");
-    setNotice("AI가 핵심 고객 페르소나를 생성하고 있습니다.");
-
-    try {
-      const response = await fetch("/api/generate-customer-persona", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody)
-      });
-      const data = (await response.json()) as { draft?: CustomerPersonaDraft; error?: string };
-
-      if (!response.ok || !data.draft) {
-        throw new Error(data.error || "고객 페르소나를 생성하지 못했습니다.");
-      }
-
-      const formattedOutput = formatCustomerPersonaDraft(data.draft);
-      setOutputData(formattedOutput);
-      await saveProgress("in_progress", { inputData: ideaMemo, outputData: formattedOutput });
-      setNotice("고객 페르소나가 생성되었습니다. 실제 인터뷰 가능한 고객인지 확인한 뒤 완료로 표시하세요.");
-    } catch (error) {
-      setAiError(error instanceof Error ? error.message : "고객 페르소나 생성 중 오류가 발생했습니다.");
-      setNotice("");
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const generateCustomerJourney = async () => {
-    if (!program || !participant || !startupModule || startupModule.slug !== CUSTOMER_JOURNEY_SLUG) return;
-
-    const ideaMemo = inputData.trim();
-    if (!ideaMemo) {
-      setAiError("여정지도를 만들 고객 상황을 먼저 입력해주세요.");
-      return;
-    }
-
-    const requestBody: CustomerJourneyInput = {
-      programName: program.name,
-      teamName: team?.name || "",
-      participantName: participant.name || participant.code,
-      ideaMemo,
-      oneLineIdea: oneLineIdeaOutput,
-      diagnosisReport: ideaDiagnosisOutput,
-      personaReport: customerPersonaOutput,
-      operation: {
-        programId: program.id,
-        programCode: program.programCode,
-        programName: program.name,
-        participantId: participant.id,
-        participantCode: participant.code,
-        teamId: team?.id || "",
-        teamName: team?.name || "",
-        role: participant.role
-      }
-    };
-
-    setGenerating(true);
-    setAiError("");
-    setNotice("AI가 고객 여정지도를 생성하고 있습니다.");
-
-    try {
-      const response = await fetch("/api/generate-customer-journey", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody)
-      });
-      const data = (await response.json()) as { draft?: CustomerJourneyDraft; error?: string };
-
-      if (!response.ok || !data.draft) {
-        throw new Error(data.error || "고객 여정지도를 생성하지 못했습니다.");
-      }
-
-      const formattedOutput = formatCustomerJourneyDraft(data.draft);
-      setOutputData(formattedOutput);
-      await saveProgress("in_progress", { inputData: ideaMemo, outputData: formattedOutput });
-      setNotice("고객 여정지도가 생성되었습니다. 가장 고통이 큰 순간과 서비스 기회를 확인한 뒤 완료로 표시하세요.");
-    } catch (error) {
-      setAiError(error instanceof Error ? error.message : "고객 여정지도 생성 중 오류가 발생했습니다.");
-      setNotice("");
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const generateProblemStatement = async () => {
-    if (!program || !participant || !startupModule || startupModule.slug !== PROBLEM_STATEMENT_SLUG) return;
-
-    const ideaMemo = inputData.trim();
-    if (!ideaMemo) {
-      setAiError("문제정의문을 만들 고객 문제 메모를 먼저 입력해주세요.");
-      return;
-    }
-
-    const requestBody: ProblemStatementInput = {
-      programName: program.name,
-      teamName: team?.name || "",
-      participantName: participant.name || participant.code,
-      ideaMemo,
-      oneLineIdea: oneLineIdeaOutput,
-      diagnosisReport: ideaDiagnosisOutput,
-      personaReport: customerPersonaOutput,
-      journeyReport: customerJourneyOutput,
-      operation: {
-        programId: program.id,
-        programCode: program.programCode,
-        programName: program.name,
-        participantId: participant.id,
-        participantCode: participant.code,
-        teamId: team?.id || "",
-        teamName: team?.name || "",
-        role: participant.role
-      }
-    };
-
-    setGenerating(true);
-    setAiError("");
-    setNotice("AI가 발표용 문제정의문을 생성하고 있습니다.");
-
-    try {
-      const response = await fetch("/api/generate-problem-statement", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody)
-      });
-      const data = (await response.json()) as { draft?: ProblemStatementDraft; error?: string };
-
-      if (!response.ok || !data.draft) {
-        throw new Error(data.error || "문제정의문을 생성하지 못했습니다.");
-      }
-
-      const formattedOutput = formatProblemStatementDraft(data.draft);
-      setOutputData(formattedOutput);
-      await saveProgress("in_progress", { inputData: ideaMemo, outputData: formattedOutput });
-      setNotice("문제정의문이 생성되었습니다. 실제 고객에게 검증 가능한 문장인지 확인한 뒤 완료로 표시해주세요.");
-    } catch (error) {
-      setAiError(error instanceof Error ? error.message : "문제정의문 생성 중 오류가 발생했습니다.");
-      setNotice("");
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const generateCustomerInterview = async () => {
-    if (!program || !participant || !startupModule || startupModule.slug !== CUSTOMER_INTERVIEW_SLUG) return;
-
-    const ideaMemo = inputData.trim();
-    if (!ideaMemo) {
-      setAiError("고객 인터뷰 질문지를 만들 문제 메모를 먼저 입력해주세요.");
-      return;
-    }
-
-    const requestBody: CustomerInterviewInput = {
-      programName: program.name,
-      teamName: team?.name || "",
-      participantName: participant.name || participant.code,
-      ideaMemo,
-      oneLineIdea: oneLineIdeaOutput,
-      diagnosisReport: ideaDiagnosisOutput,
-      personaReport: customerPersonaOutput,
-      journeyReport: customerJourneyOutput,
-      problemStatementReport: problemStatementOutput,
-      operation: {
-        programId: program.id,
-        programCode: program.programCode,
-        programName: program.name,
-        participantId: participant.id,
-        participantCode: participant.code,
-        teamId: team?.id || "",
-        teamName: team?.name || "",
-        role: participant.role
-      }
-    };
-
-    setGenerating(true);
-    setAiError("");
-    setNotice("AI가 고객 인터뷰 질문지를 생성하고 있습니다.");
-
-    try {
-      const response = await fetch("/api/generate-customer-interview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody)
-      });
-      const data = (await response.json()) as { draft?: CustomerInterviewDraft; error?: string };
-
-      if (!response.ok || !data.draft) {
-        throw new Error(data.error || "고객 인터뷰 질문지를 생성하지 못했습니다.");
-      }
-
-      const formattedOutput = formatCustomerInterviewDraft(data.draft);
-      setOutputData(formattedOutput);
-      await saveProgress("in_progress", { inputData: ideaMemo, outputData: formattedOutput });
-      setNotice("고객 인터뷰 질문지가 생성되었습니다. 유도질문을 줄이고 최근 실제 경험을 묻는지 확인한 뒤 완료로 표시해주세요.");
-    } catch (error) {
-      setAiError(error instanceof Error ? error.message : "고객 인터뷰 질문지 생성 중 오류가 발생했습니다.");
-      setNotice("");
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const generateCustomerSurvey = async () => {
-    if (!program || !participant || !startupModule || startupModule.slug !== CUSTOMER_SURVEY_SLUG) return;
-
-    const ideaMemo = inputData.trim();
-    if (!ideaMemo) {
-      setAiError("고객 검증 설문지를 만들 문제 메모를 먼저 입력해주세요.");
-      return;
-    }
-
-    const requestBody: CustomerSurveyInput = {
-      programName: program.name,
-      teamName: team?.name || "",
-      participantName: participant.name || participant.code,
-      ideaMemo,
-      oneLineIdea: oneLineIdeaOutput,
-      diagnosisReport: ideaDiagnosisOutput,
-      personaReport: customerPersonaOutput,
-      journeyReport: customerJourneyOutput,
-      problemStatementReport: problemStatementOutput,
-      interviewReport: customerInterviewOutput,
-      operation: {
-        programId: program.id,
-        programCode: program.programCode,
-        programName: program.name,
-        participantId: participant.id,
-        participantCode: participant.code,
-        teamId: team?.id || "",
-        teamName: team?.name || "",
-        role: participant.role
-      }
-    };
-
-    setGenerating(true);
-    setAiError("");
-    setNotice("AI가 고객 검증 설문지를 생성하고 있습니다.");
-
-    try {
-      const response = await fetch("/api/generate-survey", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody)
-      });
-      const data = (await response.json()) as { draft?: CustomerSurveyDraft; error?: string };
-
-      if (!response.ok || !data.draft) {
-        throw new Error(data.error || "고객 검증 설문지를 생성하지 못했습니다.");
-      }
-
-      const formattedOutput = formatCustomerSurveyDraft(data.draft);
-      setOutputData(formattedOutput);
-      await saveProgress("in_progress", { inputData: ideaMemo, outputData: formattedOutput });
-      setNotice("고객 검증 설문지가 생성되었습니다. 선택지가 편향되지 않았는지 확인한 뒤 완료로 표시해주세요.");
-    } catch (error) {
-      setAiError(error instanceof Error ? error.message : "고객 검증 설문지 생성 중 오류가 발생했습니다.");
-      setNotice("");
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const generateValidationExperiment = async () => {
-    if (!program || !participant || !startupModule || startupModule.slug !== VALIDATION_EXPERIMENT_SLUG) return;
-
-    const ideaMemo = inputData.trim();
-    if (!ideaMemo) {
-      setAiError("검증 실험을 만들 고객 문제 메모를 먼저 입력해주세요.");
-      return;
-    }
-
-    const requestBody: ValidationExperimentInput = {
-      programName: program.name,
-      teamName: team?.name || "",
-      participantName: participant.name || participant.code,
-      ideaMemo,
-      oneLineIdea: oneLineIdeaOutput,
-      diagnosisReport: ideaDiagnosisOutput,
-      personaReport: customerPersonaOutput,
-      journeyReport: customerJourneyOutput,
-      problemStatementReport: problemStatementOutput,
-      interviewReport: customerInterviewOutput,
-      surveyReport: customerSurveyOutput,
-      operation: {
-        programId: program.id,
-        programCode: program.programCode,
-        programName: program.name,
-        participantId: participant.id,
-        participantCode: participant.code,
-        teamId: team?.id || "",
-        teamName: team?.name || "",
-        role: participant.role
-      }
-    };
-
-    setGenerating(true);
-    setAiError("");
-    setNotice("AI가 검증 실험 설계안을 생성하고 있습니다.");
-
-    try {
-      const response = await fetch("/api/generate-validation-experiment", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody)
-      });
-      const data = (await response.json()) as { draft?: ValidationExperimentDraft; error?: string };
-
-      if (!response.ok || !data.draft) {
-        throw new Error(data.error || "검증 실험 설계안을 생성하지 못했습니다.");
-      }
-
-      const formattedOutput = formatValidationExperimentDraft(data.draft);
-      setOutputData(formattedOutput);
-      await saveProgress("in_progress", { inputData: ideaMemo, outputData: formattedOutput });
-      setNotice("검증 실험 설계안이 생성되었습니다. 성공 기준이 숫자로 측정 가능한지 확인한 뒤 완료로 표시해주세요.");
-    } catch (error) {
-      setAiError(error instanceof Error ? error.message : "검증 실험 설계안 생성 중 오류가 발생했습니다.");
-      setNotice("");
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const operationContext = program && participant
-    ? {
-        programId: program.id,
-        programCode: program.programCode,
-        programName: program.name,
-        participantId: participant.id,
-        participantCode: participant.code,
-        teamId: team?.id || "",
-        teamName: team?.name || "",
-        role: participant.role
-      }
-    : undefined;
-
-  const generateMarketResearch = async () => {
-    if (!program || !participant || !startupModule || startupModule.slug !== MARKET_RESEARCH_SLUG) return;
-    const ideaMemo = inputData.trim();
-    if (!ideaMemo) return setAiError("시장조사 메모를 먼저 입력해주세요.");
-    const requestBody: MarketResearchInput = {
-      programName: program.name,
-      teamName: team?.name || "",
-      participantName: participant.name || participant.code,
-      ideaMemo,
-      oneLineIdea: oneLineIdeaOutput,
-      diagnosisReport: ideaDiagnosisOutput,
-      personaReport: customerPersonaOutput,
-      problemStatementReport: problemStatementOutput,
-      validationExperimentReport: validationExperimentOutput,
-      operation: operationContext
-    };
-    setGenerating(true);
-    setAiError("");
-    setNotice("AI가 시장조사 리포트 초안을 생성하고 있습니다.");
-    try {
-      const response = await fetch("/api/generate-market-research", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody)
-      });
-      const data = (await response.json()) as { draft?: MarketResearchDraft; error?: string };
-      if (!response.ok || !data.draft) throw new Error(data.error || "시장조사 리포트를 생성하지 못했습니다.");
-      const formattedOutput = formatMarketResearchDraft(data.draft);
-      setOutputData(formattedOutput);
-      await saveProgress("in_progress", { inputData: ideaMemo, outputData: formattedOutput });
-      setNotice("시장조사 초안이 생성되었습니다. '확인 필요' 숫자는 제시된 출처에서 직접 확인해주세요.");
-    } catch (error) {
-      setAiError(error instanceof Error ? error.message : "시장조사 리포트 생성 중 오류가 발생했습니다.");
-      setNotice("");
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const generateCompetitorAnalysis = async () => {
-    if (!program || !participant || !startupModule || startupModule.slug !== COMPETITOR_ANALYSIS_SLUG) return;
-    const ideaMemo = inputData.trim();
-    if (!ideaMemo) return setAiError("경쟁사 분석 메모를 먼저 입력해주세요.");
-    const requestBody: CompetitorAnalysisInput = {
-      programName: program.name,
-      teamName: team?.name || "",
-      participantName: participant.name || participant.code,
-      ideaMemo,
-      oneLineIdea: oneLineIdeaOutput,
-      diagnosisReport: ideaDiagnosisOutput,
-      personaReport: customerPersonaOutput,
-      problemStatementReport: problemStatementOutput,
-      validationExperimentReport: validationExperimentOutput,
-      marketResearchReport: marketResearchOutput,
-      operation: operationContext
-    };
-    setGenerating(true);
-    setAiError("");
-    setNotice("AI가 경쟁사와 현재 대안을 비교하고 있습니다.");
-    try {
-      const response = await fetch("/api/generate-competitor-analysis", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody)
-      });
-      const data = (await response.json()) as { draft?: CompetitorAnalysisDraft; error?: string };
-      if (!response.ok || !data.draft) throw new Error(data.error || "경쟁사 분석표를 생성하지 못했습니다.");
-      const formattedOutput = formatCompetitorAnalysisDraft(data.draft);
-      setOutputData(formattedOutput);
-      await saveProgress("in_progress", { inputData: ideaMemo, outputData: formattedOutput });
-      setNotice("경쟁사 분석표가 생성되었습니다. 가격과 기능은 근거 상태를 확인한 뒤 수정해주세요.");
-    } catch (error) {
-      setAiError(error instanceof Error ? error.message : "경쟁사 분석표 생성 중 오류가 발생했습니다.");
-      setNotice("");
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const generateDifferentiationStrategy = async () => {
-    if (!program || !participant || !startupModule || startupModule.slug !== DIFFERENTIATION_STRATEGY_SLUG) return;
-    const ideaMemo = inputData.trim();
-    if (!ideaMemo) return setAiError("차별화 전략 메모를 먼저 입력해주세요.");
-    const requestBody: DifferentiationStrategyInput = {
-      programName: program.name,
-      teamName: team?.name || "",
-      participantName: participant.name || participant.code,
-      ideaMemo,
-      oneLineIdea: oneLineIdeaOutput,
-      diagnosisReport: ideaDiagnosisOutput,
-      personaReport: customerPersonaOutput,
-      problemStatementReport: problemStatementOutput,
-      validationExperimentReport: validationExperimentOutput,
-      marketResearchReport: marketResearchOutput,
-      competitorAnalysisReport: competitorAnalysisOutput,
-      operation: operationContext
-    };
-    setGenerating(true);
-    setAiError("");
-    setNotice("AI가 가장 강한 차별점 한 가지를 정리하고 있습니다.");
-    try {
-      const response = await fetch("/api/generate-differentiation-strategy", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody)
-      });
-      const data = (await response.json()) as { draft?: DifferentiationStrategyDraft; error?: string };
-      if (!response.ok || !data.draft) throw new Error(data.error || "차별화 전략을 생성하지 못했습니다.");
-      const formattedOutput = formatDifferentiationStrategyDraft(data.draft);
-      setOutputData(formattedOutput);
-      await saveProgress("in_progress", { inputData: ideaMemo, outputData: formattedOutput });
-      setNotice("차별화 전략이 생성되었습니다. 차별점이 고객 선택 행동으로 이어지는지 다음 액션으로 검증해주세요.");
-    } catch (error) {
-      setAiError(error instanceof Error ? error.message : "차별화 전략 생성 중 오류가 발생했습니다.");
-      setNotice("");
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const generateBusinessModel = async () => {
-    if (!program || !participant || !startupModule || startupModule.slug !== BUSINESS_MODEL_SLUG) return;
-    const ideaMemo = inputData.trim();
-    if (!ideaMemo) return setAiError("사업모델 메모를 먼저 입력해주세요.");
-    const requestBody: BusinessModelInput = {
-      programName: program.name,
-      teamName: team?.name || "",
-      participantName: participant.name || participant.code,
-      ideaMemo,
-      oneLineIdea: oneLineIdeaOutput,
-      diagnosisReport: ideaDiagnosisOutput,
-      personaReport: customerPersonaOutput,
-      problemStatementReport: problemStatementOutput,
-      validationExperimentReport: validationExperimentOutput,
-      marketResearchReport: marketResearchOutput,
-      competitorAnalysisReport: competitorAnalysisOutput,
-      differentiationStrategyReport: differentiationStrategyOutput,
-      operation: operationContext
-    };
-    setGenerating(true);
-    setAiError("");
-    setNotice("AI가 고객, 지불자, 수익원과 비용 가정을 정리하고 있습니다.");
-    try {
-      const response = await fetch("/api/generate-business-model", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody)
-      });
-      const data = (await response.json()) as { draft?: BusinessModelDraft; error?: string };
-      if (!response.ok || !data.draft) throw new Error(data.error || "사업모델 초안을 생성하지 못했습니다.");
-      const formattedOutput = formatBusinessModelDraft(data.draft);
-      setOutputData(formattedOutput);
-      await saveProgress("in_progress", { inputData: ideaMemo, outputData: formattedOutput });
-      setNotice("사업모델 초안이 생성되었습니다. 수익원 하나를 골라 실제 결제 행동으로 먼저 검증해주세요.");
-    } catch (error) {
-      setAiError(error instanceof Error ? error.message : "사업모델 생성 중 오류가 발생했습니다.");
-      setNotice("");
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const generatePricingPolicy = async () => {
-    if (!program || !participant || !startupModule || startupModule.slug !== PRICING_POLICY_SLUG) return;
-    const ideaMemo = inputData.trim();
-    if (!ideaMemo) return setAiError("가격정책 메모를 먼저 입력해주세요.");
-    const requestBody: PricingPolicyInput = {
-      programName: program.name,
-      teamName: team?.name || "",
-      participantName: participant.name || participant.code,
-      ideaMemo,
-      oneLineIdea: oneLineIdeaOutput,
-      diagnosisReport: ideaDiagnosisOutput,
-      personaReport: customerPersonaOutput,
-      problemStatementReport: problemStatementOutput,
-      validationExperimentReport: validationExperimentOutput,
-      marketResearchReport: marketResearchOutput,
-      competitorAnalysisReport: competitorAnalysisOutput,
-      differentiationStrategyReport: differentiationStrategyOutput,
-      businessModelReport: businessModelOutput,
-      operation: operationContext
-    };
-    setGenerating(true);
-    setAiError("");
-    setNotice("AI가 세 가지 가격 패키지와 현장 운영 규칙을 설계하고 있습니다.");
-    try {
-      const response = await fetch("/api/generate-pricing-policy", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody)
-      });
-      const data = (await response.json()) as { draft?: PricingPolicyDraft; error?: string };
-      if (!response.ok || !data.draft) throw new Error(data.error || "가격정책 초안을 생성하지 못했습니다.");
-      const formattedOutput = formatPricingPolicyDraft(data.draft);
-      setOutputData(formattedOutput);
-      await saveProgress("in_progress", { inputData: ideaMemo, outputData: formattedOutput });
-      setNotice("가격정책 초안이 생성되었습니다. 표시된 금액은 가설이므로 실제 선택·결제 데이터로 조정해주세요.");
-    } catch (error) {
-      setAiError(error instanceof Error ? error.message : "가격정책 생성 중 오류가 발생했습니다.");
+      setAiError(error instanceof Error ? error.message : specializedModuleRunner.failureMessage);
       setNotice("");
     } finally {
       setGenerating(false);
@@ -1837,134 +1530,14 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
             <span className="mt-1 block text-right text-xs text-[#8b95a1]">{inputData.length.toLocaleString()}/6,000자</span>
           </label>
           <div className="mt-4 flex flex-wrap gap-2">
-            {isOneLineIdeaModule ? (
+            {specializedModuleRunner ? (
               <button
                 className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
                 disabled={generating || !inputData.trim()}
-                onClick={generateOneLineIdea}
+                onClick={generateSpecializedModule}
                 type="button"
               >
-                {generating ? "AI 생성 중..." : "AI 한 줄 아이디어 생성"}
-              </button>
-            ) : null}
-            {isIdeaDiagnosisModule ? (
-              <button
-                className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
-                disabled={generating || !inputData.trim()}
-                onClick={generateIdeaDiagnosis}
-                type="button"
-              >
-                {generating ? "AI 진단 중..." : "AI 사전진단 리포트 생성"}
-              </button>
-            ) : null}
-            {isCustomerPersonaModule ? (
-              <button
-                className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
-                disabled={generating || !inputData.trim()}
-                onClick={generateCustomerPersona}
-                type="button"
-              >
-                {generating ? "AI 생성 중..." : "AI 고객 페르소나 생성"}
-              </button>
-            ) : null}
-            {isCustomerJourneyModule ? (
-              <button
-                className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
-                disabled={generating || !inputData.trim()}
-                onClick={generateCustomerJourney}
-                type="button"
-              >
-                {generating ? "AI 생성 중..." : "AI 고객 여정지도 생성"}
-              </button>
-            ) : null}
-            {isProblemStatementModule ? (
-              <button
-                className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
-                disabled={generating || !inputData.trim()}
-                onClick={generateProblemStatement}
-                type="button"
-              >
-                {generating ? "AI 생성 중..." : "AI 문제정의문 생성"}
-              </button>
-            ) : null}
-            {isCustomerInterviewModule ? (
-              <button
-                className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
-                disabled={generating || !inputData.trim()}
-                onClick={generateCustomerInterview}
-                type="button"
-              >
-                {generating ? "AI 생성 중..." : "AI 고객 인터뷰 질문지 생성"}
-              </button>
-            ) : null}
-            {isCustomerSurveyModule ? (
-              <button
-                className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
-                disabled={generating || !inputData.trim()}
-                onClick={generateCustomerSurvey}
-                type="button"
-              >
-                {generating ? "AI 생성 중..." : "AI 고객 검증 설문지 생성"}
-              </button>
-            ) : null}
-            {isValidationExperimentModule ? (
-              <button
-                className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
-                disabled={generating || !inputData.trim()}
-                onClick={generateValidationExperiment}
-                type="button"
-              >
-                {generating ? "AI 생성 중..." : "AI 검증 실험 설계안 생성"}
-              </button>
-            ) : null}
-            {isMarketResearchModule ? (
-              <button
-                className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
-                disabled={generating || !inputData.trim()}
-                onClick={generateMarketResearch}
-                type="button"
-              >
-                {generating ? "AI 생성 중..." : "AI 시장조사 리포트 생성"}
-              </button>
-            ) : null}
-            {isCompetitorAnalysisModule ? (
-              <button
-                className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
-                disabled={generating || !inputData.trim()}
-                onClick={generateCompetitorAnalysis}
-                type="button"
-              >
-                {generating ? "AI 생성 중..." : "AI 경쟁사 분석표 생성"}
-              </button>
-            ) : null}
-            {isDifferentiationStrategyModule ? (
-              <button
-                className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
-                disabled={generating || !inputData.trim()}
-                onClick={generateDifferentiationStrategy}
-                type="button"
-              >
-                {generating ? "AI 생성 중..." : "AI 차별화 전략 생성"}
-              </button>
-            ) : null}
-            {isBusinessModelModule ? (
-              <button
-                className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
-                disabled={generating || !inputData.trim()}
-                onClick={generateBusinessModel}
-                type="button"
-              >
-                {generating ? "AI 생성 중..." : "AI 사업모델 설계안 생성"}
-              </button>
-            ) : null}
-            {isPricingPolicyModule ? (
-              <button
-                className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
-                disabled={generating || !inputData.trim()}
-                onClick={generatePricingPolicy}
-                type="button"
-              >
-                {generating ? "AI 생성 중..." : "AI 가격정책 설계안 생성"}
+                {generating ? "AI 생성 중..." : specializedModuleRunner.buttonLabel}
               </button>
             ) : null}
             {automatedModuleConfig && !automatedModuleConfig.adminOnly ? (
