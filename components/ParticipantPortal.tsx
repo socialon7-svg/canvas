@@ -202,6 +202,22 @@ export default function ParticipantPortal() {
     if (module.slug === "modu-startup-application" && hasModuStartupSubmission) return "completed";
     return participant?.moduleProgress?.[module.slug]?.status || "not_started";
   };
+  const moduleFeedbackItems = visibleModules
+    .map((module) => ({ module, progress: participant?.moduleProgress?.[module.slug] }))
+    .filter((item) => Boolean(item.progress?.adminComment?.trim()))
+    .sort((left, right) => {
+      const leftTime = Date.parse(left.progress?.reviewedAt || left.progress?.updatedAt || "") || 0;
+      const rightTime = Date.parse(right.progress?.reviewedAt || right.progress?.updatedAt || "") || 0;
+      return rightTime - leftTime;
+    });
+  const revisionRequestedModule = moduleFeedbackItems.find((item) => item.progress?.status === "needs_review");
+  const latestModuleFeedback = moduleFeedbackItems[0];
+  const getModuleDisplayStatusLabel = (module: StartupModule) => {
+    const progress = participant?.moduleProgress?.[module.slug];
+    if (progress?.adminComment && progress.status === "needs_review") return "수정 요청";
+    if (progress?.adminComment && progress.status === "completed") return "검토 완료";
+    return moduleStatusLabels[getModuleProgressStatus(module)];
+  };
   const completedModuleCount = visibleModules.filter((module) => getModuleProgressStatus(module) === "completed").length;
   const moduleProgressPercent = visibleModules.length ? Math.round((completedModuleCount / visibleModules.length) * 100) : 0;
   const nextIncompleteModule = visibleModules.find((module) => getModuleProgressStatus(module) !== "completed");
@@ -264,6 +280,19 @@ export default function ParticipantPortal() {
       value: feedback ? "도착" : hasAnySubmission ? "검토 대기" : "제출 후 표시",
       hint: feedback?.nextAction || (hasAnySubmission ? "운영진 검토가 끝나면 표시됩니다." : "제출 후 운영진이 확인합니다."),
       className: feedback ? "border-green-200 bg-green-50 text-green-900" : "border-gray-200 bg-gray-50 text-gray-700"
+    },
+    {
+      label: "모듈 검토",
+      value: revisionRequestedModule ? "수정 요청" : moduleFeedbackItems.length ? `${moduleFeedbackItems.length}건 도착` : "대기",
+      hint:
+        revisionRequestedModule?.progress?.adminComment ||
+        latestModuleFeedback?.progress?.adminComment ||
+        "운영진 코멘트가 등록되면 표시됩니다.",
+      className: revisionRequestedModule
+        ? "border-amber-300 bg-amber-50 text-amber-950"
+        : moduleFeedbackItems.length
+          ? "border-blue-200 bg-blue-50 text-blue-900"
+          : "border-gray-200 bg-gray-50 text-gray-700"
     }
   ];
   const nextAction = (() => {
@@ -273,6 +302,14 @@ export default function ParticipantPortal() {
         description: "이름, 연락처, 소속이 맞아야 운영진이 제출 현황을 정확히 확인할 수 있습니다.",
         action: "내 정보 확인",
         onClick: () => setTab("profile")
+      };
+    }
+    if (revisionRequestedModule) {
+      return {
+        title: `수정 요청: ${revisionRequestedModule.module.title}`,
+        description: revisionRequestedModule.progress?.adminComment || "운영진 코멘트를 확인하고 내용을 보완해주세요.",
+        action: "코멘트 확인하고 수정",
+        onClick: () => openModule(revisionRequestedModule.module)
       };
     }
     if (nextIncompleteModule) {
@@ -669,7 +706,11 @@ export default function ParticipantPortal() {
   const tabs: Array<{ key: ParticipantTab; label: string; badge?: string }> = [
     { key: "home", label: "홈" },
     { key: "profile", label: "내 정보", badge: hasProfile ? undefined : "확인" },
-    { key: "write", label: "모듈", badge: `${completedModuleCount}/${visibleModules.length}` },
+    {
+      key: "write",
+      label: "모듈",
+      badge: revisionRequestedModule ? "수정" : `${completedModuleCount}/${visibleModules.length}`
+    },
     { key: "feedback", label: "피드백", badge: feedback ? "도착" : undefined }
   ];
 
@@ -764,7 +805,7 @@ export default function ParticipantPortal() {
                 </div>
               ))}
             </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               {statusCards.map((card) => (
                 <div key={card.label} className={`rounded-md border px-4 py-3 ${card.className}`}>
                   <p className="text-xs font-bold opacity-80">{card.label}</p>
@@ -840,23 +881,34 @@ export default function ParticipantPortal() {
               <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                 {visibleModules.slice(0, 6).map((module) => {
                   const moduleStatus = getModuleProgressStatus(module);
+                  const moduleProgress = participant?.moduleProgress?.[module.slug];
+                  const hasModuleComment = Boolean(moduleProgress?.adminComment?.trim());
+                  const hasRevisionRequest = hasModuleComment && moduleStatus === "needs_review";
                   const isNextModule = nextIncompleteModule?.id === module.id;
                   return (
                     <button
                       key={module.id}
                       className={`rounded-md border p-3 text-left transition-colors ${
-                        isNextModule
+                        hasRevisionRequest
+                          ? "border-amber-300 bg-amber-50 ring-2 ring-amber-100"
+                          : isNextModule
                           ? "border-blue-300 bg-blue-50 ring-2 ring-blue-100"
                           : "border-gray-200 bg-gray-50 hover:border-blue-300 hover:bg-blue-50"
                       }`}
                       onClick={() => openModule(module)}
                       type="button"
                     >
-                      <span className="text-xs font-bold text-blue-700">
-                        {module.order}. {moduleStatusLabels[moduleStatus]}{isNextModule ? " · 다음 할 일" : ""}
+                      <span className={`text-xs font-bold ${hasRevisionRequest ? "text-amber-900" : "text-blue-700"}`}>
+                        {module.order}. {getModuleDisplayStatusLabel(module)}{isNextModule && !hasRevisionRequest ? " · 다음 할 일" : ""}
                       </span>
                       <span className="mt-1 block font-bold text-gray-950">{module.title}</span>
-                      {isNextModule ? <span className="mt-2 block text-xs font-bold text-blue-700">바로 이어서 작성 →</span> : null}
+                      {hasModuleComment ? (
+                        <span className={`mt-2 block line-clamp-2 text-xs leading-5 ${hasRevisionRequest ? "font-bold text-amber-900" : "text-gray-600"}`}>
+                          {hasRevisionRequest ? "운영진 수정 요청: " : "운영진 코멘트: "}{moduleProgress?.adminComment}
+                        </span>
+                      ) : isNextModule ? (
+                        <span className="mt-2 block text-xs font-bold text-blue-700">바로 이어서 작성 →</span>
+                      ) : null}
                     </button>
                   );
                 })}
@@ -1038,24 +1090,36 @@ export default function ParticipantPortal() {
             <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {filteredVisibleModules.map((module) => {
                 const moduleStatus = getModuleProgressStatus(module);
+                const moduleProgress = participant?.moduleProgress?.[module.slug];
+                const hasModuleComment = Boolean(moduleProgress?.adminComment?.trim());
+                const hasRevisionRequest = hasModuleComment && moduleStatus === "needs_review";
                 return (
-                  <article key={module.id} className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+                  <article
+                    key={module.id}
+                    className={`rounded-lg border bg-white p-5 shadow-sm ${hasRevisionRequest ? "border-amber-300 ring-2 ring-amber-100" : "border-gray-200"}`}
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-sm font-bold text-blue-700">STEP {module.order}</p>
                         <h2 className="mt-1 text-lg font-bold text-gray-950">{module.title}</h2>
                       </div>
                       <span className={`rounded-full border px-2.5 py-1 text-xs font-bold ${moduleStatusClass(moduleStatus)}`}>
-                        {moduleStatusLabels[moduleStatus]}
+                        {getModuleDisplayStatusLabel(module)}
                       </span>
                     </div>
                     <p className="mt-3 min-h-12 text-sm leading-6 text-gray-600">{module.description}</p>
+                    {hasModuleComment ? (
+                      <div className={`mt-3 rounded-md px-3 py-2 text-xs leading-5 ${hasRevisionRequest ? "bg-amber-50 font-bold text-amber-950" : "bg-blue-50 text-blue-900"}`}>
+                        <p>{hasRevisionRequest ? "운영진 수정 요청" : "운영진 코멘트 도착"}</p>
+                        <p className="mt-1 line-clamp-3 font-normal">{moduleProgress?.adminComment}</p>
+                      </div>
+                    ) : null}
                     <button
                       className="mt-5 w-full rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-800 active:bg-blue-900"
                       onClick={() => openModule(module)}
                       type="button"
                     >
-                      {moduleStatus === "not_started" ? "시작하기" : "이어하기"}
+                      {hasRevisionRequest ? "수정 요청 확인" : hasModuleComment ? "코멘트 확인" : moduleStatus === "not_started" ? "시작하기" : "이어하기"}
                     </button>
                   </article>
                 );

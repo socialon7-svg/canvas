@@ -55,8 +55,8 @@ export async function PATCH(request: Request) {
       currentStep: body.currentStep,
       inputData: body.inputData,
       outputData: body.outputData,
-      adminComment: body.adminComment,
-      reviewedAt: body.reviewedAt
+      adminComment: authorization.mode === "admin" ? body.adminComment : undefined,
+      reviewedAt: authorization.mode === "admin" ? body.reviewedAt : undefined
     });
     const startupModule = getStartupModuleBySlug(body.moduleSlug);
     const shouldSyncSubmission = body.moduleSlug !== "lean-canvas" && body.moduleSlug !== "modu-startup-application";

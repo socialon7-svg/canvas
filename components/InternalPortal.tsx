@@ -2209,7 +2209,10 @@ export default function InternalPortal() {
     const reviewKey = `${participantId}:${moduleSlug}`;
     const formData = new FormData(form);
     const adminComment = String(formData.get("adminComment") || "").trim();
-    if (adminComment.length < 3) {
+    const currentProgress = participant.moduleProgress?.[startupModule.slug];
+    const status = String(formData.get("status") || currentProgress?.status || "in_progress") as ParticipantModuleProgressStatus;
+    const requiresComment = status === "needs_review";
+    if ((requiresComment && adminComment.length < 3) || (adminComment.length > 0 && adminComment.length < 3)) {
       setModuleReviewSaveResult({ key: reviewKey, ok: false, message: "저장 전 확인 · 운영진 코멘트를 3자 이상 입력해주세요." });
       setModuleReviewDirtyKey(reviewKey);
       const target = form.elements.namedItem("adminComment");
@@ -2220,8 +2223,6 @@ export default function InternalPortal() {
     setModuleReviewSaveResult(null);
     setError("");
     const now = new Date().toISOString();
-    const currentProgress = participant.moduleProgress?.[startupModule.slug];
-    const status = String(formData.get("status") || currentProgress?.status || "in_progress") as ParticipantModuleProgressStatus;
     const nextState = {
       ...state,
       participants: state.participants.map((item) =>
@@ -2254,7 +2255,7 @@ export default function InternalPortal() {
           participantId,
           moduleSlug,
           status,
-          currentStep: currentProgress?.status === "completed" ? 100 : 50,
+          currentStep: status === "completed" ? 100 : status === "not_started" ? 0 : 50,
           inputData: { text: currentProgress?.inputData || "" },
           outputData: { text: currentProgress?.outputData || "" },
           adminComment,

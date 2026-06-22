@@ -994,6 +994,8 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
       status,
       inputData: nextInputData,
       outputData: nextOutputData,
+      adminComment: progress?.adminComment,
+      reviewedAt: progress?.reviewedAt,
       createdAt: progress?.createdAt || now,
       updatedAt: now
     };
@@ -1447,7 +1449,19 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
             })}`
           : "입력하면 자동 저장됩니다";
   const currentActionGuide =
-    currentStatus === "completed"
+    progress?.adminComment && currentStatus === "needs_review"
+      ? {
+          title: "운영진의 수정 요청이 도착했습니다",
+          description: "오른쪽 코멘트를 확인해 내용을 보완한 뒤 '보완 완료로 저장'을 눌러주세요.",
+          className: "border-amber-300 bg-amber-50 text-amber-950"
+        }
+      : progress?.adminComment && currentStatus === "completed"
+        ? {
+            title: "운영진 검토가 완료되었습니다",
+            description: "검토 코멘트를 확인했습니다. 추가 수정이 없다면 다음 모듈을 진행하세요.",
+            className: "border-green-200 bg-green-50 text-green-900"
+          }
+        : currentStatus === "completed"
       ? {
           title: "이 모듈은 완료로 제출되었습니다",
           description: "내용을 수정했다면 아래 '수정 내용 저장'을 눌러 운영진에게 최신 결과를 반영하세요.",
@@ -1649,7 +1663,13 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
                 onClick={() => saveProgress("completed")}
                 type="button"
               >
-                {savingProgress ? "저장 중..." : currentStatus === "completed" ? "수정 내용 저장" : "최종 완료로 저장"}
+                {savingProgress
+                  ? "저장 중..."
+                  : progress?.adminComment && currentStatus === "needs_review"
+                    ? "보완 완료로 저장"
+                    : currentStatus === "completed"
+                      ? "수정 내용 저장"
+                      : "최종 완료로 저장"}
               </button>
               <button
                 className="app-secondary-button text-sm text-[#1b64da]"
@@ -1671,11 +1691,26 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
 
         <aside className="grid content-start gap-4 lg:sticky lg:top-4 lg:grid-cols-1">
           {progress?.adminComment ? (
-            <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 shadow-sm">
-              <p className="text-sm font-bold text-amber-800">멘토·운영진 피드백</p>
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-amber-950">{progress.adminComment}</p>
+            <section
+              className={`rounded-lg border p-4 shadow-sm ${
+                currentStatus === "needs_review"
+                  ? "border-amber-300 bg-amber-50"
+                  : currentStatus === "completed"
+                    ? "border-green-200 bg-green-50"
+                    : "border-blue-200 bg-blue-50"
+              }`}
+            >
+              <p className={`text-sm font-bold ${currentStatus === "needs_review" ? "text-amber-900" : currentStatus === "completed" ? "text-green-800" : "text-blue-800"}`}>
+                {currentStatus === "needs_review" ? "수정 요청" : currentStatus === "completed" ? "운영진 검토 완료" : "운영진 코멘트"}
+              </p>
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-900">{progress.adminComment}</p>
               {progress.reviewedAt ? (
-                <p className="mt-3 text-xs text-amber-800">검토 시각: {new Date(progress.reviewedAt).toLocaleString("ko-KR")}</p>
+                <p className="mt-3 text-xs text-gray-600">전달 시각: {new Date(progress.reviewedAt).toLocaleString("ko-KR")}</p>
+              ) : null}
+              {currentStatus === "needs_review" ? (
+                <p className="mt-3 rounded-md bg-white/80 px-3 py-2 text-xs font-bold leading-5 text-amber-900">
+                  코멘트를 반영한 뒤 중앙의 결과 영역에서 보완 완료로 저장해주세요.
+                </p>
               ) : null}
             </section>
           ) : (

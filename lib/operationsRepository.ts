@@ -666,11 +666,11 @@ export async function upsertModuleProgress(input: {
         participant_id: input.participantId,
         module_slug: input.moduleSlug,
         status: input.status,
-        current_step: input.currentStep ?? 0,
-        input_data: input.inputData ?? {},
-        output_data: input.outputData ?? {},
-        admin_comment: input.adminComment ?? "",
-        reviewed_at: input.reviewedAt ?? null,
+        ...(input.currentStep !== undefined ? { current_step: input.currentStep } : {}),
+        ...(input.inputData !== undefined ? { input_data: input.inputData } : {}),
+        ...(input.outputData !== undefined ? { output_data: input.outputData } : {}),
+        ...(input.adminComment !== undefined ? { admin_comment: input.adminComment } : {}),
+        ...(input.reviewedAt !== undefined ? { reviewed_at: input.reviewedAt } : {}),
         updated_at: new Date().toISOString()
       },
       { onConflict: "program_id,participant_id,module_slug" }
