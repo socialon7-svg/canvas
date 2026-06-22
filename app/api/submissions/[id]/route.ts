@@ -6,7 +6,7 @@ import {
   getModuleSubmission,
   updateModuleSubmissionPdfStatus
 } from "@/lib/operationsRepository";
-import { authorizeParticipantRequest } from "@/lib/participantAuth";
+import { authorizeActiveParticipantRequest } from "@/lib/participantAuth";
 
 const pdfStatusSchema = z.object({
   pdfStatus: z.enum(["idle", "generating", "success", "failed"]),
@@ -23,7 +23,7 @@ export async function GET(request: Request, { params }: { params: Promise<unknow
     const { id } = (await params) as { id: string };
     const row = await findLeanCanvasSubmission(id);
     if (!row) return NextResponse.json({ error: "제출물을 찾을 수 없습니다." }, { status: 404 });
-    const authorization = authorizeParticipantRequest(
+    const authorization = await authorizeActiveParticipantRequest(
       request,
       { programId: row.program_id, participantId: row.participant_id },
       { allowAdmin: true }
@@ -41,7 +41,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<unkn
     const existing = await findLeanCanvasSubmission(id);
     if (!existing) return NextResponse.json({ error: "제출물을 찾을 수 없습니다." }, { status: 404 });
 
-    const authorization = authorizeParticipantRequest(
+    const authorization = await authorizeActiveParticipantRequest(
       request,
       { programId: existing.program_id, participantId: existing.participant_id },
       { allowAdmin: true }

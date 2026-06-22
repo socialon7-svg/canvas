@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getModuleDraft, upsertModuleDraft } from "@/lib/operationsRepository";
 import { handleOperationsApiError } from "@/lib/operationsApiUtils";
-import { authorizeParticipantRequest } from "@/lib/participantAuth";
+import { authorizeActiveParticipantRequest, authorizeParticipantRequest } from "@/lib/participantAuth";
 
 const draftQuerySchema = z.object({
   programId: z.string().trim().min(1),
@@ -25,7 +25,7 @@ export async function GET(request: Request) {
       participantId: url.searchParams.get("participantId") || "",
       moduleSlug: url.searchParams.get("moduleSlug") || ""
     });
-    const authorization = authorizeParticipantRequest(request, query);
+    const authorization = await authorizeActiveParticipantRequest(request, query);
     if (!authorization.ok) return authorization.response;
     const draft = await getModuleDraft(query);
 
@@ -52,7 +52,7 @@ export async function PUT(request: Request) {
     const initialAuthorization = authorizeParticipantRequest(request, {});
     if (!initialAuthorization.ok) return initialAuthorization.response;
     const body = draftUpsertSchema.parse(await request.json());
-    const authorization = authorizeParticipantRequest(request, body);
+    const authorization = await authorizeActiveParticipantRequest(request, body);
     if (!authorization.ok) return authorization.response;
     const draft = await upsertModuleDraft(body);
 

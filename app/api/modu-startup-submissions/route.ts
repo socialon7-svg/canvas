@@ -8,7 +8,7 @@ import {
   listModuleSubmissions,
   upsertModuleProgress
 } from "@/lib/operationsRepository";
-import { authorizeParticipantRequest } from "@/lib/participantAuth";
+import { authorizeActiveParticipantRequest, authorizeParticipantRequest } from "@/lib/participantAuth";
 import type { ModuStartupDraft, ModuStartupInput } from "@/lib/types";
 
 interface ModuStartupSubmissionRequest {
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
 
     const operation = body.input.operation!;
-    const authorization = authorizeParticipantRequest(
+    const authorization = await authorizeActiveParticipantRequest(
       request,
       { programId: operation.programId, participantId: operation.participantId },
       { allowAdmin: true }

@@ -7,7 +7,7 @@ import {
   type ParticipantModuleProgressRow
 } from "@/lib/operationsRepository";
 import { handleOperationsApiError } from "@/lib/operationsApiUtils";
-import { authorizeParticipantRequest } from "@/lib/participantAuth";
+import { authorizeActiveParticipantRequest, authorizeParticipantRequest } from "@/lib/participantAuth";
 import { getStartupModuleBySlug } from "@/lib/startupModules";
 
 const jsonObjectSchema = z.record(z.string(), z.unknown());
@@ -45,7 +45,7 @@ export async function PATCH(request: Request) {
     const initialAuthorization = authorizeParticipantRequest(request, {}, { allowAdmin: true });
     if (!initialAuthorization.ok) return initialAuthorization.response;
     const body = moduleProgressSchema.parse(await request.json());
-    const authorization = authorizeParticipantRequest(request, body, { allowAdmin: true });
+    const authorization = await authorizeActiveParticipantRequest(request, body, { allowAdmin: true });
     if (!authorization.ok) return authorization.response;
     const progress = await upsertModuleProgress({
       programId: body.programId,

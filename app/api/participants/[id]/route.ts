@@ -4,7 +4,7 @@ import { adminUnauthorizedResponse, isAdminRequest } from "@/lib/adminAuth";
 import { deleteParticipant, updateParticipant } from "@/lib/operationsRepository";
 import { toParticipantDto } from "@/lib/operationsDto";
 import { handleOperationsApiError } from "@/lib/operationsApiUtils";
-import { authorizeParticipantRequest } from "@/lib/participantAuth";
+import { authorizeActiveParticipantRequest } from "@/lib/participantAuth";
 
 const participantUpdateSchema = z.object({
   teamId: z.string().trim().nullable().optional(),
@@ -20,7 +20,7 @@ const participantUpdateSchema = z.object({
 export async function PATCH(request: Request, { params }: { params: Promise<unknown> }) {
   try {
     const { id } = (await params) as { id: string };
-    const authorization = authorizeParticipantRequest(request, { participantId: id }, { allowAdmin: true });
+    const authorization = await authorizeActiveParticipantRequest(request, { participantId: id }, { allowAdmin: true });
     if (!authorization.ok) return authorization.response;
     const body = participantUpdateSchema.parse(await request.json());
     const participant = await updateParticipant({

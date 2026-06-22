@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
 import { isAdminRequest } from "@/lib/adminAuth";
+import { getParticipant } from "@/lib/operationsRepository";
 import { hasSupabaseServerConfig } from "@/lib/supabaseServer";
 
 export const PARTICIPANT_SESSION_COOKIE = "highview_participant_session";
@@ -159,6 +160,42 @@ export function authorizeParticipantRequest(
   return { ok: true, mode: "participant", session };
 }
 
+async function verifyActiveParticipantAuthorization(
+  authorization: ParticipantAuthorization
+): Promise<ParticipantAuthorization> {
+  if (!authorization.ok || authorization.mode !== "participant") return authorization;
+
+  const participant = await getParticipant(authorization.session.participantId);
+  if (
+    !participant ||
+    participant.program_id !== authorization.session.programId ||
+    !participant.is_active
+  ) {
+    return {
+      ok: false,
+      response: clearParticipantSessionCookie(
+        NextResponse.json(
+          {
+            error: "참여가 비활성화되었거나 더 이상 사용할 수 없습니다. 운영진에게 문의해주세요.",
+            code: "PARTICIPANT_INACTIVE"
+          },
+          { status: 403 }
+        )
+      )
+    };
+  }
+
+  return authorization;
+}
+
+export async function authorizeActiveParticipantRequest(
+  request: Request,
+  expected: { programId?: string; participantId?: string },
+  options: { allowAdmin?: boolean } = {}
+) {
+  return verifyActiveParticipantAuthorization(authorizeParticipantRequest(request, expected, options));
+}
+
 export function authorizeOperationRequest(
   request: Request,
   operation: { programId?: string; participantId?: string } | undefined,
@@ -182,4 +219,12 @@ export function authorizeOperationRequest(
     { programId: operation?.programId, participantId: operation?.participantId },
     options
   );
+}
+
+export async function authorizeActiveOperationRequest(
+  request: Request,
+  operation: { programId?: string; participantId?: string } | undefined,
+  options: { allowAdmin?: boolean } = { allowAdmin: true }
+) {
+  return verifyActiveParticipantAuthorization(authorizeOperationRequest(request, operation, options));
 }

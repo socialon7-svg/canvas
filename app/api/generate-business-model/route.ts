@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { generateBusinessModelDraft } from "@/lib/ai";
-import { authorizeOperationRequest } from "@/lib/participantAuth";
+import { authorizeActiveOperationRequest } from "@/lib/participantAuth";
 import type { BusinessModelInput } from "@/lib/types";
 
 const textField = (max = 5000) => z.string().trim().max(max).optional().default("");
@@ -34,7 +34,7 @@ const inputSchema = z.object({
 export async function POST(request: Request) {
   try {
     const input = inputSchema.parse(await request.json()) as BusinessModelInput;
-    const authorization = authorizeOperationRequest(request, input.operation);
+    const authorization = await authorizeActiveOperationRequest(request, input.operation);
     if (!authorization.ok) return authorization.response;
     return NextResponse.json({ draft: await generateBusinessModelDraft(input) });
   } catch (error) {

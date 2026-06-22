@@ -7,7 +7,7 @@ import {
   listModuleSubmissions,
   upsertModuleProgress
 } from "@/lib/operationsRepository";
-import { authorizeParticipantRequest } from "@/lib/participantAuth";
+import { authorizeActiveParticipantRequest, authorizeParticipantRequest } from "@/lib/participantAuth";
 import type { LeanCanvasDraft, ParticipantInput } from "@/lib/types";
 
 interface SubmissionRequest {
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
     if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
 
     const operation = body.participant.operation!;
-    const authorization = authorizeParticipantRequest(
+    const authorization = await authorizeActiveParticipantRequest(
       request,
       { programId: operation.programId, participantId: operation.participantId },
       { allowAdmin: true }

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { generateDifferentiationStrategyDraft } from "@/lib/ai";
-import { authorizeOperationRequest } from "@/lib/participantAuth";
+import { authorizeActiveOperationRequest } from "@/lib/participantAuth";
 import type { DifferentiationStrategyInput } from "@/lib/types";
 
 const textField = (max = 3000) => z.string().trim().max(max).optional().default("");
@@ -22,7 +22,7 @@ const inputSchema = z.object({
 export async function POST(request: Request) {
   try {
     const input = inputSchema.parse(await request.json()) as DifferentiationStrategyInput;
-    const authorization = authorizeOperationRequest(request, input.operation);
+    const authorization = await authorizeActiveOperationRequest(request, input.operation);
     if (!authorization.ok) return authorization.response;
     return NextResponse.json({ draft: await generateDifferentiationStrategyDraft(input) });
   } catch (error) {

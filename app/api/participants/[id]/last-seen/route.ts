@@ -3,7 +3,7 @@ import { z } from "zod";
 import { touchParticipantSeen } from "@/lib/operationsRepository";
 import { toParticipantDto } from "@/lib/operationsDto";
 import { handleOperationsApiError } from "@/lib/operationsApiUtils";
-import { authorizeParticipantRequest } from "@/lib/participantAuth";
+import { authorizeActiveParticipantRequest } from "@/lib/participantAuth";
 
 const lastSeenSchema = z.object({
   joined: z.boolean().optional()
@@ -15,7 +15,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<unkn
     if (!id?.trim()) {
       return NextResponse.json({ error: "참여자 ID가 없습니다." }, { status: 400 });
     }
-    const authorization = authorizeParticipantRequest(request, { participantId: id });
+    const authorization = await authorizeActiveParticipantRequest(request, { participantId: id });
     if (!authorization.ok) return authorization.response;
 
     const body = lastSeenSchema.parse(await request.json().catch(() => ({})));

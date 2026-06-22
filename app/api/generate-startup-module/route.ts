@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { generateAutomatedStartupModuleDraft } from "@/lib/ai";
 import { getModuleRunnerDefinition, moduleRunnerInputSchema } from "@/lib/moduleRunner";
-import { authorizeOperationRequest, authorizeParticipantRequest } from "@/lib/participantAuth";
+import { authorizeActiveOperationRequest, authorizeParticipantRequest } from "@/lib/participantAuth";
 
 export async function POST(request: Request) {
   try {
@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     const runner = getModuleRunnerDefinition(input.moduleSlug);
     if (!runner) return NextResponse.json({ error: "지원하지 않는 자동화 모듈입니다." }, { status: 404 });
 
-    const authorization = authorizeOperationRequest(request, input.operation);
+    const authorization = await authorizeActiveOperationRequest(request, input.operation);
     if (!authorization.ok) return authorization.response;
     if (runner.adminOnly && authorization.mode === "participant") {
       return NextResponse.json({ error: "이 모듈은 운영진 전용입니다." }, { status: 403 });
