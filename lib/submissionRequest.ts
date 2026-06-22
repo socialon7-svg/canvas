@@ -57,3 +57,7 @@ export function getOrCreateSubmissionRequestId(scope: string, payload: unknown) 
   }
   return requestId;
 }
+
+export function getOrCreateStableRecordId(scope: string) {
+  return getOrCreateSubmissionRequestId(`record:${scope}`, { type: "stable-record" });
+}

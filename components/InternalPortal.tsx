@@ -21,6 +21,7 @@ import type {
 } from "@/lib/types";
 import { deleteSubmission, loadSubmissions } from "@/lib/storage";
 import { getParticipantJoinUrl } from "@/lib/joinLink";
+import { getOrCreateStableRecordId } from "@/lib/submissionRequest";
 import {
   DEFAULT_STARTUP_MODULE_IDS,
   getProgramModuleIds,
@@ -78,6 +79,39 @@ type PendingConfirmation = {
   confirmLabel: string;
   action: () => void | Promise<void>;
 };
+
+type FeedbackDraft = {
+  comment: string;
+  nextAction: string;
+  status: FeedbackStatus;
+};
+
+const FEEDBACK_DRAFT_PREFIX = "highview_feedback_draft";
+
+function loadFeedbackDraft(submissionId: string) {
+  if (typeof window === "undefined" || !submissionId) return null;
+  try {
+    return JSON.parse(window.sessionStorage.getItem(`${FEEDBACK_DRAFT_PREFIX}:${submissionId}`) || "null") as FeedbackDraft | null;
+  } catch {
+    return null;
+  }
+}
+
+function saveFeedbackDraft(submissionId: string, draft: FeedbackDraft) {
+  try {
+    window.sessionStorage.setItem(`${FEEDBACK_DRAFT_PREFIX}:${submissionId}`, JSON.stringify(draft));
+  } catch {
+    // The form remains usable even when temporary browser storage is unavailable.
+  }
+}
+
+function clearFeedbackDraft(submissionId: string) {
+  try {
+    window.sessionStorage.removeItem(`${FEEDBACK_DRAFT_PREFIX}:${submissionId}`);
+  } catch {
+    // Nothing else is required after a successful server save.
+  }
+}
 
 const submissionFilterLabels: Record<SubmissionFilter, string> = {
   all: "전체",
@@ -399,6 +433,7 @@ export default function InternalPortal() {
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
   const [confirmingAction, setConfirmingAction] = useState(false);
   const [feedbackSavingSubmissionId, setFeedbackSavingSubmissionId] = useState("");
+  const [feedbackDirtySubmissionId, setFeedbackDirtySubmissionId] = useState("");
   const [feedbackSaveResult, setFeedbackSaveResult] = useState<{ submissionId: string; ok: boolean; message: string } | null>(null);
   const [moduleReviewSavingKey, setModuleReviewSavingKey] = useState("");
   const [moduleReviewSaveResult, setModuleReviewSaveResult] = useState<{ key: string; ok: boolean; message: string } | null>(null);
@@ -412,6 +447,16 @@ export default function InternalPortal() {
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [confirmingAction, pendingConfirmation]);
+
+  useEffect(() => {
+    if (!feedbackDirtySubmissionId) return;
+    const warnBeforeLeave = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeLeave);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeave);
+  }, [feedbackDirtySubmissionId]);
 
   const runConfirmedAction = async () => {
     if (!pendingConfirmation || confirmingAction) return;
@@ -830,6 +875,15 @@ export default function InternalPortal() {
   }, [programStatusRows, submissionFilter]);
   const selectedStatusRow =
     filteredStatusRows.find((row) => row.participant.id === selectedParticipantId) || filteredStatusRows[0];
+  const selectedFeedbackDraft = selectedStatusRow?.submission
+    ? loadFeedbackDraft(selectedStatusRow.submission.id)
+    : null;
+  const selectedFeedbackDraftSubmissionId = selectedFeedbackDraft ? selectedStatusRow?.submission?.id || "" : "";
+  useEffect(() => {
+    if (selectedFeedbackDraftSubmissionId) {
+      setFeedbackDirtySubmissionId(selectedFeedbackDraftSubmissionId);
+    }
+  }, [selectedFeedbackDraftSubmissionId]);
   const activeSubmissionFilterLabel = submissionFilterLabels[submissionFilter];
   const moduleReportRows = useMemo(
     () =>
@@ -1934,7 +1988,11 @@ export default function InternalPortal() {
     setFeedbackSaveResult(null);
     setError("");
     const formData = new FormData(form);
+    const currentFeedback = findFeedback(state, submissionId);
     const feedbackInput = {
+      feedbackId:
+        currentFeedback?.id ||
+        getOrCreateStableRecordId(`${currentProgram.id}:${submission.participant.operation?.participantId || submission.id}:${submissionId}:feedback`),
       programId: currentProgram.id,
       participantId: submission.participant.operation?.participantId || submission.id,
       submissionId,
@@ -1954,10 +2012,25 @@ export default function InternalPortal() {
         persistState(nextState);
         setOperationsFallbackMode(true);
       } else {
+        if (result.data?.feedback) {
+          setState((current) => ({
+            ...current,
+            feedbacks: [
+              ...current.feedbacks.filter((item) => item.submissionId !== submissionId),
+              result.data!.feedback
+            ]
+          }));
+        }
         await refreshSubmissions();
       }
+      clearFeedbackDraft(submissionId);
+      setFeedbackDirtySubmissionId((current) => (current === submissionId ? "" : current));
       setNotice("피드백을 저장했습니다.");
-      setFeedbackSaveResult({ submissionId, ok: true, message: "저장됨 · 참여자 피드백 화면에 반영되었습니다." });
+      setFeedbackSaveResult({
+        submissionId,
+        ok: true,
+        message: `저장됨 · ${new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })} · 참여자 화면에 반영되었습니다.`
+      });
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "피드백 저장에 실패했습니다.";
       setError(message);
@@ -1965,6 +2038,23 @@ export default function InternalPortal() {
     } finally {
       setFeedbackSavingSubmissionId("");
     }
+  };
+
+  const persistFeedbackFormDraft = (form: HTMLFormElement) => {
+    const submissionId = form.dataset.submissionId || "";
+    if (!submissionId) return;
+    const formData = new FormData(form);
+    saveFeedbackDraft(submissionId, {
+      comment: String(formData.get("comment") || ""),
+      nextAction: String(formData.get("nextAction") || ""),
+      status: String(formData.get("status") || "needs_revision") as FeedbackStatus
+    });
+    setFeedbackDirtySubmissionId(submissionId);
+    setFeedbackSaveResult((current) => (current?.submissionId === submissionId ? null : current));
+  };
+
+  const handleFeedbackDraftChange = (event: React.FormEvent<HTMLFormElement>) => {
+    persistFeedbackFormDraft(event.currentTarget);
   };
 
   const applyFeedbackTemplate = (submissionId: string, template: FeedbackQuickTemplate) => {
@@ -1988,6 +2078,7 @@ export default function InternalPortal() {
     setFieldValue(form.elements.namedItem("comment"), template.comment);
     setFieldValue(form.elements.namedItem("nextAction"), template.nextAction);
     setFieldValue(form.elements.namedItem("status"), template.status);
+    persistFeedbackFormDraft(form);
     setFeedbackSaveResult(null);
     setNotice(`${template.label} 피드백 템플릿을 입력했습니다. 저장 버튼을 눌러 반영하세요.`);
   };
@@ -3262,7 +3353,8 @@ export default function InternalPortal() {
                       <form
                         className="grid gap-3 border-t border-gray-200 pt-4"
                         data-submission-id={selectedStatusRow.submission.id}
-                        key={selectedStatusRow.submission.id}
+                        key={`${selectedStatusRow.submission.id}:${selectedStatusRow.feedback?.updatedAt || "new"}`}
+                        onChange={handleFeedbackDraftChange}
                         onSubmit={handleFeedback}
                       >
                         <div>
@@ -3285,7 +3377,7 @@ export default function InternalPortal() {
                           <span className="mb-1 block text-xs font-bold text-gray-600">코멘트</span>
                           <textarea
                             className="min-h-28 w-full rounded-md border border-gray-300 px-3 py-2 text-sm leading-6"
-                            defaultValue={selectedStatusRow.feedback?.comment || ""}
+                            defaultValue={selectedFeedbackDraft?.comment ?? selectedStatusRow.feedback?.comment ?? ""}
                             name="comment"
                             placeholder="다음 수정에 바로 쓸 수 있는 구체적 피드백"
                           />
@@ -3294,7 +3386,7 @@ export default function InternalPortal() {
                           <span className="mb-1 block text-xs font-bold text-gray-600">다음 액션</span>
                           <input
                             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                            defaultValue={selectedStatusRow.feedback?.nextAction || ""}
+                            defaultValue={selectedFeedbackDraft?.nextAction ?? selectedStatusRow.feedback?.nextAction ?? ""}
                             name="nextAction"
                             placeholder="참여자가 다음에 할 행동"
                           />
@@ -3302,7 +3394,7 @@ export default function InternalPortal() {
                         <div className="grid gap-2 sm:grid-cols-[1fr_auto] lg:grid-cols-1">
                           <select
                             className="rounded-md border border-gray-300 px-3 py-2 text-sm"
-                            defaultValue={selectedStatusRow.feedback?.status || "needs_revision"}
+                            defaultValue={selectedFeedbackDraft?.status ?? selectedStatusRow.feedback?.status ?? "needs_revision"}
                             name="status"
                           >
                             <option value="needs_revision">수정 필요</option>
@@ -3316,7 +3408,11 @@ export default function InternalPortal() {
                             {feedbackSavingSubmissionId === selectedStatusRow.submission.id ? "저장 중..." : "피드백 저장"}
                           </button>
                         </div>
-                        {feedbackSaveResult?.submissionId === selectedStatusRow.submission.id ? (
+                        {feedbackDirtySubmissionId === selectedStatusRow.submission.id || selectedFeedbackDraft ? (
+                          <p className="rounded-md bg-amber-50 px-3 py-2 text-xs font-bold leading-5 text-amber-800" role="status">
+                            저장되지 않은 변경사항이 있습니다. 이 탭에는 임시 보관되며, 피드백 저장을 눌러야 참여자에게 전달됩니다.
+                          </p>
+                        ) : feedbackSaveResult?.submissionId === selectedStatusRow.submission.id ? (
                           <p
                             className={`rounded-md px-3 py-2 text-xs font-bold ${
                               feedbackSaveResult.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"

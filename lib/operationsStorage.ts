@@ -340,6 +340,7 @@ export function recordModuStartupSubmission(input: ModuStartupInput, submissionI
 export function saveFeedback(
   state: HighViewOperationsState,
   input: {
+    feedbackId?: string;
     programId: string;
     participantId: string;
     submissionId: string;
@@ -348,15 +349,16 @@ export function saveFeedback(
     status: FeedbackStatus;
   }
 ) {
+  const { feedbackId, ...feedbackData } = input;
   const existing = state.feedbacks.find((feedback) => feedback.submissionId === input.submissionId);
   const now = new Date().toISOString();
   if (existing) {
-    Object.assign(existing, { ...input, updatedAt: now });
+    Object.assign(existing, { ...feedbackData, updatedAt: now });
     return existing;
   }
   const feedback: HighViewFeedback = {
-    id: uuid("feedback"),
-    ...input,
+    id: feedbackId || uuid("feedback"),
+    ...feedbackData,
     createdAt: now,
     updatedAt: now
   };

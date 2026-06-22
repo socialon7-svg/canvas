@@ -5,6 +5,7 @@ import { createFeedback, type FeedbackRow } from "@/lib/operationsRepository";
 import { handleOperationsApiError } from "@/lib/operationsApiUtils";
 
 const feedbackCreateSchema = z.object({
+  feedbackId: z.string().uuid().optional(),
   programId: z.string().trim().min(1),
   participantId: z.string().trim().min(1),
   submissionId: z.string().trim().min(1).nullable().optional(),
@@ -37,6 +38,7 @@ export async function POST(request: Request) {
   try {
     const body = feedbackCreateSchema.parse(await request.json());
     const feedback = await createFeedback({
+      feedbackId: body.feedbackId,
       programId: body.programId,
       participantId: body.participantId,
       submissionId: body.submissionId,

@@ -855,6 +855,7 @@ export async function updateModuleSubmissionPdfStatus(input: {
 }
 
 export async function createFeedback(input: {
+  feedbackId?: string;
   programId: string;
   participantId: string;
   submissionId?: string | null;
@@ -864,9 +865,41 @@ export async function createFeedback(input: {
   nextAction?: string;
 }) {
   const supabase = getClient();
+  let existingQuery = supabase
+    .from("feedbacks")
+    .select("*")
+    .eq("program_id", input.programId)
+    .eq("participant_id", input.participantId);
+  if (input.submissionId) existingQuery = existingQuery.eq("submission_id", input.submissionId);
+  else if (input.moduleSlug) existingQuery = existingQuery.eq("module_slug", input.moduleSlug);
+  else if (input.feedbackId) existingQuery = existingQuery.eq("id", input.feedbackId);
+  else existingQuery = existingQuery.is("submission_id", null).is("module_slug", null);
+
+  const { data: existing, error: existingError } = await existingQuery
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<FeedbackRow>();
+  throwIfError(existingError);
+
+  if (existing) {
+    const { data, error } = await supabase
+      .from("feedbacks")
+      .update({
+        status: input.status,
+        comment: input.comment ?? "",
+        next_action: input.nextAction ?? ""
+      })
+      .eq("id", existing.id)
+      .select("*")
+      .single<FeedbackRow>();
+    throwIfError(error);
+    return requireData(data, "피드백 저장 결과가 없습니다.");
+  }
+
   const { data, error } = await supabase
     .from("feedbacks")
     .insert({
+      ...(input.feedbackId ? { id: input.feedbackId } : {}),
       program_id: input.programId,
       participant_id: input.participantId,
       submission_id: input.submissionId ?? null,
@@ -877,6 +910,16 @@ export async function createFeedback(input: {
     })
     .select("*")
     .single<FeedbackRow>();
+
+  if (error?.code === "23505" && input.feedbackId) {
+    const { data: raced, error: racedError } = await supabase
+      .from("feedbacks")
+      .select("*")
+      .eq("id", input.feedbackId)
+      .maybeSingle<FeedbackRow>();
+    throwIfError(racedError);
+    if (raced?.program_id === input.programId && raced.participant_id === input.participantId) return raced;
+  }
 
   throwIfError(error);
   return requireData(data, "피드백 저장 결과가 없습니다.");
