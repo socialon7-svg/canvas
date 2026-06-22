@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { emptyParticipantInput, type LeanCanvasDraft, type ParticipantInput } from "@/lib/types";
 import { useDebouncedServerDraft } from "@/hooks/useDebouncedServerDraft";
 import { loadModuleDraft } from "@/lib/moduleDraftClient";
+import { toParticipantInput } from "@/lib/operationsStorage";
+import { fetchParticipantWorkspace, mergeParticipantEntryIntoOperationsState } from "@/lib/participantSession";
 import {
   clearParticipantPrefill,
   loadDraftSession,
@@ -205,7 +207,27 @@ export default function InputForm({ requireParticipantSession = false }: { requi
       setAccessChecked(true);
       void restoreServerDraft(nextInput);
     } else if (requireParticipantSession) {
-      router.replace("/participant");
+      fetchParticipantWorkspace()
+        .then(({ response, data }) => {
+          if (cancelled) return;
+          if (response.ok && data.program && data.participant) {
+            mergeParticipantEntryIntoOperationsState({
+              program: data.program,
+              participant: data.participant,
+              team: data.team || null,
+              feedbacks: data.feedbacks
+            });
+            const nextInput = toParticipantInput(data.program, data.participant, data.team || undefined);
+            setInput(nextInput);
+            setAccessChecked(true);
+            void restoreServerDraft(nextInput);
+            return;
+          }
+          router.replace("/participant");
+        })
+        .catch(() => {
+          if (!cancelled) router.replace("/participant");
+        });
     } else {
       setAccessChecked(true);
     }

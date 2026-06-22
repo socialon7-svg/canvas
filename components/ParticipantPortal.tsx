@@ -94,6 +94,7 @@ export default function ParticipantPortal() {
   const [notice, setNotice] = useState("");
   const [joining, setJoining] = useState(false);
   const [sessionSyncing, setSessionSyncing] = useState(false);
+  const [sessionRestoring, setSessionRestoring] = useState(true);
   const [latestSubmission, setLatestSubmission] = useState<LeanCanvasSubmission | null>(null);
   const [moduleFilter, setModuleFilter] = useState<ParticipantModuleFilter>("all");
   const [temporaryStorage, setTemporaryStorage] = useState<BrowserTemporaryStorageSummary>({
@@ -112,43 +113,51 @@ export default function ParticipantPortal() {
     setParticipantId(session.participantId);
     setTemporaryStorage(getBrowserTemporaryStorageSummary());
 
-    if (session.programId && session.participantId) {
-      setSessionSyncing(true);
-      fetchParticipantWorkspace(controller.signal)
-        .then(({ response, data }) => {
-          if (cancelled) return;
-          if (response.ok && data.program && data.participant) {
-            const nextState = mergeParticipantEntryIntoOperationsState({
-              program: data.program,
-              participant: data.participant,
-              team: data.team || null,
-              feedbacks: data.feedbacks
-            });
-            setState(nextState);
-            setProgramId(data.program.id);
-            setParticipantId(data.participant.id);
-            return;
+    const hadBrowserSession = Boolean(session.programId && session.participantId);
+    setSessionSyncing(true);
+    fetchParticipantWorkspace(controller.signal)
+      .then(({ response, data }) => {
+        if (cancelled) return;
+        if (response.ok && data.program && data.participant) {
+          const nextState = mergeParticipantEntryIntoOperationsState({
+            program: data.program,
+            participant: data.participant,
+            team: data.team || null,
+            feedbacks: data.feedbacks
+          });
+          setState(nextState);
+          setProgramId(data.program.id);
+          setParticipantId(data.participant.id);
+          return;
+        }
+        if (response.status === 401 || response.status === 403 || response.status === 404) {
+          clearParticipantSession();
+          setProgramId("");
+          setParticipantId("");
+          if (response.status === 403) {
+            setError(data.error || "참여가 비활성화되었습니다. 운영진에게 문의해주세요.");
+          } else if (hadBrowserSession) {
+            setError("참여자 세션이 만료되었습니다. 안내받은 링크나 코드로 다시 입장해주세요.");
           }
-          if (response.status === 401 || response.status === 404) {
-            clearParticipantSession();
-            setProgramId("");
-            setParticipantId("");
-            setError("참여자 세션이 만료되었습니다. 안내받은 코드로 다시 입장해주세요.");
-            return;
-          }
-          const isDemoFallback =
-            response.status === 503 &&
-            (data.code === "SUPABASE_NOT_CONFIGURED" || data.code === "SUPABASE_TABLE_NOT_READY");
-          if (!isDemoFallback) setNotice("최신 운영 정보를 불러오지 못했습니다. 잠시 후 새로고침해주세요.");
-        })
-        .catch((caught) => {
-          if (caught instanceof Error && caught.name === "AbortError") return;
-          if (!cancelled) setNotice("네트워크 연결을 확인하는 동안 이 브라우저의 저장 정보를 표시합니다.");
-        })
-        .finally(() => {
-          if (!cancelled) setSessionSyncing(false);
-        });
-    }
+          return;
+        }
+        const isDemoFallback =
+          response.status === 503 &&
+          (data.code === "SUPABASE_NOT_CONFIGURED" || data.code === "SUPABASE_TABLE_NOT_READY");
+        if (!isDemoFallback) setNotice("최신 운영 정보를 불러오지 못했습니다. 잠시 후 새로고침해주세요.");
+      })
+      .catch((caught) => {
+        if (caught instanceof Error && caught.name === "AbortError") return;
+        if (!cancelled && hadBrowserSession) {
+          setNotice("네트워크 연결을 확인하는 동안 이 브라우저의 저장 정보를 표시합니다.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setSessionSyncing(false);
+          setSessionRestoring(false);
+        }
+      });
     return () => {
       cancelled = true;
       controller.abort();
@@ -566,6 +575,21 @@ export default function ParticipantPortal() {
       setNotice(text);
     }
   };
+
+  if (sessionRestoring) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-lg items-center px-5 py-10">
+        <section className="app-surface w-full p-6 text-center sm:p-8" role="status">
+          <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-blue-50 font-black text-blue-700">H</span>
+          <h1 className="mt-4 text-xl font-bold text-[#191f28]">이전에 입장한 정보를 확인하고 있어요</h1>
+          <p className="mt-2 text-sm leading-6 text-[#6b7684]">입장 기록이 있으면 코드 입력 없이 바로 이어서 열립니다.</p>
+          <div className="mx-auto mt-5 h-2 max-w-64 overflow-hidden rounded-full bg-blue-100">
+            <div className="h-full w-2/3 animate-pulse rounded-full bg-blue-600" />
+          </div>
+        </section>
+      </main>
+    );
+  }
 
   if (!program || !participant) {
     return (

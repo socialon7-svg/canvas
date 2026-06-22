@@ -11,7 +11,7 @@ import {
 } from "@/lib/operationsRepository";
 import { toFeedbackDto, toParticipantDto, toProgramDto, toTeamDto } from "@/lib/operationsDto";
 import { handleOperationsApiError } from "@/lib/operationsApiUtils";
-import { authorizeParticipantRequest } from "@/lib/participantAuth";
+import { authorizeParticipantRequest, clearParticipantSessionCookie } from "@/lib/participantAuth";
 import { hasSupabaseServerConfig } from "@/lib/supabaseServer";
 
 export async function GET(request: Request) {
@@ -33,6 +33,14 @@ export async function GET(request: Request) {
     const [program, participant] = await Promise.all([getProgram(programId), getParticipant(participantId)]);
     if (!program || !participant || participant.program_id !== program.id) {
       return NextResponse.json({ error: "참여자 정보를 찾을 수 없습니다." }, { status: 404 });
+    }
+    if (!participant.is_active) {
+      return clearParticipantSessionCookie(
+        NextResponse.json(
+          { error: "참여가 비활성화되었습니다. 운영진에게 문의해 주세요.", code: "PARTICIPANT_INACTIVE" },
+          { status: 403 }
+        )
+      );
     }
 
     const [modules, team, touchedParticipant, progress, submissions, feedbacks] = await Promise.all([

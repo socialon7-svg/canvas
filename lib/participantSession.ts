@@ -72,21 +72,10 @@ export async function fetchParticipantWorkspace(signal?: AbortSignal) {
     signal
   });
   const data = (await response.json().catch(() => ({}))) as ParticipantWorkspaceResponse;
-  if (response.status === 401 || response.status === 404) {
+  if (response.status === 401 || response.status === 403 || response.status === 404) {
     clearParticipantSession();
   }
   return { response, data };
-}
-
-function mergeModuleProgress(current: HighViewParticipant | undefined, incoming: HighViewParticipant) {
-  const merged = { ...(incoming.moduleProgress || {}) };
-  for (const [slug, localProgress] of Object.entries(current?.moduleProgress || {})) {
-    const serverProgress = merged[slug];
-    if (!serverProgress || new Date(localProgress.updatedAt).getTime() > new Date(serverProgress.updatedAt).getTime()) {
-      merged[slug] = localProgress;
-    }
-  }
-  return merged;
 }
 
 export function mergeParticipantEntryIntoOperationsState(input: {
@@ -98,10 +87,11 @@ export function mergeParticipantEntryIntoOperationsState(input: {
   if (!isBrowser()) return defaultOperationsState();
 
   const state = loadOperationsState();
-  const currentParticipant = state.participants.find((participant) => participant.id === input.participant.id);
   const participant = {
     ...input.participant,
-    moduleProgress: mergeModuleProgress(currentParticipant, input.participant)
+    // A successful API response is the shared operating state. Unsynced writing is
+    // recovered separately from module drafts and must not masquerade as submitted progress.
+    moduleProgress: { ...(input.participant.moduleProgress || {}) }
   };
   const nextState: HighViewOperationsState = normalizeOperationsState({
     ...state,

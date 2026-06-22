@@ -822,6 +822,7 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
   const [aiError, setAiError] = useState("");
   const [generating, setGenerating] = useState(false);
   const [savingProgress, setSavingProgress] = useState(false);
+  const [sessionRestoring, setSessionRestoring] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -860,45 +861,54 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
       );
     };
 
-    if (storedProgramId && storedParticipantId) {
-      fetchParticipantWorkspace(controller.signal)
-        .then(async ({ response, data }) => {
-          if (cancelled) return;
-          if (response.ok && data.program && data.participant) {
-            const nextState = mergeParticipantEntryIntoOperationsState({
-              program: data.program,
-              participant: data.participant,
-              team: data.team || null,
-              feedbacks: data.feedbacks
-            });
-            const freshParticipant = nextState.participants.find((item) => item.id === data.participant?.id);
-            const freshProgress = freshParticipant?.moduleProgress?.[slug];
-            setState(nextState);
-            setProgramId(data.program.id);
-            setParticipantId(data.participant.id);
-            if (freshProgress) {
-              setInputData(freshProgress.inputData || "");
-              setOutputData(freshProgress.outputData || "");
-            }
-            await restoreDraft(data.program.id, data.participant.id, freshProgress?.updatedAt);
-            return;
+    fetchParticipantWorkspace(controller.signal)
+      .then(async ({ response, data }) => {
+        if (cancelled) return;
+        if (response.ok && data.program && data.participant) {
+          const nextState = mergeParticipantEntryIntoOperationsState({
+            program: data.program,
+            participant: data.participant,
+            team: data.team || null,
+            feedbacks: data.feedbacks
+          });
+          const freshParticipant = nextState.participants.find((item) => item.id === data.participant?.id);
+          const freshProgress = freshParticipant?.moduleProgress?.[slug];
+          setState(nextState);
+          setProgramId(data.program.id);
+          setParticipantId(data.participant.id);
+          if (freshProgress) {
+            setInputData(freshProgress.inputData || "");
+            setOutputData(freshProgress.outputData || "");
           }
-          if (response.status === 401 || response.status === 404) {
-            clearParticipantSession();
-            setProgramId("");
-            setParticipantId("");
+          await restoreDraft(data.program.id, data.participant.id, freshProgress?.updatedAt);
+          return;
+        }
+        if (response.status === 401 || response.status === 403 || response.status === 404) {
+          clearParticipantSession();
+          setProgramId("");
+          setParticipantId("");
+          if (response.status === 403) {
+            setAiError(data.error || "참여가 비활성화되었습니다. 운영진에게 문의해주세요.");
+          } else if (storedProgramId || storedParticipantId) {
             setAiError("참여자 세션이 만료되었습니다. 참여자 포털에서 다시 입장해주세요.");
-            return;
           }
+          return;
+        }
+        if (storedProgramId && storedParticipantId) {
           await restoreDraft(storedProgramId, storedParticipantId, progress?.updatedAt);
-        })
-        .catch(async (caught) => {
-          if (caught instanceof Error && caught.name === "AbortError") return;
-          if (cancelled) return;
+        }
+      })
+      .catch(async (caught) => {
+        if (caught instanceof Error && caught.name === "AbortError") return;
+        if (cancelled) return;
+        if (storedProgramId && storedParticipantId) {
           await restoreDraft(storedProgramId, storedParticipantId, progress?.updatedAt);
           if (!cancelled) setNotice("네트워크 연결이 불안정해 이 브라우저의 임시 저장 내용을 표시합니다.");
-        });
-    }
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setSessionRestoring(false);
+      });
     return () => {
       cancelled = true;
       controller.abort();
@@ -1041,8 +1051,10 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
       }
       setNotice(`데모 모드: ${startupModule.title} 상태를 이 브라우저에 임시 저장했습니다.`);
     } catch (error) {
+      saveOperationsState(state);
+      setState(state);
       setAiError(error instanceof Error ? error.message : "모듈 상태 저장 중 오류가 발생했습니다.");
-      setNotice("이 브라우저에는 임시 저장됐지만 중앙 저장은 확인되지 않았습니다. 다시 저장해주세요.");
+      setNotice("작성 내용은 임시 저장됐지만 진행 상태는 변경하지 않았습니다. 네트워크를 확인한 뒤 다시 저장해주세요.");
     } finally {
       setSavingProgress(false);
     }
@@ -1163,6 +1175,18 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
     );
   }
 
+  if (sessionRestoring) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-2xl items-center px-5 py-10">
+        <section className="w-full rounded-lg border border-blue-100 bg-white p-6 text-center shadow-sm" role="status">
+          <p className="text-sm font-semibold text-blue-700">참여자 확인 중</p>
+          <h1 className="mt-2 text-2xl font-bold text-gray-950">작성하던 모듈을 불러오고 있어요</h1>
+          <p className="mt-2 text-sm leading-6 text-gray-600">입장 기록과 자동저장 내용을 확인한 뒤 이어서 표시합니다.</p>
+        </section>
+      </main>
+    );
+  }
+
   if (!program || !participant) {
     return (
       <main className="mx-auto flex min-h-screen max-w-2xl items-center px-5 py-10">
@@ -1170,7 +1194,7 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
           <p className="text-sm font-semibold text-blue-700">참여자 확인 필요</p>
           <h1 className="mt-2 text-2xl font-bold text-gray-950">먼저 참여자 포털에 입장해주세요</h1>
           <p className="mt-2 text-sm leading-6 text-gray-600">
-            프로그램 코드와 참여자 코드로 입장해야 배정된 모듈을 확인할 수 있습니다.
+            {aiError || "안내받은 링크 또는 참여자 코드로 입장해야 배정된 모듈을 확인할 수 있습니다."}
           </p>
           <Link className="mt-5 inline-flex rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white" href="/participant">
             참여자 포털 입장

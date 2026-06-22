@@ -82,8 +82,8 @@ type PendingConfirmation = {
 const submissionFilterLabels: Record<SubmissionFilter, string> = {
   all: "전체",
   notEntered: "미입장",
-  submitted: "제출 완료",
-  notSubmitted: "미제출",
+  submitted: "린캔버스 제출",
+  notSubmitted: "린캔버스 미제출",
   feedbackPending: "피드백 대기",
   feedbackDone: "피드백 완료",
   pdfFailed: "PDF 오류"
@@ -750,7 +750,7 @@ export default function InternalPortal() {
       tone: "blue" as UiTone
     },
     {
-      label: "제출률",
+      label: "린캔버스 제출률",
       value: submissionRate,
       detail: `${operationalMetrics.submitted}/${operationalMetrics.totalParticipants}명 제출`,
       tone: operationalMetrics.notSubmitted > 0 ? ("amber" as UiTone) : ("green" as UiTone)
@@ -777,7 +777,7 @@ export default function InternalPortal() {
       tone: "gray" as UiTone
     },
     {
-      label: "미제출",
+      label: "린캔버스 미제출",
       count: operationalMetrics.notSubmitted,
       description: "마감 전 제출 독려가 필요한 대상",
       filter: "notSubmitted" as SubmissionFilter,
@@ -914,10 +914,10 @@ export default function InternalPortal() {
         }
       : operationalMetrics.notSubmitted > 0
         ? {
-            title: `미제출 ${operationalMetrics.notSubmitted}명`,
-            description: "미제출 안내문 복사로 현장 공지 메시지를 빠르게 준비할 수 있습니다.",
+            title: `린캔버스 미제출 ${operationalMetrics.notSubmitted}명`,
+            description: "린캔버스 미제출 안내문 복사로 현장 공지 메시지를 빠르게 준비할 수 있습니다.",
             tone: "amber",
-            actionLabel: "미제출자 보기",
+            actionLabel: "린캔버스 미제출자 보기",
             filter: "notSubmitted"
           }
         : operationalMetrics.feedbackPending > 0
@@ -1216,7 +1216,7 @@ export default function InternalPortal() {
     });
     const text = lines.length
       ? [
-          `[${currentProgram.name}] 미제출 안내`,
+          `[${currentProgram.name}] 린캔버스 미제출 안내`,
           `아직 제출이 확인되지 않은 참여자 ${lines.length}명입니다.`,
           "",
           `참여자 페이지: ${participantUrl}`,
@@ -1231,7 +1231,7 @@ export default function InternalPortal() {
       : "미제출자가 없습니다.";
     try {
       await navigator.clipboard.writeText(text);
-      setNotice("미제출 안내문을 클립보드에 복사했습니다.");
+      setNotice("린캔버스 미제출 안내문을 클립보드에 복사했습니다.");
     } catch {
       setNotice(text);
     }
@@ -2205,6 +2205,7 @@ export default function InternalPortal() {
             ) : null}
             <details className="border-t border-[#e5e8eb] pt-3 text-sm">
               <summary className="cursor-pointer select-none font-bold text-[#6b7684] hover:text-[#333d4b]">내보내기 및 기타 도구</summary>
+              <p className="mt-2 text-xs leading-5 text-[#8b95a1]">CSV는 Excel에서 바로 열 수 있습니다. HWPX 산출은 아직 지원하지 않습니다.</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <button className="app-secondary-button min-h-9 px-3 text-xs" onClick={() => exportOperationsState(state)}>운영 데이터 백업</button>
                 <button className="app-secondary-button min-h-9 px-3 text-xs" onClick={downloadParticipantsCsv}>참여자 CSV</button>
@@ -2381,7 +2382,7 @@ export default function InternalPortal() {
           <section className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
             <MetricCard label="현재 참여자" value={operationalMetrics.totalParticipants} hint="선택 프로그램 기준" />
             <MetricCard label="입장 완료" value={operationalMetrics.entered} hint={`미입장 ${operationalMetrics.notEntered}명`} tone={operationalMetrics.notEntered > 0 ? "amber" : "green"} />
-            <MetricCard label="제출 완료" value={operationalMetrics.submitted} hint={`미제출 ${operationalMetrics.notSubmitted}명`} tone={operationalMetrics.notSubmitted > 0 ? "amber" : "green"} />
+            <MetricCard label="린캔버스 제출" value={operationalMetrics.submitted} hint={`미제출 ${operationalMetrics.notSubmitted}명`} tone={operationalMetrics.notSubmitted > 0 ? "amber" : "green"} />
             <MetricCard label="피드백 대기" value={operationalMetrics.feedbackPending} hint={`완료 ${operationalMetrics.feedbackDone}건`} tone={operationalMetrics.feedbackPending > 0 ? "blue" : "green"} />
             <MetricCard label="PDF 완료" value={operationalMetrics.pdfSuccess} hint="생성 가능 상태" tone="green" />
             <MetricCard label="PDF 오류" value={operationalMetrics.pdfFailed} hint="복구 확인 필요" tone={operationalMetrics.pdfFailed > 0 ? "red" : "green"} />
@@ -3040,8 +3041,8 @@ export default function InternalPortal() {
             </div>
             <div className="mb-3 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
-                <h2 className="text-lg font-bold text-gray-950">제출물 상태 필터</h2>
-                <p className="mt-1 text-sm text-gray-600">미입장, 미제출, 피드백 대기, PDF 오류를 빠르게 좁혀 봅니다.</p>
+                <h2 className="text-lg font-bold text-gray-950">린캔버스 제출물 상태 필터</h2>
+                <p className="mt-1 text-sm text-gray-600">미입장, 린캔버스 미제출, 피드백 대기, PDF 오류를 빠르게 좁혀 봅니다.</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -3056,7 +3057,7 @@ export default function InternalPortal() {
                   onClick={copyUnsubmittedList}
                   type="button"
                 >
-                  미제출 안내문 복사
+                  린캔버스 미제출 안내문 복사
                 </button>
                 <button
                   className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100"
