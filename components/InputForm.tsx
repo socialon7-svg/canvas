@@ -6,8 +6,19 @@ import { useRouter } from "next/navigation";
 import { emptyParticipantInput, type LeanCanvasDraft, type ParticipantInput } from "@/lib/types";
 import { useDebouncedServerDraft } from "@/hooks/useDebouncedServerDraft";
 import { loadModuleDraft } from "@/lib/moduleDraftClient";
-import { toParticipantInput } from "@/lib/operationsStorage";
-import { fetchParticipantWorkspace, mergeParticipantEntryIntoOperationsState } from "@/lib/participantSession";
+import { loadOperationsState, toParticipantInput } from "@/lib/operationsStorage";
+import {
+  fetchParticipantWorkspace,
+  mergeParticipantEntryIntoOperationsState,
+  writeParticipantSession
+} from "@/lib/participantSession";
+import { getParticipantVisibleModules } from "@/lib/startupModules";
+import {
+  getParticipantIdeaContext,
+  isDemoProgram,
+  LEAN_CANVAS_MODULE_SLUG,
+  mergeIdeaContextIntoParticipantInput
+} from "@/lib/participantModuleFlow";
 import {
   clearParticipantPrefill,
   loadDraftSession,
@@ -196,28 +207,57 @@ export default function InputForm({ requireParticipantSession = false }: { requi
       );
     };
 
-    if (prefill) {
+    if (prefill && !requireParticipantSession) {
       const nextInput = { ...emptyParticipantInput, ...prefill };
       setInput(nextInput);
       setAccessChecked(true);
       void restoreServerDraft(nextInput);
-    } else if (requireParticipantSession && draft?.participant.operation?.participantCode) {
-      const nextInput = { ...emptyParticipantInput, ...draft.participant };
-      setInput(nextInput);
-      setAccessChecked(true);
-      void restoreServerDraft(nextInput);
     } else if (requireParticipantSession) {
+      const browserInput = prefill || (draft?.participant.operation?.participantCode ? draft.participant : null);
+      if (browserInput) setInput({ ...emptyParticipantInput, ...browserInput });
+
       fetchParticipantWorkspace()
         .then(({ response, data }) => {
           if (cancelled) return;
           if (response.ok && data.program && data.participant) {
+            const visibleModules = getParticipantVisibleModules(data.program);
+            if (!visibleModules.some((module) => module.slug === LEAN_CANVAS_MODULE_SLUG)) {
+              router.replace("/participant?module=unavailable");
+              return;
+            }
             mergeParticipantEntryIntoOperationsState({
               program: data.program,
               participant: data.participant,
               team: data.team || null,
               feedbacks: data.feedbacks
             });
-            const nextInput = toParticipantInput(data.program, data.participant, data.team || undefined);
+            const participantInput = toParticipantInput(data.program, data.participant, data.team || undefined);
+            const nextInput = mergeIdeaContextIntoParticipantInput(
+              browserInput
+                ? { ...participantInput, ...browserInput, operation: participantInput.operation }
+                : participantInput,
+              getParticipantIdeaContext(data.participant)
+            );
+            setInput(nextInput);
+            setAccessChecked(true);
+            void restoreServerDraft(nextInput);
+            return;
+          }
+          const localProgram = browserInput?.operation?.programId
+            ? loadOperationsState().programs.find((program) => program.id === browserInput.operation?.programId)
+            : undefined;
+          const canUseLocalFallback =
+            isDemoProgram(localProgram) ||
+            (response.status === 503 &&
+              (data.code === "SUPABASE_NOT_CONFIGURED" || data.code === "SUPABASE_TABLE_NOT_READY"));
+          if (
+            browserInput &&
+            localProgram &&
+            canUseLocalFallback &&
+            getParticipantVisibleModules(localProgram).some((module) => module.slug === LEAN_CANVAS_MODULE_SLUG)
+          ) {
+            const nextInput = { ...emptyParticipantInput, ...browserInput };
+            writeParticipantSession(browserInput.operation?.programId || "", browserInput.operation?.participantId || "");
             setInput(nextInput);
             setAccessChecked(true);
             void restoreServerDraft(nextInput);

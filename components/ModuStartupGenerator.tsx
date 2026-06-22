@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { ModuStartupDraft, ModuStartupInput, ModuStartupSubmission } from "@/lib/types";
 import { useDebouncedServerDraft } from "@/hooks/useDebouncedServerDraft";
 import { loadModuleDraft } from "@/lib/moduleDraftClient";
@@ -10,8 +11,21 @@ import {
   loadModuStartupPrefill,
   saveModuStartupSubmission
 } from "@/lib/storage";
-import { recordModuStartupSubmission } from "@/lib/operationsStorage";
+import { loadOperationsState, recordModuStartupSubmission, toModuStartupInput } from "@/lib/operationsStorage";
+import {
+  fetchParticipantWorkspace,
+  mergeParticipantEntryIntoOperationsState,
+  writeParticipantSession
+} from "@/lib/participantSession";
+import { getParticipantVisibleModules } from "@/lib/startupModules";
+import {
+  getParticipantIdeaContext,
+  isDemoProgram,
+  mergeIdeaContextIntoModuStartupInput,
+  MODU_STARTUP_MODULE_SLUG
+} from "@/lib/participantModuleFlow";
 import { getOrCreateSubmissionRequestId } from "@/lib/submissionRequest";
+import ParticipantNextModuleButton from "@/components/ParticipantNextModuleButton";
 
 const initialInput: ModuStartupInput = {
   programName: "",
@@ -283,6 +297,7 @@ function clearModuStartupDraftFromLocal() {
 }
 
 export default function ModuStartupGenerator() {
+  const router = useRouter();
   const [input, setInput] = useState<ModuStartupInput>(initialInput);
   const [currentStep, setCurrentStep] = useState(0);
   const [lastSavedAt, setLastSavedAt] = useState("");
@@ -320,16 +335,16 @@ export default function ModuStartupGenerator() {
     let cancelled = false;
     const prefill = loadModuStartupPrefill();
     const savedDraft = loadModuStartupDraftFromLocal();
-    const baseInput = prefill ? { ...initialInput, ...prefill } : initialInput;
+    const browserInput = prefill ? { ...initialInput, ...prefill } : initialInput;
 
     if (savedDraft) {
       setLocalDraftToResume(savedDraft);
-      if (prefill) setInput(baseInput);
+      if (prefill) setInput(browserInput);
     } else if (prefill) {
-      setInput(baseInput);
+      setInput(browserInput);
     }
 
-    async function restoreServerDraft() {
+    async function restoreServerDraft(baseInput: ModuStartupInput) {
       const operation = baseInput.operation;
       if (!operation?.programId || !operation.participantId) {
         setDraftReady(true);
@@ -361,11 +376,67 @@ export default function ModuStartupGenerator() {
       setDraftReady(true);
     }
 
-    void restoreServerDraft();
+    async function initialize() {
+      let baseInput = browserInput;
+      try {
+        const { response, data } = await fetchParticipantWorkspace();
+        if (cancelled) return;
+        if (response.ok && data.program && data.participant) {
+          const visibleModules = getParticipantVisibleModules(data.program);
+          if (!visibleModules.some((module) => module.slug === MODU_STARTUP_MODULE_SLUG)) {
+            router.replace("/participant?module=unavailable");
+            return;
+          }
+          mergeParticipantEntryIntoOperationsState({
+            program: data.program,
+            participant: data.participant,
+            team: data.team || null,
+            feedbacks: data.feedbacks
+          });
+          const participantInput = mergeIdeaContextIntoModuStartupInput(
+            toModuStartupInput(data.program, data.participant, data.team || undefined),
+            getParticipantIdeaContext(data.participant)
+          );
+          baseInput = prefill
+            ? { ...participantInput, ...prefill, operation: participantInput.operation }
+            : participantInput;
+          setInput(baseInput);
+        } else {
+          const localProgram = browserInput.operation?.programId
+            ? loadOperationsState().programs.find((program) => program.id === browserInput.operation?.programId)
+            : undefined;
+          const canUseLocalFallback =
+            isDemoProgram(localProgram) ||
+            (response.status === 503 &&
+              (data.code === "SUPABASE_NOT_CONFIGURED" || data.code === "SUPABASE_TABLE_NOT_READY"));
+          if (localProgram && canUseLocalFallback) {
+            const isEnabled = getParticipantVisibleModules(localProgram).some(
+              (module) => module.slug === MODU_STARTUP_MODULE_SLUG
+            );
+            if (!isEnabled) {
+              router.replace("/participant?module=unavailable");
+              return;
+            }
+            writeParticipantSession(
+              browserInput.operation?.programId || "",
+              browserInput.operation?.participantId || ""
+            );
+          } else if ([401, 403, 404].includes(response.status)) {
+            router.replace("/participant");
+            return;
+          }
+        }
+      } catch {
+        // Standalone demo input remains available; submission still requires a valid participant session.
+      }
+      await restoreServerDraft(baseInput);
+    }
+
+    void initialize();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     if (!draftReady || submittedSubmission || !hasMeaningfulInput(input)) return;
@@ -834,6 +905,7 @@ export default function ModuStartupGenerator() {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <ParticipantNextModuleButton currentSlug="modu-startup-application" />
               <Link
                 className="app-primary-button inline-flex items-center text-sm"
                 href={`/modu-startup/preview/${submittedSubmission.id}`}

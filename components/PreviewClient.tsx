@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import PrintableCanvas from "@/components/PrintableCanvas";
+import ParticipantNextModuleButton from "@/components/ParticipantNextModuleButton";
 import StatusBadge from "@/components/StatusBadge";
 import type { LeanCanvasSubmission, PdfStatus } from "@/lib/types";
 import { getSubmission, updateSubmissionPdfStatus } from "@/lib/storage";
@@ -243,6 +244,7 @@ export default function PreviewClient({ id }: { id: string }) {
           <p className="mt-1 text-xs text-[#8b95a1]">PDF 생성이 실패해도 제출 기록은 안전하게 유지됩니다.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <ParticipantNextModuleButton currentSlug="lean-canvas" />
           <button
             data-pdf-download-button
             className="app-primary-button min-h-11 text-sm"

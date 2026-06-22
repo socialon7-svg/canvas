@@ -20,6 +20,12 @@ import {
   type BrowserTemporaryStorageSummary
 } from "@/lib/storage";
 import { getParticipantVisibleModules } from "@/lib/startupModules";
+import {
+  getParticipantIdeaContext,
+  isDemoProgram,
+  mergeIdeaContextIntoModuStartupInput,
+  mergeIdeaContextIntoParticipantInput
+} from "@/lib/participantModuleFlow";
 import { normalizeAccessCode, validateAccessCodeInput } from "@/lib/normalize";
 import {
   clearParticipantSession,
@@ -102,6 +108,26 @@ export default function ParticipantPortal() {
     fallbackSubmissionCount: 0,
     sessionPrefillCount: 0
   });
+  const [courseCompleted, setCourseCompleted] = useState(false);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    let shouldReplaceUrl = false;
+    if (url.searchParams.get("course") === "complete") {
+      setCourseCompleted(true);
+      url.searchParams.delete("course");
+      shouldReplaceUrl = true;
+    }
+    if (url.searchParams.get("module") === "unavailable") {
+      setNotice("현재 프로그램에 배정되지 않은 모듈입니다. 아래 배정된 모듈에서 이어서 진행해주세요.");
+      setTab("write");
+      url.searchParams.delete("module");
+      shouldReplaceUrl = true;
+    }
+    if (shouldReplaceUrl) {
+      window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -131,6 +157,15 @@ export default function ParticipantPortal() {
           return;
         }
         if (response.status === 401 || response.status === 403 || response.status === 404) {
+          const localProgram = loaded.programs.find((item) => item.id === session.programId);
+          const localParticipant = loaded.participants.find((item) => item.id === session.participantId);
+          if (response.status === 401 && localProgram && isDemoProgram(localProgram) && localParticipant) {
+            writeParticipantSession(localProgram.id, localParticipant.id);
+            setProgramId(localProgram.id);
+            setParticipantId(localParticipant.id);
+            setNotice("데모 모드: 이 브라우저의 임시 운영 데이터를 표시합니다.");
+            return;
+          }
           clearParticipantSession();
           setProgramId("");
           setParticipantId("");
@@ -576,13 +611,23 @@ export default function ParticipantPortal() {
 
   const startCanvas = () => {
     if (!program || !participant) return;
-    saveParticipantPrefill(toParticipantInput(program, participant, team));
+    saveParticipantPrefill(
+      mergeIdeaContextIntoParticipantInput(
+        toParticipantInput(program, participant, team),
+        getParticipantIdeaContext(participant)
+      )
+    );
     router.push("/participant/canvas");
   };
 
   const startModuStartup = () => {
     if (!program || !participant) return;
-    saveModuStartupPrefill(toModuStartupInput(program, participant, team));
+    saveModuStartupPrefill(
+      mergeIdeaContextIntoModuStartupInput(
+        toModuStartupInput(program, participant, team),
+        getParticipantIdeaContext(participant)
+      )
+    );
     router.push("/modu-startup");
   };
 
@@ -772,6 +817,15 @@ export default function ParticipantPortal() {
 
       {notice ? (
         <p className="mb-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">{notice}</p>
+      ) : null}
+
+      {courseCompleted ? (
+        <section className="mb-4 rounded-lg border border-green-200 bg-green-50 px-5 py-4" aria-live="polite">
+          <p className="text-sm font-bold text-green-800">배정된 모듈을 모두 완료했어요</p>
+          <p className="mt-1 text-sm leading-6 text-green-900">
+            완료 결과는 운영진 화면에 저장되었습니다. 피드백이 도착하면 이 화면에서 확인할 수 있습니다.
+          </p>
+        </section>
       ) : null}
 
       <section className="app-surface mb-5 overflow-hidden border-blue-100 p-5 sm:p-6">

@@ -15,6 +15,9 @@ import {
 import { loadDraftSession, saveDraftSession, saveSubmission } from "@/lib/storage";
 import { recordParticipantSubmission } from "@/lib/operationsStorage";
 import { getOrCreateSubmissionRequestId } from "@/lib/submissionRequest";
+import { fetchParticipantWorkspace } from "@/lib/participantSession";
+import { getParticipantVisibleModules } from "@/lib/startupModules";
+import { LEAN_CANVAS_MODULE_SLUG } from "@/lib/participantModuleFlow";
 
 const editableFields: CanvasFieldKey[] = [
   "problem",
@@ -67,6 +70,19 @@ export default function CanvasEditor() {
     setParticipant(loadedDraft.participant);
     setCanvas(loadedDraft.canvas);
     setLoaded(true);
+
+    fetchParticipantWorkspace()
+      .then(({ response, data }) => {
+        if (
+          !cancelled &&
+          response.ok &&
+          data.program &&
+          !getParticipantVisibleModules(data.program).some((module) => module.slug === LEAN_CANVAS_MODULE_SLUG)
+        ) {
+          router.replace("/participant?module=unavailable");
+        }
+      })
+      .catch(() => undefined);
 
     async function restoreServerDraft() {
       const operation = loadedDraft.participant.operation;

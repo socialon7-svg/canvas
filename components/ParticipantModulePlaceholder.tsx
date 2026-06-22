@@ -2,8 +2,20 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useDebouncedServerDraft } from "@/hooks/useDebouncedServerDraft";
 import { loadModuleDraft } from "@/lib/moduleDraftClient";
+import {
+  formatParticipantIdeaContext,
+  getNextParticipantModule,
+  getParticipantIdeaContext,
+  getParticipantModuleRoute,
+  isDemoProgram,
+  LEAN_CANVAS_MODULE_SLUG,
+  mergeIdeaContextIntoModuStartupInput,
+  mergeIdeaContextIntoParticipantInput,
+  MODU_STARTUP_MODULE_SLUG
+} from "@/lib/participantModuleFlow";
 import type {
   BusinessModelDraft,
   BusinessModelInput,
@@ -41,18 +53,26 @@ import {
   getStartupModuleBySlug,
   startupModuleCategoryLabels
 } from "@/lib/startupModules";
-import { defaultOperationsState, loadOperationsState, saveOperationsState } from "@/lib/operationsStorage";
+import {
+  defaultOperationsState,
+  loadOperationsState,
+  saveOperationsState,
+  toModuStartupInput,
+  toParticipantInput
+} from "@/lib/operationsStorage";
 import {
   clearParticipantSession,
   fetchParticipantWorkspace,
   mergeParticipantEntryIntoOperationsState,
-  readParticipantSession
+  readParticipantSession,
+  writeParticipantSession
 } from "@/lib/participantSession";
 import {
   formatStartupModuleDraft,
   getStartupModuleAutomationConfig,
   type AutomatedStartupModuleDraft
 } from "@/lib/startupModuleAutomation";
+import { saveModuStartupPrefill, saveParticipantPrefill } from "@/lib/storage";
 
 const ONE_LINE_IDEA_SLUG = "one-line-idea";
 const IDEA_DIAGNOSIS_SLUG = "idea-diagnosis";
@@ -813,6 +833,7 @@ const specializedModuleRunners: Record<string, SpecializedModuleRunnerDefinition
 };
 
 export default function ParticipantModulePlaceholder({ slug }: { slug: string }) {
+  const router = useRouter();
   const [state, setState] = useState<HighViewOperationsState>(() => defaultOperationsState());
   const [programId, setProgramId] = useState("");
   const [participantId, setParticipantId] = useState("");
@@ -837,7 +858,11 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
 
     const participant = loaded.participants.find((item) => item.id === storedParticipantId);
     const progress = participant?.moduleProgress?.[slug];
-    if (progress?.inputData) setInputData(progress.inputData);
+    if (progress?.inputData) {
+      setInputData(progress.inputData);
+    } else if (slug !== ONE_LINE_IDEA_SLUG) {
+      setInputData(formatParticipantIdeaContext(getParticipantIdeaContext(participant)));
+    }
     if (progress?.outputData) setOutputData(progress.outputData);
 
     const restoreDraft = async (nextProgramId: string, nextParticipantId: string, progressUpdatedAt?: string) => {
@@ -879,11 +904,26 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
           if (freshProgress) {
             setInputData(freshProgress.inputData || "");
             setOutputData(freshProgress.outputData || "");
+          } else {
+            setInputData(
+              slug === ONE_LINE_IDEA_SLUG
+                ? ""
+                : formatParticipantIdeaContext(getParticipantIdeaContext(freshParticipant))
+            );
+            setOutputData("");
           }
           await restoreDraft(data.program.id, data.participant.id, freshProgress?.updatedAt);
           return;
         }
         if (response.status === 401 || response.status === 403 || response.status === 404) {
+          const localProgram = loaded.programs.find((item) => item.id === storedProgramId);
+          const localParticipant = loaded.participants.find((item) => item.id === storedParticipantId);
+          if (response.status === 401 && isDemoProgram(localProgram) && localParticipant) {
+            writeParticipantSession(storedProgramId, storedParticipantId);
+            setNotice("데모 모드: 이 브라우저의 배정 정보와 임시저장을 사용합니다.");
+            await restoreDraft(storedProgramId, storedParticipantId, progress?.updatedAt);
+            return;
+          }
           clearParticipantSession();
           setProgramId("");
           setParticipantId("");
@@ -923,6 +963,9 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
   const isAllowed = Boolean(startupModule && visibleModules.some((item) => item.slug === startupModule.slug));
   const progress = startupModule ? participant?.moduleProgress?.[startupModule.slug] : undefined;
   const currentStatus = progress?.status || "not_started";
+  const ideaContext = getParticipantIdeaContext(participant);
+  const ideaContextText = formatParticipantIdeaContext(ideaContext);
+  const nextModule = startupModule ? getNextParticipantModule(visibleModules, startupModule.slug) : undefined;
   const draftSave = useDebouncedServerDraft({
     programId: program?.id,
     participantId: participant?.id,
@@ -983,7 +1026,7 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
     status: ParticipantModuleProgressStatus,
     values?: { inputData?: string; outputData?: string }
   ) => {
-    if (!startupModule || !participant) return;
+    if (!startupModule || !participant) return false;
     setSavingProgress(true);
     setAiError("");
     const now = new Date().toISOString();
@@ -1039,7 +1082,7 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
             (data.code === "SUPABASE_NOT_CONFIGURED" || data.code === "SUPABASE_TABLE_NOT_READY");
           if (isDemoFallback) {
             setNotice(`데모 모드: ${startupModule.title} 상태를 이 브라우저에 임시 저장했습니다.`);
-            return;
+            return true;
           }
           throw new Error(data.error || "중앙 저장소에 모듈 상태를 저장하지 못했습니다.");
         }
@@ -1049,17 +1092,60 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
             ? `${startupModule.title} 완료 결과와 제출 기록을 저장했습니다.`
             : `${startupModule.title} 상태를 '${statusLabel(status)}'로 저장했습니다.`
         );
-        return;
+        return true;
       }
       setNotice(`데모 모드: ${startupModule.title} 상태를 이 브라우저에 임시 저장했습니다.`);
+      return true;
     } catch (error) {
       saveOperationsState(state);
       setState(state);
       setAiError(error instanceof Error ? error.message : "모듈 상태 저장 중 오류가 발생했습니다.");
       setNotice("작성 내용은 임시 저장됐지만 진행 상태는 변경하지 않았습니다. 네트워크를 확인한 뒤 다시 저장해주세요.");
+      return false;
     } finally {
       setSavingProgress(false);
     }
+  };
+
+  const completeAndContinue = async () => {
+    if (!startupModule || !program || !participant) return;
+    const shouldContinue = currentStatus !== "completed";
+    const saved = await saveProgress("completed");
+    if (!saved || !shouldContinue) return;
+
+    if (!nextModule) {
+      router.push("/participant?course=complete");
+      return;
+    }
+
+    const navigationIdeaContext =
+      startupModule.slug === ONE_LINE_IDEA_SLUG
+        ? getParticipantIdeaContext({
+            moduleProgress: {
+              ...(participant.moduleProgress || {}),
+              [ONE_LINE_IDEA_SLUG]: {
+                moduleId: startupModule.id,
+                status: "completed",
+                inputData,
+                outputData,
+                createdAt: progress?.createdAt || new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              }
+            }
+          })
+        : ideaContext;
+
+    if (nextModule.slug === LEAN_CANVAS_MODULE_SLUG) {
+      saveParticipantPrefill(
+        mergeIdeaContextIntoParticipantInput(toParticipantInput(program, participant, team), navigationIdeaContext)
+      );
+    } else if (nextModule.slug === MODU_STARTUP_MODULE_SLUG) {
+      saveModuStartupPrefill(
+        mergeIdeaContextIntoModuStartupInput(toModuStartupInput(program, participant, team), navigationIdeaContext)
+      );
+    }
+
+    router.push(getParticipantModuleRoute(nextModule));
   };
 
   const copyOutput = async () => {
@@ -1660,16 +1746,16 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
               <button
                 className="app-primary-button text-sm disabled:cursor-not-allowed"
                 disabled={savingProgress || !hasModuleContent}
-                onClick={() => saveProgress("completed")}
+                onClick={completeAndContinue}
                 type="button"
               >
                 {savingProgress
                   ? "저장 중..."
-                  : progress?.adminComment && currentStatus === "needs_review"
-                    ? "보완 완료로 저장"
-                    : currentStatus === "completed"
-                      ? "수정 내용 저장"
-                      : "최종 완료로 저장"}
+                  : currentStatus === "completed"
+                    ? "수정 내용 저장"
+                    : nextModule
+                      ? `저장 후 다음: ${nextModule.title}`
+                      : "과정 완료로 저장"}
               </button>
               <button
                 className="app-secondary-button text-sm text-[#1b64da]"
@@ -1690,6 +1776,14 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
         </div>
 
         <aside className="grid content-start gap-4 lg:sticky lg:top-4 lg:grid-cols-1">
+          {!isOneLineIdeaModule && ideaContextText ? (
+            <section className="rounded-lg border border-blue-200 bg-blue-50 p-4 shadow-sm">
+              <p className="text-sm font-bold text-blue-800">현재 아이디어</p>
+              <p className="mt-1 text-xs leading-5 text-blue-700">1번 모듈에서 정리한 내용을 이번 모듈에 자동으로 연결했습니다.</p>
+              <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#333d4b]">{ideaContextText}</p>
+            </section>
+          ) : null}
+
           {progress?.adminComment ? (
             <section
               className={`rounded-lg border p-4 shadow-sm ${

@@ -31,7 +31,7 @@ export function useDebouncedServerDraft<TDraftData extends Record<string, unknow
   const [lastSavedAt, setLastSavedAt] = useState("");
   const [error, setError] = useState("");
   const [fallbackMode, setFallbackMode] = useState(false);
-  const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine);
+  const [isOnline, setIsOnline] = useState(true);
   const payloadRef = useRef({ programId, participantId, moduleSlug, draftData, currentStep });
   const lastSignatureRef = useRef("");
   const statusRef = useRef<ModuleDraftSaveStatus>("idle");
@@ -92,6 +92,7 @@ export function useDebouncedServerDraft<TDraftData extends Record<string, unknow
   }, [canSave, currentStep, debounceMs, draftSignature, persistDraft]);
 
   useEffect(() => {
+    setIsOnline(navigator.onLine);
     const handleOffline = () => setIsOnline(false);
     const handleOnline = () => {
       setIsOnline(true);
