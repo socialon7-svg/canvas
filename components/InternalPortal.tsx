@@ -1984,11 +1984,22 @@ export default function InternalPortal() {
     const submissionId = form.dataset.submissionId || "";
     const submission = submissions.find((item) => item.id === submissionId);
     if (!submission) return;
+    const formData = new FormData(form);
+    const currentFeedback = findFeedback(state, submissionId);
+    const comment = String(formData.get("comment") || "").trim();
+    const nextAction = String(formData.get("nextAction") || "").trim();
+    if (comment.length < 5 || nextAction.length < 2) {
+      const missingField = comment.length < 5 ? "comment" : "nextAction";
+      const message = comment.length < 5 ? "코멘트를 5자 이상 입력해주세요." : "참여자가 바로 실행할 다음 행동을 입력해주세요.";
+      setFeedbackSaveResult({ submissionId, ok: false, message: `저장 전 확인 · ${message}` });
+      setFeedbackDirtySubmissionId(submissionId);
+      const target = form.elements.namedItem(missingField);
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) target.focus();
+      return;
+    }
     setFeedbackSavingSubmissionId(submissionId);
     setFeedbackSaveResult(null);
     setError("");
-    const formData = new FormData(form);
-    const currentFeedback = findFeedback(state, submissionId);
     const feedbackInput = {
       feedbackId:
         currentFeedback?.id ||
@@ -1996,8 +2007,8 @@ export default function InternalPortal() {
       programId: currentProgram.id,
       participantId: submission.participant.operation?.participantId || submission.id,
       submissionId,
-      comment: String(formData.get("comment") || "").trim(),
-      nextAction: String(formData.get("nextAction") || "").trim(),
+      comment,
+      nextAction,
       status: String(formData.get("status") || "needs_revision") as FeedbackStatus
     };
     try {
@@ -3354,12 +3365,48 @@ export default function InternalPortal() {
                         className="grid gap-3 border-t border-gray-200 pt-4"
                         data-submission-id={selectedStatusRow.submission.id}
                         key={`${selectedStatusRow.submission.id}:${selectedStatusRow.feedback?.updatedAt || "new"}`}
+                        noValidate
                         onChange={handleFeedbackDraftChange}
+                        onKeyDown={(event) => {
+                          if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                            event.preventDefault();
+                            event.currentTarget.requestSubmit();
+                          }
+                        }}
                         onSubmit={handleFeedback}
                       >
                         <div>
-                          <p className="text-sm font-bold text-gray-950">선택 참여자 피드백</p>
-                          <p className="mt-1 text-xs leading-5 text-gray-500">템플릿을 선택한 뒤 참여자에게 필요한 내용만 수정하세요.</p>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-bold text-gray-950">선택 참여자 피드백</p>
+                            {selectedStatusRow.feedback ? (
+                              <span className="text-xs font-medium text-gray-500">
+                                마지막 전달 {new Date(selectedStatusRow.feedback.updatedAt).toLocaleString("ko-KR")}
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="mt-1 text-xs leading-5 text-gray-500">검토 기준을 확인한 뒤 템플릿에서 필요한 내용만 수정하세요.</p>
+                        </div>
+                        <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+                          <p className="text-xs font-bold text-gray-800">30초 검토 기준</p>
+                          <ul className="mt-2 grid gap-1.5 text-xs leading-5 text-gray-600">
+                            <li><strong className="text-gray-900">문제-고객:</strong> 누가 어떤 불편을 겪는지 구체적인가</li>
+                            <li><strong className="text-gray-900">근거:</strong> 숫자, 인터뷰 또는 실제 사례가 있는가</li>
+                            <li><strong className="text-gray-900">실행:</strong> 참여자가 다음에 할 행동이 한 문장으로 명확한가</li>
+                          </ul>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-3">
+                          {[
+                            { label: "문제", lines: selectedStatusRow.submission.canvas.problem },
+                            { label: "고객", lines: selectedStatusRow.submission.canvas.customerSegments },
+                            { label: "가치제안", lines: selectedStatusRow.submission.canvas.uniqueValueProposition }
+                          ].map((item) => (
+                            <div className="rounded-md border border-gray-200 bg-white p-2.5" key={item.label}>
+                              <p className="text-[11px] font-bold text-blue-700">{item.label}</p>
+                              <p className="mt-1 line-clamp-3 text-xs leading-5 text-gray-700">
+                                {item.lines.filter(Boolean).slice(0, 2).join(" · ") || "작성 내용 없음"}
+                              </p>
+                            </div>
+                          ))}
                         </div>
                         <div className="flex flex-wrap gap-1.5">
                           {feedbackQuickTemplates.map((template) => (
@@ -3378,8 +3425,10 @@ export default function InternalPortal() {
                           <textarea
                             className="min-h-28 w-full rounded-md border border-gray-300 px-3 py-2 text-sm leading-6"
                             defaultValue={selectedFeedbackDraft?.comment ?? selectedStatusRow.feedback?.comment ?? ""}
+                            minLength={5}
                             name="comment"
                             placeholder="다음 수정에 바로 쓸 수 있는 구체적 피드백"
+                            required
                           />
                         </label>
                         <label>
@@ -3387,8 +3436,10 @@ export default function InternalPortal() {
                           <input
                             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
                             defaultValue={selectedFeedbackDraft?.nextAction ?? selectedStatusRow.feedback?.nextAction ?? ""}
+                            minLength={2}
                             name="nextAction"
                             placeholder="참여자가 다음에 할 행동"
+                            required
                           />
                         </label>
                         <div className="grid gap-2 sm:grid-cols-[1fr_auto] lg:grid-cols-1">
@@ -3401,14 +3452,21 @@ export default function InternalPortal() {
                             <option value="good">양호</option>
                             <option value="excellent">우수</option>
                           </select>
-                          <button
-                            className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300"
-                            disabled={feedbackSavingSubmissionId === selectedStatusRow.submission.id}
-                          >
-                            {feedbackSavingSubmissionId === selectedStatusRow.submission.id ? "저장 중..." : "피드백 저장"}
-                          </button>
+                          <div className="grid gap-1">
+                            <button
+                              className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300"
+                              disabled={feedbackSavingSubmissionId === selectedStatusRow.submission.id}
+                            >
+                              {feedbackSavingSubmissionId === selectedStatusRow.submission.id ? "저장 중..." : "피드백 저장·전달"}
+                            </button>
+                            <span className="text-center text-[11px] text-gray-500">Ctrl+Enter로 저장</span>
+                          </div>
                         </div>
-                        {feedbackDirtySubmissionId === selectedStatusRow.submission.id || selectedFeedbackDraft ? (
+                        {feedbackSaveResult?.submissionId === selectedStatusRow.submission.id && !feedbackSaveResult.ok ? (
+                          <p className="rounded-md bg-red-50 px-3 py-2 text-xs font-bold leading-5 text-red-800" role="alert">
+                            {feedbackSaveResult.message}
+                          </p>
+                        ) : feedbackDirtySubmissionId === selectedStatusRow.submission.id || selectedFeedbackDraft ? (
                           <p className="rounded-md bg-amber-50 px-3 py-2 text-xs font-bold leading-5 text-amber-800" role="status">
                             저장되지 않은 변경사항이 있습니다. 이 탭에는 임시 보관되며, 피드백 저장을 눌러야 참여자에게 전달됩니다.
                           </p>

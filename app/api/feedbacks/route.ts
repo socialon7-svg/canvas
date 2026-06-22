@@ -10,9 +10,9 @@ const feedbackCreateSchema = z.object({
   participantId: z.string().trim().min(1),
   submissionId: z.string().trim().min(1).nullable().optional(),
   moduleSlug: z.string().trim().min(1).nullable().optional(),
-  status: z.enum(["needs_revision", "good", "excellent", "published", "archived"]),
-  comment: z.string().optional(),
-  nextAction: z.string().optional()
+  status: z.enum(["needs_revision", "good", "excellent"]),
+  comment: z.string().trim().min(5, "코멘트를 5자 이상 입력해주세요.").max(2000),
+  nextAction: z.string().trim().min(2, "다음 액션을 구체적으로 입력해주세요.").max(500)
 });
 
 function toFeedbackDto(row: FeedbackRow) {
