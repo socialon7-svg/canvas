@@ -268,7 +268,7 @@ export default function ParticipantPortal() {
     }
     if (nextIncompleteModule) {
       return {
-        title: `${nextIncompleteModule.title}이 남았습니다`,
+        title: `다음 모듈: ${nextIncompleteModule.title}`,
         description: "저장된 내용이 있으면 이어서 열립니다. 작성 후 완료 표시까지 확인해주세요.",
         action: "바로 이어서 작성",
         onClick: () => openModule(nextIncompleteModule)
@@ -871,6 +871,12 @@ export default function ParticipantPortal() {
                 </div>
               </dl>
             </div>
+            {!team ? (
+              <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+                <p className="font-bold">팀이 아직 배정되지 않았습니다</p>
+                <p className="mt-1">팀 과제로 진행하는 교육이라면 작성 전에 운영진에게 팀 배정을 요청해주세요.</p>
+              </div>
+            ) : null}
           </section>
           {latestSubmission ? (
             <section className="rounded-lg border border-green-200 bg-green-50 p-5 shadow-sm md:col-span-3">
@@ -925,7 +931,15 @@ export default function ParticipantPortal() {
 
       {tab === "profile" ? (
         <form className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm" onSubmit={updateProfile}>
-          <h2 className="text-lg font-bold text-gray-950">참여자 정보</h2>
+          <div className="flex flex-col gap-3 border-b border-gray-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-gray-950">참여자 정보 확인</h2>
+              <p className="mt-1 text-sm leading-6 text-gray-600">운영진이 제출자를 정확히 확인할 수 있도록 이름과 소속을 확인해주세요.</p>
+            </div>
+            <div className={`rounded-md px-3 py-2 text-xs font-bold ${team ? "bg-green-50 text-green-800" : "bg-amber-50 text-amber-900"}`}>
+              팀: {team?.name || "미배정 · 운영진 확인 필요"}
+            </div>
+          </div>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <label>
               <span className="mb-1 block text-sm font-semibold text-gray-800">이름</span>
@@ -952,9 +966,12 @@ export default function ParticipantPortal() {
               <input name="role" defaultValue={participant.role} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
             </label>
           </div>
+          <p className="mt-4 rounded-md bg-gray-50 px-3 py-2 text-xs leading-5 text-gray-600">
+            팀 배정은 운영진이 관리합니다. 팀 정보가 다르면 저장 버튼을 누르기 전에 현장 운영진에게 알려주세요.
+          </p>
           <div className="mt-5 flex justify-end">
-            <button className="rounded-md bg-blue-700 px-5 py-2 text-sm font-bold text-white" type="submit">
-              저장하기
+            <button className="min-h-11 w-full rounded-md bg-blue-700 px-5 py-2 text-sm font-bold text-white sm:w-auto" type="submit">
+              내 정보 저장
             </button>
           </div>
         </form>

@@ -38,6 +38,20 @@ export default function ParticipantJoinClient({ token }: { token: string }) {
   const router = useRouter();
   const [status, setStatus] = useState("입장 링크를 확인하고 있습니다.");
   const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [manualCopyText, setManualCopyText] = useState("");
+
+  const copyErrorForStaff = async () => {
+    const message = `참여자 매직링크 입장 오류: ${error || "알 수 없는 오류"}`;
+    try {
+      await navigator.clipboard.writeText(message);
+      setCopied(true);
+      setManualCopyText("");
+    } catch {
+      setCopied(false);
+      setManualCopyText(message);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -118,12 +132,35 @@ export default function ParticipantJoinClient({ token }: { token: string }) {
         </p>
         {error ? (
           <div className="mt-5 grid gap-2">
+            <button
+              className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-800"
+              onClick={copyErrorForStaff}
+              type="button"
+            >
+              {copied ? "오류 내용 복사됨" : "운영진에게 보낼 오류 복사"}
+            </button>
+            {manualCopyText ? (
+              <p className="rounded-md bg-gray-100 px-3 py-2 text-left text-xs leading-5 text-gray-700" role="status">
+                자동 복사가 차단됐습니다. 운영진에게 아래 문구를 보여주세요.
+                <span className="mt-1 block break-words font-mono">{manualCopyText}</span>
+              </p>
+            ) : null}
+            <button
+              className="rounded-md border border-gray-300 px-4 py-2 text-sm font-bold text-gray-800"
+              onClick={() => window.location.reload()}
+              type="button"
+            >
+              링크 다시 확인하기
+            </button>
             <Link className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white" href="/participant">
               코드로 직접 입장하기
             </Link>
             <Link className="rounded-md border border-gray-300 px-4 py-2 text-sm font-bold text-gray-800" href="/">
               역할 선택으로 돌아가기
             </Link>
+            <p className="mt-2 text-xs leading-5 text-gray-500">
+              링크가 만료됐거나 회수된 경우 운영진에게 새 입장 링크를 요청해주세요.
+            </p>
           </div>
         ) : (
           <div className="mt-5 h-2 overflow-hidden rounded-full bg-blue-100">

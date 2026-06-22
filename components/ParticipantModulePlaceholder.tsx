@@ -1243,7 +1243,7 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
           ? "AI 고객 여정지도 / 수정 가능"
           : "결과 메모";
   const resultDescription = isOneLineIdeaModule
-    ? "생성된 문장은 초안입니다. 발표에 맞게 직접 고친 뒤 결과 저장 또는 완료 표시를 눌러주세요."
+    ? "생성된 문장은 초안입니다. 발표에 맞게 직접 고친 뒤 최종 완료로 저장해주세요."
     : isIdeaDiagnosisModule
       ? "점수는 초안입니다. 현장 멘토링 내용에 맞게 이유와 다음 액션을 직접 수정할 수 있습니다."
       : isCustomerPersonaModule
@@ -1422,6 +1422,30 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
               minute: "2-digit"
             })}`
           : "입력하면 자동 저장됩니다";
+  const currentActionGuide =
+    currentStatus === "completed"
+      ? {
+          title: "이 모듈은 완료로 제출되었습니다",
+          description: "내용을 수정했다면 아래 '수정 내용 저장'을 눌러 운영진에게 최신 결과를 반영하세요.",
+          className: "border-green-200 bg-green-50 text-green-900"
+        }
+      : currentStatus === "needs_review"
+        ? {
+            title: "멘토·운영진 검토를 요청했습니다",
+            description: "검토 전에도 내용을 계속 수정할 수 있습니다. 최종 결과가 준비되면 '최종 완료로 저장'을 눌러주세요.",
+            className: "border-amber-200 bg-amber-50 text-amber-900"
+          }
+        : outputData.trim()
+          ? {
+              title: "AI 초안을 확인하고 최종 완료해주세요",
+              description: "초안의 숫자와 사실을 직접 확인한 뒤, 아래 결과 영역에서 최종 완료로 저장하면 진행률에 반영됩니다.",
+              className: "border-blue-200 bg-blue-50 text-blue-900"
+            }
+          : {
+              title: "먼저 아이디어 메모를 작성해주세요",
+              description: "입력 내용은 자동 저장됩니다. AI 초안을 만든 뒤 직접 다듬고 최종 완료까지 진행하세요.",
+              className: "border-gray-200 bg-gray-50 text-gray-700"
+            };
 
   return (
     <main className="mx-auto max-w-[1440px] px-4 py-5 pb-20 sm:px-5 sm:py-8 lg:px-6">
@@ -1465,6 +1489,11 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
           {aiError} 입력 내용을 조금 더 적은 뒤 다시 생성할 수 있습니다.
         </p>
       ) : null}
+
+      <section className={`mt-4 rounded-lg border px-4 py-3 ${currentActionGuide.className}`} aria-live="polite">
+        <p className="text-sm font-bold">{currentActionGuide.title}</p>
+        <p className="mt-1 text-sm leading-6 opacity-90">{currentActionGuide.description}</p>
+      </section>
 
       <section className="mt-4 grid items-start gap-4 lg:grid-cols-[200px_minmax(0,1fr)_260px] min-[1280px]:grid-cols-[230px_minmax(0,1fr)_300px]">
         <nav className="app-surface p-4 lg:sticky lg:top-4" aria-label="모듈 작성 단계">
@@ -1561,15 +1590,15 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
               onClick={() => saveProgress("in_progress")}
               type="button"
             >
-              {savingProgress ? "저장 중..." : "임시 저장"}
+              {savingProgress ? "저장 중..." : "작성 중으로 저장"}
             </button>
             <button
               className="app-secondary-button min-h-10 text-sm text-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={savingProgress}
+              disabled={savingProgress || !hasModuleContent}
               onClick={() => saveProgress("needs_review")}
               type="button"
             >
-              {savingProgress ? "저장 중..." : "검토 필요 표시"}
+              {savingProgress ? "저장 중..." : "멘토 검토 요청"}
             </button>
           </div>
         </form>
@@ -1596,7 +1625,7 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
                 onClick={() => saveProgress("completed")}
                 type="button"
               >
-                {savingProgress ? "저장 중..." : currentStatus === "completed" ? "수정 내용 저장" : "검토 완료하기"}
+                {savingProgress ? "저장 중..." : currentStatus === "completed" ? "수정 내용 저장" : "최종 완료로 저장"}
               </button>
               <button
                 className="app-secondary-button text-sm text-[#1b64da]"
@@ -1608,7 +1637,11 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
             </div>
             {!hasModuleContent ? (
               <p className="mt-3 text-xs leading-5 text-[#8b95a1]">메모를 작성하거나 AI 초안을 만든 뒤 완료할 수 있어요.</p>
-            ) : null}
+            ) : (
+              <p className="mt-3 text-xs leading-5 text-[#6b7684]">
+                자동저장은 작성 내용을 보호하지만 진행 상태를 바꾸지 않습니다. 제출 상태는 위 버튼을 눌렀을 때만 변경됩니다.
+              </p>
+            )}
           </section>
         </div>
 
@@ -1651,7 +1684,7 @@ export default function ParticipantModulePlaceholder({ slug }: { slug: string })
                 {outputData.trim() ? "완료" : "대기"} · AI 초안을 직접 검토하고 수정했나요?
               </li>
               <li className={currentStatus === "completed" ? "font-semibold text-green-700" : ""}>
-                {currentStatus === "completed" ? "완료" : "대기"} · 검토 완료 버튼을 눌렀나요?
+                {currentStatus === "completed" ? "완료" : "대기"} · 최종 완료로 저장했나요?
               </li>
             </ul>
           </section>

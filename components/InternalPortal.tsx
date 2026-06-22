@@ -398,6 +398,10 @@ export default function InternalPortal() {
   const [notice, setNotice] = useState("");
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
   const [confirmingAction, setConfirmingAction] = useState(false);
+  const [feedbackSavingSubmissionId, setFeedbackSavingSubmissionId] = useState("");
+  const [feedbackSaveResult, setFeedbackSaveResult] = useState<{ submissionId: string; ok: boolean; message: string } | null>(null);
+  const [moduleReviewSavingKey, setModuleReviewSavingKey] = useState("");
+  const [moduleReviewSaveResult, setModuleReviewSaveResult] = useState<{ key: string; ok: boolean; message: string } | null>(null);
 
   useEffect(() => {
     if (!pendingConfirmation || confirmingAction) return;
@@ -1926,6 +1930,9 @@ export default function InternalPortal() {
     const submissionId = form.dataset.submissionId || "";
     const submission = submissions.find((item) => item.id === submissionId);
     if (!submission) return;
+    setFeedbackSavingSubmissionId(submissionId);
+    setFeedbackSaveResult(null);
+    setError("");
     const formData = new FormData(form);
     const feedbackInput = {
       programId: currentProgram.id,
@@ -1950,8 +1957,13 @@ export default function InternalPortal() {
         await refreshSubmissions();
       }
       setNotice("피드백을 저장했습니다.");
+      setFeedbackSaveResult({ submissionId, ok: true, message: "저장됨 · 참여자 피드백 화면에 반영되었습니다." });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "피드백 저장에 실패했습니다.");
+      const message = caught instanceof Error ? caught.message : "피드백 저장에 실패했습니다.";
+      setError(message);
+      setFeedbackSaveResult({ submissionId, ok: false, message: `저장 실패 · ${message}` });
+    } finally {
+      setFeedbackSavingSubmissionId("");
     }
   };
 
@@ -1976,6 +1988,7 @@ export default function InternalPortal() {
     setFieldValue(form.elements.namedItem("comment"), template.comment);
     setFieldValue(form.elements.namedItem("nextAction"), template.nextAction);
     setFieldValue(form.elements.namedItem("status"), template.status);
+    setFeedbackSaveResult(null);
     setNotice(`${template.label} 피드백 템플릿을 입력했습니다. 저장 버튼을 눌러 반영하세요.`);
   };
 
@@ -1987,6 +2000,10 @@ export default function InternalPortal() {
     const participant = state.participants.find((item) => item.id === participantId);
     const startupModule = currentProgramVisibleModules.find((item) => item.slug === moduleSlug);
     if (!participant || !startupModule) return;
+    const reviewKey = `${participantId}:${moduleSlug}`;
+    setModuleReviewSavingKey(reviewKey);
+    setModuleReviewSaveResult(null);
+    setError("");
     const formData = new FormData(form);
     const now = new Date().toISOString();
     const currentProgress = participant.moduleProgress?.[startupModule.slug];
@@ -2037,8 +2054,13 @@ export default function InternalPortal() {
         await refreshSubmissions();
       }
       setNotice(`${participant.name || participant.code}의 ${startupModule.title} 검토 상태를 저장했습니다.`);
+      setModuleReviewSaveResult({ key: reviewKey, ok: true, message: "검토 저장됨 · 참여자 화면에 반영되었습니다." });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "모듈 검토 저장에 실패했습니다.");
+      const message = caught instanceof Error ? caught.message : "모듈 검토 저장에 실패했습니다.";
+      setError(message);
+      setModuleReviewSaveResult({ key: reviewKey, ok: false, message: `저장 실패 · ${message}` });
+    } finally {
+      setModuleReviewSavingKey("");
     }
   };
 
@@ -3286,8 +3308,25 @@ export default function InternalPortal() {
                             <option value="good">양호</option>
                             <option value="excellent">우수</option>
                           </select>
-                          <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white">피드백 저장</button>
+                          <button
+                            className="rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300"
+                            disabled={feedbackSavingSubmissionId === selectedStatusRow.submission.id}
+                          >
+                            {feedbackSavingSubmissionId === selectedStatusRow.submission.id ? "저장 중..." : "피드백 저장"}
+                          </button>
                         </div>
+                        {feedbackSaveResult?.submissionId === selectedStatusRow.submission.id ? (
+                          <p
+                            className={`rounded-md px-3 py-2 text-xs font-bold ${
+                              feedbackSaveResult.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"
+                            }`}
+                            role="status"
+                          >
+                            {feedbackSaveResult.message}
+                          </p>
+                        ) : (
+                          <p className="text-xs leading-5 text-gray-500">저장 버튼을 눌러야 참여자 화면에 피드백이 반영됩니다.</p>
+                        )}
                       </form>
                     </div>
                   ) : (
@@ -3455,10 +3494,24 @@ export default function InternalPortal() {
                         <option value="completed">완료</option>
                       </select>
                     </label>
-                    <div className="flex items-end">
-                      <button className="w-full rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white" type="submit">
-                        검토 저장
+                    <div className="flex flex-col justify-end gap-2">
+                      <button
+                        className="w-full rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300"
+                        disabled={moduleReviewSavingKey === `${row.participant.id}:${row.module.slug}`}
+                        type="submit"
+                      >
+                        {moduleReviewSavingKey === `${row.participant.id}:${row.module.slug}` ? "저장 중..." : "검토 저장"}
                       </button>
+                      {moduleReviewSaveResult?.key === `${row.participant.id}:${row.module.slug}` ? (
+                        <p
+                          className={`text-xs font-bold ${moduleReviewSaveResult.ok ? "text-green-700" : "text-red-700"}`}
+                          role="status"
+                        >
+                          {moduleReviewSaveResult.message}
+                        </p>
+                      ) : (
+                        <p className="text-xs leading-5 text-gray-500">저장 후 참여자 화면에 반영됩니다.</p>
+                      )}
                     </div>
                   </form>
                 </article>
