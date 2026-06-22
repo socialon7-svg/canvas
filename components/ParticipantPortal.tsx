@@ -711,7 +711,11 @@ export default function ParticipantPortal() {
       label: "모듈",
       badge: revisionRequestedModule ? "수정" : `${completedModuleCount}/${visibleModules.length}`
     },
-    { key: "feedback", label: "피드백", badge: feedback ? "도착" : undefined }
+    {
+      key: "feedback",
+      label: "피드백",
+      badge: revisionRequestedModule ? "수정" : feedback ? "도착" : moduleFeedbackItems.length ? `${moduleFeedbackItems.length}` : undefined
+    }
   ];
 
   return (
@@ -1144,10 +1148,14 @@ export default function ParticipantPortal() {
         <main className="grid gap-4">
           <section
             className={`rounded-lg border p-5 shadow-sm ${
-              feedback
+              revisionRequestedModule
+                ? "border-amber-300 bg-amber-50"
+                : feedback
                 ? feedback.status === "needs_revision"
                   ? "border-amber-200 bg-amber-50"
                   : "border-green-200 bg-green-50"
+                : moduleFeedbackItems.length
+                  ? "border-blue-200 bg-blue-50"
                 : latestSubmission
                   ? "border-blue-200 bg-blue-50"
                   : "border-amber-200 bg-amber-50"
@@ -1157,17 +1165,38 @@ export default function ParticipantPortal() {
               <div>
                 <p className="text-sm font-semibold text-gray-700">피드백 상태</p>
                 <h2 className="mt-1 text-2xl font-bold text-gray-950">
-                  {feedback ? feedbackStatusLabels[feedback.status] : latestSubmission ? "운영진 검토 대기" : "제출 전"}
+                  {revisionRequestedModule
+                    ? `수정 요청: ${revisionRequestedModule.module.title}`
+                    : feedback
+                      ? feedbackStatusLabels[feedback.status]
+                      : moduleFeedbackItems.length
+                        ? `모듈 코멘트 ${moduleFeedbackItems.length}건 도착`
+                        : latestSubmission
+                          ? "운영진 검토 대기"
+                          : "제출 전"}
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-gray-700">
-                  {feedback
+                  {revisionRequestedModule
+                    ? revisionRequestedModule.progress?.adminComment || "운영진 코멘트를 확인하고 내용을 보완해주세요."
+                    : feedback
                     ? "운영진 코멘트와 다음 액션을 확인하고 필요한 부분만 보완하세요."
+                    : moduleFeedbackItems.length
+                      ? "모듈별 검토 코멘트를 확인했습니다. 아래 목록에서 필요한 모듈로 바로 이동할 수 있어요."
                     : latestSubmission
                       ? "제출물은 접수되었습니다. 운영진 검토가 끝나면 이 탭에 코멘트가 표시됩니다."
                       : "아직 연결된 제출물이 없습니다. 먼저 배정된 모듈을 작성하고 최종 제출을 완료하세요."}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
+                {revisionRequestedModule ? (
+                  <button
+                    className="rounded-md bg-amber-600 px-4 py-2 text-sm font-bold text-white hover:bg-amber-700"
+                    onClick={() => openModule(revisionRequestedModule.module)}
+                    type="button"
+                  >
+                    수정 요청 확인
+                  </button>
+                ) : null}
                 {latestSubmission ? (
                   <>
                     <button
@@ -1212,6 +1241,67 @@ export default function ParticipantPortal() {
               </div>
             </div>
           </section>
+          {moduleFeedbackItems.length ? (
+            <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-blue-700">모듈별 검토</p>
+                  <h2 className="mt-1 text-lg font-bold text-gray-950">운영진 코멘트 {moduleFeedbackItems.length}건</h2>
+                </div>
+                <p className="text-xs text-gray-500">최근 전달된 코멘트부터 표시합니다.</p>
+              </div>
+              <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                {moduleFeedbackItems.map(({ module, progress }) => {
+                  if (!progress) return null;
+                  const needsRevision = progress.status === "needs_review";
+                  const isReviewed = progress.status === "completed";
+                  return (
+                    <article
+                      key={module.slug}
+                      className={`rounded-lg border p-4 ${
+                        needsRevision
+                          ? "border-amber-300 bg-amber-50"
+                          : isReviewed
+                            ? "border-green-200 bg-green-50"
+                            : "border-blue-200 bg-blue-50"
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-bold text-gray-600">STEP {module.order}</p>
+                          <h3 className="mt-1 font-bold text-gray-950">{module.title}</h3>
+                        </div>
+                        <span
+                          className={`rounded-full border px-2.5 py-1 text-xs font-bold ${
+                            needsRevision
+                              ? "border-amber-300 bg-white text-amber-900"
+                              : isReviewed
+                                ? "border-green-200 bg-white text-green-800"
+                                : "border-blue-200 bg-white text-blue-800"
+                          }`}
+                        >
+                          {getModuleDisplayStatusLabel(module)}
+                        </span>
+                      </div>
+                      <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-800">{progress.adminComment}</p>
+                      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-black/10 pt-3">
+                        <p className="text-xs text-gray-600">
+                          {progress.reviewedAt ? new Date(progress.reviewedAt).toLocaleString("ko-KR") : "전달 시각 미기록"}
+                        </p>
+                        <button
+                          className={`rounded-md px-3 py-2 text-xs font-bold text-white ${needsRevision ? "bg-amber-600 hover:bg-amber-700" : "bg-blue-700 hover:bg-blue-800"}`}
+                          onClick={() => openModule(module)}
+                          type="button"
+                        >
+                          {needsRevision ? "보완하러 가기" : "모듈 확인"}
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
           <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
             <article className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
               <h2 className="text-lg font-bold text-gray-950">내 제출물</h2>
