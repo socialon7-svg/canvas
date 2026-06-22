@@ -12,6 +12,7 @@ import { authorizeActiveParticipantRequest, authorizeParticipantRequest } from "
 import type { ModuStartupDraft, ModuStartupInput } from "@/lib/types";
 
 interface ModuStartupSubmissionRequest {
+  submissionRequestId?: string;
   input: ModuStartupInput;
   draft: ModuStartupDraft;
 }
@@ -19,6 +20,7 @@ interface ModuStartupSubmissionRequest {
 const listQuerySchema = z.object({
   programId: z.string().trim().max(200).optional()
 });
+const submissionRequestIdSchema = z.string().uuid().optional();
 
 function validateSubmission(body: ModuStartupSubmissionRequest) {
   if (!body.input?.programName?.trim()) return "교육명이 없습니다.";
@@ -41,6 +43,7 @@ export async function POST(request: Request) {
     if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
 
     const operation = body.input.operation!;
+    const submissionRequestId = submissionRequestIdSchema.parse(body.submissionRequestId);
     const authorization = await authorizeActiveParticipantRequest(
       request,
       { programId: operation.programId, participantId: operation.participantId },
@@ -49,6 +52,7 @@ export async function POST(request: Request) {
     if (!authorization.ok) return authorization.response;
 
     const row = await createModuleSubmission({
+      submissionRequestId,
       programId: operation.programId!,
       participantId: operation.participantId!,
       teamId: operation.teamId || null,

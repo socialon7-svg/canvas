@@ -11,6 +11,7 @@ import {
   saveModuStartupSubmission
 } from "@/lib/storage";
 import { recordModuStartupSubmission } from "@/lib/operationsStorage";
+import { getOrCreateSubmissionRequestId } from "@/lib/submissionRequest";
 
 const initialInput: ModuStartupInput = {
   programName: "",
@@ -469,12 +470,15 @@ export default function ModuStartupGenerator() {
     setSubmitting(true);
     setError("");
     setNotice("");
+    const submissionPayload = { input, draft };
+    const submissionScope = `${input.operation?.programId || "demo"}:${input.operation?.participantId || "browser"}:modu-startup-application`;
+    const submissionRequestId = getOrCreateSubmissionRequestId(submissionScope, submissionPayload);
 
     try {
       const response = await fetch("/api/modu-startup-submissions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input, draft })
+        body: JSON.stringify({ submissionRequestId, ...submissionPayload })
       });
       const data = (await response.json()) as {
         submission?: ModuStartupSubmission;
@@ -483,7 +487,7 @@ export default function ModuStartupGenerator() {
       };
 
       if (response.status === 503 && (data.code === "SUPABASE_NOT_CONFIGURED" || data.code === "SUPABASE_TABLE_NOT_READY")) {
-        const fallbackSubmission = saveModuStartupSubmission(input, draft);
+        const fallbackSubmission = saveModuStartupSubmission(input, draft, submissionRequestId);
         recordModuStartupSubmission(input, fallbackSubmission.id);
         clearModuStartupPrefill();
         clearModuStartupDraftFromLocal();

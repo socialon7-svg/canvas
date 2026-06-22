@@ -166,10 +166,10 @@ export function loadSubmissions(): LeanCanvasSubmission[] {
   }
 }
 
-export function saveSubmission(participant: ParticipantInput, canvas: LeanCanvasDraft) {
+export function saveSubmission(participant: ParticipantInput, canvas: LeanCanvasDraft, submissionId = crypto.randomUUID()) {
   const createdAt = new Date().toISOString();
   const submission: LeanCanvasSubmission = {
-    id: crypto.randomUUID(),
+    id: submissionId,
     createdAt,
     participant,
     canvas,
@@ -177,7 +177,7 @@ export function saveSubmission(participant: ParticipantInput, canvas: LeanCanvas
     pdfStatus: "idle",
     pdfStatusUpdatedAt: createdAt
   };
-  const submissions = [submission, ...loadSubmissions()];
+  const submissions = [submission, ...loadSubmissions().filter((item) => item.id !== submissionId)];
   writeLocalStorage(SUBMISSIONS_KEY, JSON.stringify(submissions));
   clearDraftSession();
   return submission;
@@ -225,10 +225,14 @@ export function loadModuStartupSubmissions(): ModuStartupSubmission[] {
   }
 }
 
-export function saveModuStartupSubmission(input: ModuStartupInput, draft: ModuStartupDraft) {
+export function saveModuStartupSubmission(
+  input: ModuStartupInput,
+  draft: ModuStartupDraft,
+  submissionId = crypto.randomUUID()
+) {
   const createdAt = new Date().toISOString();
   const submission: ModuStartupSubmission = {
-    id: crypto.randomUUID(),
+    id: submissionId,
     createdAt,
     input,
     draft,
@@ -236,7 +240,7 @@ export function saveModuStartupSubmission(input: ModuStartupInput, draft: ModuSt
     pdfStatus: "idle",
     pdfStatusUpdatedAt: createdAt
   };
-  const submissions = [submission, ...loadModuStartupSubmissions()];
+  const submissions = [submission, ...loadModuStartupSubmissions().filter((item) => item.id !== submissionId)];
   writeLocalStorage(MODU_STARTUP_SUBMISSIONS_KEY, JSON.stringify(submissions));
   return submission;
 }

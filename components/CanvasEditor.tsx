@@ -14,6 +14,7 @@ import {
 } from "@/lib/types";
 import { loadDraftSession, saveDraftSession, saveSubmission } from "@/lib/storage";
 import { recordParticipantSubmission } from "@/lib/operationsStorage";
+import { getOrCreateSubmissionRequestId } from "@/lib/submissionRequest";
 
 const editableFields: CanvasFieldKey[] = [
   "problem",
@@ -112,6 +113,9 @@ export default function CanvasEditor() {
     setSubmitting(true);
     setSubmitError("");
     setFallbackNotice("");
+    const submissionPayload = { participant, canvas };
+    const submissionScope = `${participant.operation?.programId || "demo"}:${participant.operation?.participantId || "browser"}:lean-canvas`;
+    const submissionRequestId = getOrCreateSubmissionRequestId(submissionScope, submissionPayload);
 
     try {
       const response = await fetch("/api/submissions", {
@@ -119,10 +123,7 @@ export default function CanvasEditor() {
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({
-          participant,
-          canvas
-        })
+        body: JSON.stringify({ submissionRequestId, ...submissionPayload })
       });
       const data = (await response.json()) as {
         submission?: { id: string };
@@ -131,7 +132,7 @@ export default function CanvasEditor() {
       };
 
       if (response.status === 503 && (data.code === "SUPABASE_NOT_CONFIGURED" || data.code === "SUPABASE_TABLE_NOT_READY")) {
-        const fallbackSubmission = saveSubmission(participant, canvas);
+        const fallbackSubmission = saveSubmission(participant, canvas, submissionRequestId);
         recordParticipantSubmission(participant, fallbackSubmission.id);
         setFallbackNotice("중앙 저장소가 아직 설정되지 않아 이 브라우저에 임시 저장했습니다.");
         router.push(`/preview/${fallbackSubmission.id}`);

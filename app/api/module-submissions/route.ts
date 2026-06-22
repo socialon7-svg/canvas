@@ -12,6 +12,7 @@ import { authorizeActiveParticipantRequest, authorizeParticipantRequest } from "
 const jsonObjectSchema = z.record(z.string(), z.unknown());
 
 const moduleSubmissionCreateSchema = z.object({
+  submissionRequestId: z.string().uuid().optional(),
   programId: z.string().trim().min(1),
   participantId: z.string().trim().min(1),
   teamId: z.string().trim().min(1).nullable().optional(),
@@ -77,6 +78,7 @@ export async function POST(request: Request) {
     const authorization = await authorizeActiveParticipantRequest(request, body, { allowAdmin: true });
     if (!authorization.ok) return authorization.response;
     const submission = await createModuleSubmission({
+      submissionRequestId: body.submissionRequestId,
       programId: body.programId,
       participantId: body.participantId,
       teamId: body.teamId,

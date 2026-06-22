@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { adminUnauthorizedResponse, isAdminRequest } from "@/lib/adminAuth";
 import { toLeanCanvasSubmission } from "@/lib/moduleSubmissionAdapters";
 import { handleOperationsApiError } from "@/lib/operationsApiUtils";
@@ -11,9 +12,12 @@ import { authorizeActiveParticipantRequest, authorizeParticipantRequest } from "
 import type { LeanCanvasDraft, ParticipantInput } from "@/lib/types";
 
 interface SubmissionRequest {
+  submissionRequestId?: string;
   participant: ParticipantInput;
   canvas: LeanCanvasDraft;
 }
+
+const submissionRequestIdSchema = z.string().uuid().optional();
 
 function validateSubmission(body: SubmissionRequest) {
   if (!body.participant?.educationName?.trim()) return "교육명이 없습니다.";
@@ -37,6 +41,7 @@ export async function POST(request: Request) {
     if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
 
     const operation = body.participant.operation!;
+    const submissionRequestId = submissionRequestIdSchema.parse(body.submissionRequestId);
     const authorization = await authorizeActiveParticipantRequest(
       request,
       { programId: operation.programId, participantId: operation.participantId },
@@ -45,6 +50,7 @@ export async function POST(request: Request) {
     if (!authorization.ok) return authorization.response;
 
     const row = await createModuleSubmission({
+      submissionRequestId,
       programId: operation.programId!,
       participantId: operation.participantId!,
       teamId: operation.teamId || null,

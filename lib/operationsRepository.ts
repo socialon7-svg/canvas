@@ -683,6 +683,7 @@ export async function upsertModuleProgress(input: {
 }
 
 export async function createModuleSubmission(input: {
+  submissionRequestId?: string;
   programId: string;
   participantId: string;
   teamId?: string | null;
@@ -694,21 +695,39 @@ export async function createModuleSubmission(input: {
   outputData?: JsonObject;
 }) {
   const supabase = getClient();
+  const payload = {
+    ...(input.submissionRequestId ? { id: input.submissionRequestId } : {}),
+    program_id: input.programId,
+    participant_id: input.participantId,
+    team_id: input.teamId ?? null,
+    module_slug: input.moduleSlug,
+    title: input.title ?? "",
+    status: input.status ?? "submitted",
+    pdf_status: input.pdfStatus ?? "idle",
+    input_data: input.inputData ?? {},
+    output_data: input.outputData ?? {}
+  };
   const { data, error } = await supabase
     .from("module_submissions")
-    .insert({
-      program_id: input.programId,
-      participant_id: input.participantId,
-      team_id: input.teamId ?? null,
-      module_slug: input.moduleSlug,
-      title: input.title ?? "",
-      status: input.status ?? "submitted",
-      pdf_status: input.pdfStatus ?? "idle",
-      input_data: input.inputData ?? {},
-      output_data: input.outputData ?? {}
-    })
+    .insert(payload)
     .select("*")
     .single<ModuleSubmissionRow>();
+
+  if (error?.code === "23505" && input.submissionRequestId) {
+    const { data: existing, error: existingError } = await supabase
+      .from("module_submissions")
+      .select("*")
+      .eq("id", input.submissionRequestId)
+      .maybeSingle<ModuleSubmissionRow>();
+    throwIfError(existingError);
+    if (
+      existing?.program_id === input.programId &&
+      existing.participant_id === input.participantId &&
+      existing.module_slug === input.moduleSlug
+    ) {
+      return existing;
+    }
+  }
 
   throwIfError(error);
   return requireData(data, "모듈 제출 저장 결과가 없습니다.");
