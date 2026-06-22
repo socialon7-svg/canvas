@@ -86,7 +86,19 @@ type FeedbackDraft = {
   status: FeedbackStatus;
 };
 
+type ModuleReviewDraft = {
+  adminComment: string;
+  status: ParticipantModuleProgressStatus;
+};
+
+type ModuleReviewQuickTemplate = {
+  label: string;
+  comment: string;
+  status: ParticipantModuleProgressStatus;
+};
+
 const FEEDBACK_DRAFT_PREFIX = "highview_feedback_draft";
+const MODULE_REVIEW_DRAFT_PREFIX = "highview_module_review_draft";
 
 function loadFeedbackDraft(submissionId: string) {
   if (typeof window === "undefined" || !submissionId) return null;
@@ -111,6 +123,46 @@ function clearFeedbackDraft(submissionId: string) {
   } catch {
     // Nothing else is required after a successful server save.
   }
+}
+
+function loadModuleReviewDraft(reviewKey: string) {
+  if (typeof window === "undefined" || !reviewKey) return null;
+  try {
+    return JSON.parse(window.sessionStorage.getItem(`${MODULE_REVIEW_DRAFT_PREFIX}:${reviewKey}`) || "null") as ModuleReviewDraft | null;
+  } catch {
+    return null;
+  }
+}
+
+function saveModuleReviewDraft(reviewKey: string, draft: ModuleReviewDraft) {
+  try {
+    window.sessionStorage.setItem(`${MODULE_REVIEW_DRAFT_PREFIX}:${reviewKey}`, JSON.stringify(draft));
+  } catch {
+    // The review form remains usable even when temporary browser storage is unavailable.
+  }
+}
+
+function clearModuleReviewDraft(reviewKey: string) {
+  try {
+    window.sessionStorage.removeItem(`${MODULE_REVIEW_DRAFT_PREFIX}:${reviewKey}`);
+  } catch {
+    // Nothing else is required after a successful server save.
+  }
+}
+
+function findStoredModuleReviewDraftKey() {
+  if (typeof window === "undefined") return "";
+  try {
+    for (let index = 0; index < window.sessionStorage.length; index += 1) {
+      const key = window.sessionStorage.key(index) || "";
+      if (key.startsWith(`${MODULE_REVIEW_DRAFT_PREFIX}:`)) {
+        return key.slice(MODULE_REVIEW_DRAFT_PREFIX.length + 1);
+      }
+    }
+  } catch {
+    return "";
+  }
+  return "";
 }
 
 const submissionFilterLabels: Record<SubmissionFilter, string> = {
@@ -155,6 +207,24 @@ const feedbackQuickTemplates: FeedbackQuickTemplate[] = [
     status: "excellent",
     comment: "문제, 고객, 해결책의 연결이 명확합니다. 현재 수준으로 제출 가능하며 발표에서는 검증 근거를 강조해주세요.",
     nextAction: "발표 시 고객 검증 근거와 다음 실행 계획 강조"
+  }
+];
+
+const moduleReviewQuickTemplates: ModuleReviewQuickTemplate[] = [
+  {
+    label: "보완 요청",
+    status: "needs_review",
+    comment: "핵심 근거나 결과가 부족합니다. 확인 가능한 숫자·사례를 추가한 뒤 다시 검토 요청해주세요."
+  },
+  {
+    label: "진행 확인",
+    status: "in_progress",
+    comment: "현재 작성 방향을 확인했습니다. 남은 항목을 구체화한 뒤 완료 상태로 저장해주세요."
+  },
+  {
+    label: "완료 확인",
+    status: "completed",
+    comment: "작성 결과를 확인했습니다. 다음 모듈을 진행해주세요."
   }
 ];
 
@@ -436,6 +506,7 @@ export default function InternalPortal() {
   const [feedbackDirtySubmissionId, setFeedbackDirtySubmissionId] = useState("");
   const [feedbackSaveResult, setFeedbackSaveResult] = useState<{ submissionId: string; ok: boolean; message: string } | null>(null);
   const [moduleReviewSavingKey, setModuleReviewSavingKey] = useState("");
+  const [moduleReviewDirtyKey, setModuleReviewDirtyKey] = useState("");
   const [moduleReviewSaveResult, setModuleReviewSaveResult] = useState<{ key: string; ok: boolean; message: string } | null>(null);
 
   useEffect(() => {
@@ -449,14 +520,20 @@ export default function InternalPortal() {
   }, [confirmingAction, pendingConfirmation]);
 
   useEffect(() => {
-    if (!feedbackDirtySubmissionId) return;
+    if (!feedbackDirtySubmissionId && !moduleReviewDirtyKey) return;
     const warnBeforeLeave = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", warnBeforeLeave);
     return () => window.removeEventListener("beforeunload", warnBeforeLeave);
-  }, [feedbackDirtySubmissionId]);
+  }, [feedbackDirtySubmissionId, moduleReviewDirtyKey]);
+
+  useEffect(() => {
+    if (!authorized) return;
+    const storedReviewKey = findStoredModuleReviewDraftKey();
+    if (storedReviewKey) setModuleReviewDirtyKey(storedReviewKey);
+  }, [authorized]);
 
   const runConfirmedAction = async () => {
     if (!pendingConfirmation || confirmingAction) return;
@@ -2094,6 +2171,33 @@ export default function InternalPortal() {
     setNotice(`${template.label} 피드백 템플릿을 입력했습니다. 저장 버튼을 눌러 반영하세요.`);
   };
 
+  const persistModuleReviewFormDraft = (form: HTMLFormElement) => {
+    const participantId = form.dataset.participantId || "";
+    const moduleSlug = form.dataset.moduleSlug || "";
+    if (!participantId || !moduleSlug) return;
+    const reviewKey = `${participantId}:${moduleSlug}`;
+    const formData = new FormData(form);
+    saveModuleReviewDraft(reviewKey, {
+      adminComment: String(formData.get("adminComment") || ""),
+      status: String(formData.get("status") || "in_progress") as ParticipantModuleProgressStatus
+    });
+    setModuleReviewDirtyKey(reviewKey);
+    setModuleReviewSaveResult((current) => (current?.key === reviewKey ? null : current));
+  };
+
+  const applyModuleReviewTemplate = (reviewKey: string, template: ModuleReviewQuickTemplate) => {
+    const form = Array.from(document.querySelectorAll<HTMLFormElement>("form[data-review-key]")).find(
+      (item) => item.dataset.reviewKey === reviewKey
+    );
+    if (!form) return;
+    const comment = form.elements.namedItem("adminComment");
+    const status = form.elements.namedItem("status");
+    if (comment instanceof HTMLTextAreaElement) comment.value = template.comment;
+    if (status instanceof HTMLSelectElement) status.value = template.status;
+    persistModuleReviewFormDraft(form);
+    setNotice(`${template.label} 문구를 입력했습니다. 검토 저장·전달을 눌러 반영하세요.`);
+  };
+
   const handleModuleReview = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -2103,10 +2207,18 @@ export default function InternalPortal() {
     const startupModule = currentProgramVisibleModules.find((item) => item.slug === moduleSlug);
     if (!participant || !startupModule) return;
     const reviewKey = `${participantId}:${moduleSlug}`;
+    const formData = new FormData(form);
+    const adminComment = String(formData.get("adminComment") || "").trim();
+    if (adminComment.length < 3) {
+      setModuleReviewSaveResult({ key: reviewKey, ok: false, message: "저장 전 확인 · 운영진 코멘트를 3자 이상 입력해주세요." });
+      setModuleReviewDirtyKey(reviewKey);
+      const target = form.elements.namedItem("adminComment");
+      if (target instanceof HTMLTextAreaElement) target.focus();
+      return;
+    }
     setModuleReviewSavingKey(reviewKey);
     setModuleReviewSaveResult(null);
     setError("");
-    const formData = new FormData(form);
     const now = new Date().toISOString();
     const currentProgress = participant.moduleProgress?.[startupModule.slug];
     const status = String(formData.get("status") || currentProgress?.status || "in_progress") as ParticipantModuleProgressStatus;
@@ -2123,7 +2235,7 @@ export default function InternalPortal() {
                   status,
                   inputData: currentProgress?.inputData || "",
                   outputData: currentProgress?.outputData || "",
-                  adminComment: String(formData.get("adminComment") || "").trim(),
+                  adminComment,
                   reviewedAt: now,
                   createdAt: currentProgress?.createdAt || now,
                   updatedAt: now
@@ -2145,7 +2257,7 @@ export default function InternalPortal() {
           currentStep: currentProgress?.status === "completed" ? 100 : 50,
           inputData: { text: currentProgress?.inputData || "" },
           outputData: { text: currentProgress?.outputData || "" },
-          adminComment: String(formData.get("adminComment") || "").trim(),
+          adminComment,
           reviewedAt: now
         })
       });
@@ -2155,8 +2267,14 @@ export default function InternalPortal() {
       } else {
         await refreshSubmissions();
       }
+      clearModuleReviewDraft(reviewKey);
+      setModuleReviewDirtyKey(findStoredModuleReviewDraftKey());
       setNotice(`${participant.name || participant.code}의 ${startupModule.title} 검토 상태를 저장했습니다.`);
-      setModuleReviewSaveResult({ key: reviewKey, ok: true, message: "검토 저장됨 · 참여자 화면에 반영되었습니다." });
+      setModuleReviewSaveResult({
+        key: reviewKey,
+        ok: true,
+        message: `검토 저장됨 · ${new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })} · 참여자 화면에 반영되었습니다.`
+      });
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "모듈 검토 저장에 실패했습니다.";
       setError(message);
@@ -3573,9 +3691,12 @@ export default function InternalPortal() {
             </section>
           ) : (
             <section className="grid gap-4">
-              {filteredModuleReviewRows.map((row) => (
+              {filteredModuleReviewRows.map((row) => {
+                const reviewKey = `${row.participant.id}:${row.module.slug}`;
+                const reviewDraft = loadModuleReviewDraft(reviewKey);
+                return (
                 <article
-                  key={`${row.participant.id}-${row.module.slug}`}
+                  key={reviewKey}
                   className={`rounded-lg border bg-white p-5 shadow-sm ${
                     row.status === "needs_review" ? "border-amber-200" : "border-gray-200"
                   }`}
@@ -3620,15 +3741,40 @@ export default function InternalPortal() {
                     className="mt-4 grid gap-3 rounded-md border border-gray-200 bg-gray-50 p-4 md:grid-cols-[minmax(0,1fr)_180px_auto]"
                     data-module-slug={row.module.slug}
                     data-participant-id={row.participant.id}
+                    data-review-key={reviewKey}
+                    key={`${reviewKey}:${row.progress?.updatedAt || "new"}`}
+                    noValidate
+                    onChange={(event) => persistModuleReviewFormDraft(event.currentTarget)}
+                    onKeyDown={(event) => {
+                      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                        event.preventDefault();
+                        event.currentTarget.requestSubmit();
+                      }
+                    }}
                     onSubmit={handleModuleReview}
                   >
+                    <div className="flex flex-wrap items-center gap-2 md:col-span-3">
+                      <span className="text-xs font-bold text-gray-700">빠른 검토</span>
+                      {moduleReviewQuickTemplates.map((template) => (
+                        <button
+                          className="rounded-md border border-blue-200 bg-white px-2.5 py-1.5 text-xs font-bold text-blue-800 hover:bg-blue-50"
+                          key={template.label}
+                          onClick={() => applyModuleReviewTemplate(reviewKey, template)}
+                          type="button"
+                        >
+                          {template.label}
+                        </button>
+                      ))}
+                    </div>
                     <label>
                       <span className="mb-1 block text-sm font-semibold text-gray-800">운영진 코멘트</span>
                       <textarea
                         name="adminComment"
                         className="min-h-24 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
-                        defaultValue={row.progress?.adminComment || ""}
+                        defaultValue={reviewDraft?.adminComment ?? row.progress?.adminComment ?? ""}
+                        minLength={3}
                         placeholder="보완할 점, 확인한 점, 다음 행동을 적어주세요."
+                        required
                       />
                       {row.progress?.reviewedAt ? (
                         <span className="mt-1 block text-xs text-gray-500">
@@ -3641,7 +3787,7 @@ export default function InternalPortal() {
                       <select
                         name="status"
                         className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
-                        defaultValue={row.status}
+                        defaultValue={reviewDraft?.status ?? row.status}
                       >
                         <option value="not_started">시작 전</option>
                         <option value="in_progress">진행 중</option>
@@ -3652,14 +3798,23 @@ export default function InternalPortal() {
                     <div className="flex flex-col justify-end gap-2">
                       <button
                         className="w-full rounded-md bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300"
-                        disabled={moduleReviewSavingKey === `${row.participant.id}:${row.module.slug}`}
+                        disabled={moduleReviewSavingKey === reviewKey}
                         type="submit"
                       >
-                        {moduleReviewSavingKey === `${row.participant.id}:${row.module.slug}` ? "저장 중..." : "검토 저장"}
+                        {moduleReviewSavingKey === reviewKey ? "저장 중..." : "검토 저장·전달"}
                       </button>
-                      {moduleReviewSaveResult?.key === `${row.participant.id}:${row.module.slug}` ? (
+                      <span className="text-center text-[11px] text-gray-500">Ctrl+Enter로 저장</span>
+                      {moduleReviewSaveResult?.key === reviewKey && !moduleReviewSaveResult.ok ? (
+                        <p className="text-xs font-bold leading-5 text-red-700" role="alert">
+                          {moduleReviewSaveResult.message}
+                        </p>
+                      ) : moduleReviewDirtyKey === reviewKey || reviewDraft ? (
+                        <p className="text-xs font-bold leading-5 text-amber-700" role="status">
+                          저장되지 않은 변경사항이 있습니다. 이 탭에는 임시 보관됩니다.
+                        </p>
+                      ) : moduleReviewSaveResult?.key === reviewKey ? (
                         <p
-                          className={`text-xs font-bold ${moduleReviewSaveResult.ok ? "text-green-700" : "text-red-700"}`}
+                          className="text-xs font-bold leading-5 text-green-700"
                           role="status"
                         >
                           {moduleReviewSaveResult.message}
@@ -3670,7 +3825,8 @@ export default function InternalPortal() {
                     </div>
                   </form>
                 </article>
-              ))}
+                );
+              })}
             </section>
           )}
         </main>
